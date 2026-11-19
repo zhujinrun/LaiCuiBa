@@ -1,8 +1,10 @@
 import 'dart:ui' show Size;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:lai_cui_ba/main.dart';
+import 'package:lai_cui_ba/services/store.dart';
 import 'package:lai_cui_ba/ui/shell.dart';
 
 void main() {
@@ -12,7 +14,10 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const LcbApp());
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
     await tester.pump(const Duration(milliseconds: 900));
 
     expect(find.byType(Shell), findsOneWidget);

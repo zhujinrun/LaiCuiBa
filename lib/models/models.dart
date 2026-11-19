@@ -70,3 +70,182 @@ class HomeSection {
 }
 
 enum LcbPage { home, resources, favorites, history, settings }
+
+// ---------------------------------------------------------------------------
+// Persistence models (aligned with the original's shared_preferences keys)
+// ---------------------------------------------------------------------------
+
+/// One watch-history / favourites entry. The original merges favourites into
+/// history: a record carries optional [isFavorite] / [isFollowing] flags, and
+/// the favourites page renders the subset that is flagged.
+class HistoryEntry {
+  const HistoryEntry({
+    required this.key,
+    required this.sourceId,
+    required this.title,
+    required this.poster,
+    required this.episode,
+    required this.episodeIndex,
+    required this.positionMs,
+    required this.durationMs,
+    required this.updatedAt,
+    this.siteKey,
+    this.vodId,
+    this.flag,
+    this.sourceName,
+    this.isFavorite = false,
+    this.isFollowing = false,
+  });
+
+  /// Composite id `sourceId|siteKey|vodId`, stable across sessions.
+  final String key;
+  final String sourceId;
+  final String title;
+  final String poster;
+  final String episode;
+  final int episodeIndex;
+  final int positionMs;
+  final int durationMs;
+  final int updatedAt;
+
+  /// Source payload, mirroring the original's `payload` object.
+  final String? siteKey;
+  final String? vodId;
+  final String? flag;
+  final String? sourceName;
+
+  /// Favourites flags (the original folds favourites into history).
+  final bool isFavorite;
+  final bool isFollowing;
+
+  double get progress => durationMs <= 0 ? 0 : (positionMs / durationMs).clamp(0.0, 1.0);
+
+  /// A lightweight [MediaItem] view for grid rendering (favourites / follow).
+  MediaItem toMediaItem() => MediaItem(
+        id: key,
+        title: title,
+        tag: episode,
+        image: poster.isEmpty ? null : poster,
+        posterSeed: key.hashCode,
+      );
+
+  HistoryEntry copyWith({
+    bool? isFavorite,
+    bool? isFollowing,
+    int? positionMs,
+    int? updatedAt,
+  }) {
+    return HistoryEntry(
+      key: key,
+      sourceId: sourceId,
+      title: title,
+      poster: poster,
+      episode: episode,
+      episodeIndex: episodeIndex,
+      positionMs: positionMs ?? this.positionMs,
+      durationMs: durationMs,
+      updatedAt: updatedAt ?? this.updatedAt,
+      siteKey: siteKey,
+      vodId: vodId,
+      flag: flag,
+      sourceName: sourceName,
+      isFavorite: isFavorite ?? this.isFavorite,
+      isFollowing: isFollowing ?? this.isFollowing,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'key': key,
+        'sourceId': sourceId,
+        'title': title,
+        'poster': poster,
+        'episode': episode,
+        'episodeIndex': episodeIndex,
+        'positionMs': positionMs,
+        'durationMs': durationMs,
+        'updatedAt': updatedAt,
+        'payload': {
+          if (siteKey != null) 'siteKey': siteKey,
+          if (vodId != null) 'vodId': vodId,
+          if (flag != null) 'flag': flag,
+        },
+        'sourceName': sourceName,
+        if (isFavorite) 'favorite': true,
+        if (isFollowing) 'following': true,
+      };
+
+  factory HistoryEntry.fromJson(Map<String, dynamic> json) {
+    final payload = json['payload'] as Map<String, dynamic>? ?? const {};
+    return HistoryEntry(
+      key: json['key'] as String,
+      sourceId: json['sourceId'] as String,
+      title: json['title'] as String? ?? '',
+      poster: json['poster'] as String? ?? '',
+      episode: json['episode'] as String? ?? '',
+      episodeIndex: json['episodeIndex'] as int? ?? 0,
+      positionMs: json['positionMs'] as int? ?? 0,
+      durationMs: json['durationMs'] as int? ?? 0,
+      updatedAt: json['updatedAt'] as int? ?? 0,
+      siteKey: payload['siteKey'] as String?,
+      vodId: payload['vodId'] as String?,
+      flag: payload['flag'] as String?,
+      sourceName: json['sourceName'] as String?,
+      isFavorite: json['favorite'] as bool? ?? false,
+      isFollowing: json['following'] as bool? ?? false,
+    );
+  }
+}
+
+/// One content source (TVBox / 猫源 / Emby / WebDAV / AList), matching the
+/// original's `flutter.sources` entries and its availability metrics.
+class SourceInfo {
+  const SourceInfo({
+    required this.id,
+    required this.type,
+    required this.name,
+    required this.url,
+    this.username = '',
+    this.password = '',
+    this.latencyMs = 0,
+    this.movieCount = 0,
+    this.showCount = 0,
+    this.checkedAt = 0,
+  });
+
+  final String id;
+  final String type;
+  final String name;
+  final String url;
+  final String username;
+  final String password;
+  final int latencyMs;
+  final int movieCount;
+  final int showCount;
+  final int checkedAt;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'type': type,
+        'name': name,
+        'url': url,
+        'username': username,
+        'password': password,
+        'latencyMs': latencyMs,
+        'movieCount': movieCount,
+        'showCount': showCount,
+        'checkedAt': checkedAt,
+      };
+
+  factory SourceInfo.fromJson(Map<String, dynamic> json) => SourceInfo(
+        id: json['id'] as String,
+        type: json['type'] as String? ?? 'tvbox',
+        name: json['name'] as String? ?? '',
+        url: json['url'] as String? ?? '',
+        username: json['username'] as String? ?? '',
+        password: json['password'] as String? ?? '',
+        latencyMs: json['latencyMs'] as int? ?? 0,
+        movieCount: json['movieCount'] as int? ?? 0,
+        showCount: json['showCount'] as int? ?? 0,
+        checkedAt: json['checkedAt'] as int? ?? 0,
+      );
+}

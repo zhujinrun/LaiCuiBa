@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../core/store_scope.dart';
 import '../core/theme.dart';
 import '../models/models.dart';
 import '../services/demo_data.dart';
@@ -228,7 +229,7 @@ class _HeaderContent extends StatelessWidget {
               const SizedBox(width: 6),
             ],
             // Each page owns its own left-side header content.
-            _buildHeaderLeft(page, header),
+            _buildHeaderLeft(context, page, header),
             const Expanded(child: HeaderDragGap()),
             const _SearchBox(),
           ],
@@ -237,7 +238,11 @@ class _HeaderContent extends StatelessWidget {
     );
   }
 
-  Widget _buildHeaderLeft(LcbPage page, LcbPageHeader header) {
+  Widget _buildHeaderLeft(
+    BuildContext context,
+    LcbPage page,
+    LcbPageHeader header,
+  ) {
     switch (page) {
       case LcbPage.home:
         return Row(
@@ -278,7 +283,7 @@ class _HeaderContent extends StatelessWidget {
             ),
             const SizedBox(width: 27),
             TextButton(
-              onPressed: () {},
+              onPressed: () => StoreScope.of(context).clearHistory(),
               style: TextButton.styleFrom(
                 padding: EdgeInsets.zero,
                 minimumSize: Size.zero,
@@ -565,25 +570,22 @@ class _HeaderGlyphState extends State<_HeaderGlyph> {
 
 /// Favorites' header tabs: plain text with no capsule, matching the original's
 /// title-bar segmented control. The selected tab is dark + semibold, the other
-/// is the settings-quiet grey.
-class _FavoritesHeaderTabs extends StatefulWidget {
+/// is the settings-quiet grey. The active tab is kept in the store so the body
+/// and the header stay in sync.
+class _FavoritesHeaderTabs extends StatelessWidget {
   const _FavoritesHeaderTabs();
 
   @override
-  State<_FavoritesHeaderTabs> createState() => _FavoritesHeaderTabsState();
-}
-
-class _FavoritesHeaderTabsState extends State<_FavoritesHeaderTabs> {
-  int _tab = 0;
-
-  @override
   Widget build(BuildContext context) {
+    final store = StoreScope.of(context);
+    final activeTab = store.favoritesTab;
+
     Widget tab(String label, int i) {
-      final selected = i == _tab;
+      final selected = i == activeTab;
       return MouseRegion(
         cursor: SystemMouseCursors.click,
         child: GestureDetector(
-          onTap: () => setState(() => _tab = i),
+          onTap: () => store.setFavoritesTab(i),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Text(
