@@ -227,6 +227,21 @@ class _HeaderContent extends StatelessWidget {
               _BackButton(onTap: onBack),
               const SizedBox(width: 6),
             ],
+            // Each page owns its own left-side header content.
+            _buildHeaderLeft(page, header),
+            const Expanded(child: HeaderDragGap()),
+            const _SearchBox(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeaderLeft(LcbPage page, LcbPageHeader header) {
+    switch (page) {
+      case LcbPage.home:
+        return Row(
+          children: [
             Text(
               header.title,
               style: const TextStyle(
@@ -235,32 +250,89 @@ class _HeaderContent extends StatelessWidget {
                 color: LcbColors.text,
               ),
             ),
-            // Source chips belong to the home feed only; other pages have their
-            // own contextual controls in the original.
-            if (page == LcbPage.home) ...[
-              const SizedBox(width: 16),
-              const _SourceChip(label: '豆儿猫源', glyph: _SourceGlyph()),
-              const SizedBox(width: 8),
-              const _SourceChip(
-                icon: CupertinoIcons.layers,
-                iconSize: 15,
-                label: '「直」荐片',
-                labelGap: 5,
-              ),
-              const SizedBox(width: 8),
-              _IconGhost(icon: CupertinoIcons.square_grid_2x2, onTap: () {}),
-            ] else ...[
-              // Every other page carries a bare, tinted search glyph next to
-              // its title instead of the home feed's chips.
-              const SizedBox(width: 18),
-              _HeaderGlyph(icon: CupertinoIcons.search, onTap: () {}),
-            ],
-            const Expanded(child: HeaderDragGap()),
-            const _SearchBox(),
+            const SizedBox(width: 16),
+            const _SourceChip(label: '豆儿猫源', glyph: _SourceGlyph()),
+            const SizedBox(width: 8),
+            const _SourceChip(
+              icon: CupertinoIcons.layers,
+              iconSize: 15,
+              label: '「直」荐片',
+              labelGap: 5,
+            ),
+            const SizedBox(width: 8),
+            _IconGhost(icon: CupertinoIcons.square_grid_2x2, onTap: () {}),
           ],
-        ),
-      ),
-    );
+        );
+      case LcbPage.favorites:
+        return const _FavoritesHeaderTabs();
+      case LcbPage.history:
+        return Row(
+          children: [
+            Text(
+              header.title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: LcbColors.text,
+              ),
+            ),
+            const SizedBox(width: 27),
+            TextButton(
+              onPressed: () {},
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                '清空',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: LcbColors.primaryDim,
+                ),
+              ),
+            ),
+          ],
+        );
+      case LcbPage.resources:
+        return Row(
+          children: [
+            Text(
+              header.title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: LcbColors.text,
+              ),
+            ),
+            const SizedBox(width: 18),
+            const _HeaderToolIcon(icon: CupertinoIcons.line_horizontal_3),
+            const SizedBox(width: 8),
+            const _HeaderToolIcon(icon: CupertinoIcons.search),
+            const SizedBox(width: 8),
+            const _HeaderToolIcon(icon: CupertinoIcons.plus),
+            const SizedBox(width: 8),
+            const _HeaderToolIcon(icon: CupertinoIcons.checkmark_circle),
+            const SizedBox(width: 8),
+            const _HeaderToolIcon(icon: CupertinoIcons.waveform_path_ecg),
+          ],
+        );
+      case LcbPage.settings:
+        return Row(
+          children: [
+            Text(
+              header.title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: LcbColors.text,
+              ),
+            ),
+            const SizedBox(width: 18),
+            _HeaderGlyph(icon: CupertinoIcons.search, onTap: () {}),
+          ],
+        );
+    }
   }
 }
 
@@ -491,7 +563,81 @@ class _HeaderGlyphState extends State<_HeaderGlyph> {
   }
 }
 
-class _SearchBox extends StatefulWidget {  const _SearchBox();
+/// Favorites' header tabs: plain text with no capsule, matching the original's
+/// title-bar segmented control. The selected tab is dark + semibold, the other
+/// is the settings-quiet grey.
+class _FavoritesHeaderTabs extends StatefulWidget {
+  const _FavoritesHeaderTabs();
+
+  @override
+  State<_FavoritesHeaderTabs> createState() => _FavoritesHeaderTabsState();
+}
+
+class _FavoritesHeaderTabsState extends State<_FavoritesHeaderTabs> {
+  int _tab = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget tab(String label, int i) {
+      final selected = i == _tab;
+      return MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: () => setState(() => _tab = i),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                color: selected ? LcbColors.text : LcbColors.settingsQuiet,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        tab('收藏', 0),
+        const SizedBox(width: 21),
+        tab('追剧', 1),
+        const SizedBox(width: 24),
+        const Icon(CupertinoIcons.search, size: 17, color: LcbColors.settingsQuiet),
+        const SizedBox(width: 12),
+        const Icon(CupertinoIcons.folder, size: 17, color: LcbColors.settingsQuiet),
+        const SizedBox(width: 12),
+        const Icon(CupertinoIcons.line_horizontal_3, size: 17, color: LcbColors.settingsQuiet),
+      ],
+    );
+  }
+}
+
+/// A square tool button used on the resources page header: a #F6F6F8 rounded
+/// tile holding a dark glyph.
+class _HeaderToolIcon extends StatelessWidget {
+  const _HeaderToolIcon({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: LcbColors.card,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(icon, size: 17, color: LcbColors.text),
+    );
+  }
+}
+
+class _SearchBox extends StatefulWidget {
+  const _SearchBox();
 
   @override
   State<_SearchBox> createState() => _SearchBoxState();

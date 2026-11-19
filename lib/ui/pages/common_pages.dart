@@ -128,8 +128,9 @@ class _SourceCard extends StatelessWidget {
 
 /// 收藏页：收藏的影片与追更的剧集。
 ///
-/// Two tabs — 收藏 / 追更 — then a poster grid. The grid reuses the home rail's
-/// `PosterCard` so covers, corners and hover match the rest of the app.
+/// The 收藏 / 追剧 tabs live in the shell's top bar; the body shows either the
+/// favourites grid or the empty state. Favourites are empty by default so the
+/// page opens on the original's empty state.
 class FavoritesPage extends StatefulWidget {
   const FavoritesPage({super.key});
 
@@ -138,57 +139,28 @@ class FavoritesPage extends StatefulWidget {
 }
 
 class _FavoritesPageState extends State<FavoritesPage> {
-  int _tab = 0;
-
   @override
   Widget build(BuildContext context) {
-    final items = _tab == 0
-        ? _favoriteItems
-        : homeSections
-            .expand((s) => s.items)
-            .where((m) => _followIds.contains(m.id))
-            .toList();
-
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              LcbMetrics.pagePadding,
-              17,
-              LcbMetrics.pagePadding,
-              0,
-            ),
-            child: _Segmented(
-              tabs: const ['收藏', '追剧'],
-              selected: _tab,
-              onChanged: (i) => setState(() => _tab = i),
-            ),
-          ),
-          Expanded(
-            child: items.isEmpty
-                ? const Center(
-                    child: _EmptyHint(
-                      icon: CupertinoIcons.heart,
-                      title: '这里还没有收藏',
-                      subtitle: '在影视详情页点收藏，在直播页长按频道，就会出现在这里。',
-                    ),
-                  )
-                : _PosterGrid(items: items),
-          ),
-        ],
-      ),
+      child: _favoriteItems.isEmpty
+          ? const Center(
+              child: _EmptyHint(
+                icon: CupertinoIcons.heart,
+                title: '这里还没有收藏',
+                subtitle: '在影视详情页点收藏、在直播首页长按频道，就会出现在这里。',
+              ),
+            )
+          : _PosterGrid(items: _favoriteItems),
     );
   }
 }
 
 /// 历史页：观看记录列表。
 ///
-/// Each entry is a small portrait thumbnail + title + episode + progress, the
-/// same shape the original uses for "continue watching" but vertical. The
-/// trailing chevron opens the detail page; the header holds 清空观看历史.
+/// The header row (title + 清空) lives in the shell's top bar; the body is just
+/// the watch-history list, one thumbnail + title + episode + source line per
+/// entry.
 class HistoryPage extends StatelessWidget {
   const HistoryPage({super.key});
 
@@ -197,74 +169,25 @@ class HistoryPage extends StatelessWidget {
     final entries = _historyEntries;
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              LcbMetrics.pagePadding,
-              17,
-              LcbMetrics.pagePadding,
-              0,
+      child: entries.isEmpty
+          ? const Center(
+              child: _EmptyHint(
+                icon: CupertinoIcons.clock,
+                title: '还没有观看记录',
+                subtitle: '看过的影片会自动记在这里',
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.fromLTRB(
+                LcbMetrics.pagePadding,
+                17,
+                LcbMetrics.pagePadding,
+                40,
+              ),
+              itemCount: entries.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (_, i) => _HistoryRow(entry: entries[i]),
             ),
-            child: Row(
-              children: [
-                const Text(
-                  '历史',
-                  style: TextStyle(
-                    fontFamily: LcbText.body,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: LcbColors.text,
-                  ),
-                ),
-                const Spacer(),
-                TextButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(
-                    CupertinoIcons.trash,
-                    size: 15,
-                    color: LcbColors.primaryDim,
-                  ),
-                  label: const Text(
-                    '清空',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: LcbColors.primaryDim,
-                    ),
-                  ),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: entries.isEmpty
-                ? const Center(
-                    child: _EmptyHint(
-                      icon: CupertinoIcons.clock,
-                      title: '还没有观看记录',
-                      subtitle: '看过的影片会自动记在这里',
-                    ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: LcbMetrics.pagePadding,
-                      vertical: 4,
-                    ),
-                    itemCount: entries.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(height: 8),
-                    itemBuilder: (_, i) => _HistoryRow(entry: entries[i]),
-                  ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -273,24 +196,9 @@ class HistoryPage extends StatelessWidget {
 // Favourites / follow fixtures
 // ---------------------------------------------------------------------------
 
-/// Favourite poster set: the movie and drama rails of the home feed stand in
-/// for the user's collected titles until the real storage lands.
-final List<MediaItem> _favoriteItems = [
-  for (final s in homeSections.take(2)) ...s.items.take(6),
-];
-
-const Set<String> _followIds = {
-  'tv0',
-  'tv1',
-  'tv2',
-  'tv3',
-  'tv6',
-  'tv8',
-  'anime0',
-  'anime1',
-  'anime2',
-  'anime3',
-};
+/// Favourite poster set. Empty by default so the page opens on the original's
+/// empty state; the real favourites store will populate it in Phase 2.
+final List<MediaItem> _favoriteItems = [];
 
 // ---------------------------------------------------------------------------
 // History fixtures
@@ -334,7 +242,8 @@ String _sourceName(MediaItem m) => const [
 // Widgets
 // ---------------------------------------------------------------------------
 
-/// Centred empty state shared by the three list pages.
+/// Centred empty state shared by the list pages. The original renders a bare
+/// outline glyph in the sidebar-label grey with no tinted background chip.
 class _EmptyHint extends StatelessWidget {
   const _EmptyHint({
     required this.icon,
@@ -351,15 +260,7 @@ class _EmptyHint extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 64,
-          height: 64,
-          decoration: BoxDecoration(
-            color: LcbColors.primaryContainer,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Icon(icon, size: 28, color: LcbColors.primaryDim),
-        ),
+        Icon(icon, size: 44, color: LcbColors.sidebarLabel),
         const SizedBox(height: 18),
         Text(
           title,
@@ -424,67 +325,6 @@ class _AddCard extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// iOS-style segmented control (收藏 / 追更).
-class _Segmented extends StatelessWidget {
-  const _Segmented({
-    required this.tabs,
-    required this.selected,
-    required this.onChanged,
-  });
-
-  final List<String> tabs;
-  final int selected;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: LcbColors.searchFill,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 0; i < tabs.length; i++)
-            GestureDetector(
-              onTap: () => onChanged(i),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-                decoration: BoxDecoration(
-                  color: selected == i ? LcbColors.surface : Colors.transparent,
-                  borderRadius: BorderRadius.circular(6),
-                  boxShadow: selected == i
-                      ? const [
-                          BoxShadow(
-                            color: Color(0x14000000),
-                            blurRadius: 4,
-                            offset: Offset(0, 1),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Text(
-                  tabs[i],
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight:
-                        selected == i ? FontWeight.w600 : FontWeight.w400,
-                    color: selected == i
-                        ? LcbColors.text
-                        : LcbColors.textSecondary,
-                  ),
-                ),
-              ),
-            ),
-        ],
       ),
     );
   }
