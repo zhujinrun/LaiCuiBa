@@ -409,7 +409,7 @@ void main() {
         _entry(key: 'src|nodejs_jianpian|7', title: 'Extra'),
       );
       final before = store.history.length;
-      final targetKey = 'src|nodejs_jianpian|7';
+      const targetKey = 'src|nodejs_jianpian|7';
 
       await store.removeHistory(targetKey);
       expect(store.history, hasLength(before - 1));
@@ -422,6 +422,19 @@ void main() {
       // Removing an unknown key leaves the list unchanged.
       await store.removeHistory('no-such-key');
       expect(store.history, hasLength(before - 1));
+    });
+
+    test('clearing history does not re-seed demo data on reload', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      expect(store.history, isNotEmpty); // demo seeded on first launch
+
+      await store.clearHistory();
+      expect(store.history, isEmpty);
+
+      // The first-launch flag is now set, so an empty history stays empty.
+      final reloaded = await AppStore.load();
+      expect(reloaded.history, isEmpty);
     });
   });
 }

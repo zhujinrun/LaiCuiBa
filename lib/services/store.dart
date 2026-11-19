@@ -43,6 +43,7 @@ class AppStore extends ChangeNotifier {
   static const _kSources = 'flutter.sources';
   static const _kCurrent = 'flutter.current';
   static const _kSettings = 'flutter.settings';
+  static const _kSeeded = 'flutter.seeded';
 
   // -------------------------------------------------------------------------
   // Load
@@ -78,21 +79,24 @@ class AppStore extends ChangeNotifier {
       _decodeMap(prefs.getString(_kSettings)),
     );
 
-    // Seed a single demo source + one history entry on first launch so the
-    // rebuilt pages stay frame-comparable with the original's live session.
-    if (sources.isEmpty) {
-      sources.add(_demoSource());
-    }
-    if (history.isEmpty) {
-      history.add(_demoHistoryEntry(sources.first.id, sources.first.name));
-    }
-    // Seed one favourite folder + one favourite so the favourites page has a
-    // categorised card to render (mirrors the original's live session).
-    if (folders.isEmpty) {
-      folders.add(_demoFolder());
-    }
-    if (favorites.isEmpty) {
-      favorites.add(_demoFavorite(folders.first.id));
+    // Seed demo data only on the true first launch, tracked by an explicit
+    // flag. Seeding on "list is empty" would resurrect demo rows after the
+    // user clears their history/favourites, so the flag is authoritative.
+    final isFirstLaunch = !(prefs.getBool(_kSeeded) ?? false);
+    if (isFirstLaunch) {
+      if (sources.isEmpty) {
+        sources.add(_demoSource());
+      }
+      if (history.isEmpty) {
+        history.add(_demoHistoryEntry(sources.first.id, sources.first.name));
+      }
+      if (folders.isEmpty) {
+        folders.add(_demoFolder());
+      }
+      if (favorites.isEmpty) {
+        favorites.add(_demoFavorite(folders.first.id));
+      }
+      await prefs.setBool(_kSeeded, true);
     }
 
     // Fall back to the first source so the resources page has a card to show.
