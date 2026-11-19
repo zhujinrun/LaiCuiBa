@@ -78,35 +78,31 @@ class _HeroBannerState extends State<HeroBanner> {
                       child: KeyedSubtree(
                         key: ValueKey(item.id),
                         child: ImageFiltered(
-                          // The original keeps recognisable shapes here: a 42px
-                          // blur plus 1.6x zoom flattened it into a flat wash.
-                          imageFilter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+                          // Fitted against the running app over a 600x220 patch
+                          // of backdrop: a plain cover fit anchored centre,
+                          // blurred at sigma 40 (residual 6.6/255 against 20 for
+                          // the stretched wash this used to draw).
+                          imageFilter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
                           child: PosterArt(
                             seed: item.posterSeed,
                             image: item.image,
-                            fit: BoxFit.fill,
+                            alignment: Alignment.center,
                           ),
                         ),
                       ),
                     ),
                   ),
                 ),
-                // Directional scrim: keeps the headline legible over any
-                // artwork. Sampled from the original, which is far darker than
-                // a plain 60% wash: ~97% black at the left edge, ~88% mid-left
-                // and ~68% under the poster.
+                // Directional scrim, recovered by dividing the backdrop's
+                // luminance out of the original: alpha runs 255 at the left
+                // edge to 0 at the right one, essentially linear (193 measured
+                // at t=0.28, 111 at 0.56, 66 at 0.74).
                 const DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.centerLeft,
                       end: Alignment.centerRight,
-                      colors: [
-                        Color(0xFA000000),
-                        Color(0xDC000000),
-                        Color(0x66000000),
-                        Color(0x00000000),
-                      ],
-                      stops: [0.0, 0.38, 0.66, 1.0],
+                      colors: [Color(0xFF000000), Color(0x00000000)],
                     ),
                   ),
                 ),
