@@ -205,12 +205,13 @@ final List<MediaItem> _favoriteItems = [];
 // ---------------------------------------------------------------------------
 
 class _HistoryEntry {
-  const _HistoryEntry(
-      this.media, this.episodeLabel, this.progressLabel, this.timeSourceLabel);
+  const _HistoryEntry(this.media, this.episodeLabel, this.progressLabel,
+      this.progress, this.timeSourceLabel);
 
   final MediaItem media;
   final String episodeLabel;
   final String progressLabel;
+  final double progress;
   final String timeSourceLabel;
 }
 
@@ -221,6 +222,7 @@ final List<_HistoryEntry> _historyEntries = [
         m,
         '第${_epFor(m)}集',
         '看到 ${_pctFor(m)}',
+        _progressFor(m),
         '${_daysAgo(m)} · ${_sourceName(m)}',
       ),
 ];
@@ -229,11 +231,14 @@ int _epFor(MediaItem m) => 3 + (m.id.hashCode.abs() % 40);
 
 String _pctFor(MediaItem m) => '${(1 + m.id.hashCode.abs() % 90)}%';
 
+double _progressFor(MediaItem m) =>
+    (0.1 + (m.id.hashCode.abs() % 80) / 100.0).clamp(0.0, 0.9);
+
 String _daysAgo(MediaItem m) =>
     m.id.hashCode % 3 == 0 ? '今天' : '${3 + m.id.hashCode.abs() % 30} 天前';
 
 String _sourceName(MediaItem m) => const [
-      '豆儿公主',
+      '豆儿猫源',
       '猫源',
       '量子资源',
     ][m.id.hashCode.abs() % 3];
@@ -389,15 +394,15 @@ class _HistoryRow extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: SizedBox(
-              width: 76,
-              height: 76 * 3 / 2,
+              width: 81,
+              height: 92,
               child: PosterArt(
                 seed: entry.media.posterSeed,
                 image: entry.media.image,
               ),
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 6),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -412,7 +417,7 @@ class _HistoryRow extends StatelessWidget {
                     color: LcbColors.text,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 11),
                 Text(
                   '${entry.episodeLabel} · ${entry.progressLabel}',
                   maxLines: 1,
@@ -422,7 +427,21 @@ class _HistoryRow extends StatelessWidget {
                     color: LcbColors.textSecondary,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 15),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: SizedBox(
+                    height: 3,
+                    child: LinearProgressIndicator(
+                      value: entry.progress,
+                      backgroundColor: LcbColors.searchFill,
+                      valueColor: const AlwaysStoppedAnimation(
+                        LcbColors.primaryDim,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 Text(
                   entry.timeSourceLabel,
                   maxLines: 1,
@@ -455,15 +474,15 @@ class _PlayButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 34,
-        height: 34,
+        width: 24,
+        height: 24,
         decoration: const BoxDecoration(
           color: LcbColors.primaryDim,
           shape: BoxShape.circle,
         ),
         child: const Icon(
           CupertinoIcons.play_fill,
-          size: 16,
+          size: 12,
           color: Colors.white,
         ),
       ),
