@@ -9,10 +9,11 @@ import '../widgets/poster_art.dart';
 
 /// 资源页：源订阅与网络挂载的列表。
 ///
-/// The original keeps every source behind one row with a type glyph, a name and
-/// a status line, grouped under a caption. There is no data layer yet, so the
-/// fixture below shows the shape (猫源 / TVBox / Emby / WebDAV / AList) that the
-/// Phase 2 source host will populate.
+/// The original shows each source as a white card with a navy rounded icon, a
+/// bold name, a blue "当前使用 · N 集" status line, a red latency value on the
+/// right and a "···" overflow button. There is no data layer yet, so a single
+/// fixture card stands in for the source list until the Phase 2 host populates
+/// it.
 class ResourcesPage extends StatelessWidget {
   const ResourcesPage({super.key});
 
@@ -23,17 +24,102 @@ class ResourcesPage extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(
           LcbMetrics.settingsPaddingLeft,
-          8,
+          17,
           LcbMetrics.settingsPaddingRight,
           40,
         ),
         children: const [
-          _EmptyHint(
-            icon: CupertinoIcons.tray_2,
-            title: '还没有资源',
-            subtitle: '添加猫源、TVBox、Emby、WebDAV 或网盘挂载',
+          _SourceCard(
+            icon: CupertinoIcons.book_fill,
+            iconBg: Color(0xFF3A4A6B),
+            name: '豆儿播澈',
+            status: '当前使用 · 58 集',
+            latency: '5.0s',
           ),
+          SizedBox(height: 24),
           _AddCard(label: '添加资源'),
+        ],
+      ),
+    );
+  }
+}
+
+/// One source card: icon + name + status line, latency and overflow on the
+/// right. The light blue outline matches the original's selected card.
+class _SourceCard extends StatelessWidget {
+  const _SourceCard({
+    required this.icon,
+    required this.iconBg,
+    required this.name,
+    required this.status,
+    required this.latency,
+  });
+
+  final IconData icon;
+  final Color iconBg;
+  final String name;
+  final String status;
+  final String latency;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: LcbColors.surface,
+        borderRadius: BorderRadius.circular(LcbMetrics.settingsCardRadius),
+        border: Border.all(color: const Color(0xFFBBD2F5), width: 1),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: iconBg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 22, color: Colors.white),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: LcbColors.text,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  status,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: LcbColors.sysBlueDark,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            latency,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: LcbColors.sysRed,
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Icon(
+            CupertinoIcons.ellipsis,
+            size: 18,
+            color: LcbColors.textTertiary,
+          ),
         ],
       ),
     );
@@ -76,7 +162,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
               0,
             ),
             child: _Segmented(
-              tabs: const ['收藏', '追更'],
+              tabs: const ['收藏', '追剧'],
               selected: _tab,
               onChanged: (i) => setState(() => _tab = i),
             ),
@@ -87,7 +173,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                     child: _EmptyHint(
                       icon: CupertinoIcons.heart,
                       title: '这里还没有收藏',
-                      subtitle: '点影片详情页的心形收藏后，会出现在这里',
+                      subtitle: '在影视详情页点收藏，在直播页长按频道，就会出现在这里。',
                     ),
                   )
                 : _PosterGrid(items: items),
@@ -124,7 +210,7 @@ class HistoryPage extends StatelessWidget {
             child: Row(
               children: [
                 const Text(
-                  '观看记录',
+                  '历史',
                   style: TextStyle(
                     fontFamily: LcbText.body,
                     fontSize: 18,
@@ -138,13 +224,13 @@ class HistoryPage extends StatelessWidget {
                   icon: const Icon(
                     CupertinoIcons.trash,
                     size: 15,
-                    color: LcbColors.textSecondary,
+                    color: LcbColors.primaryDim,
                   ),
                   label: const Text(
-                    '清空观看历史',
+                    '清空',
                     style: TextStyle(
                       fontSize: 12.5,
-                      color: LcbColors.textSecondary,
+                      color: LcbColors.primaryDim,
                     ),
                   ),
                   style: TextButton.styleFrom(
@@ -211,14 +297,13 @@ const Set<String> _followIds = {
 // ---------------------------------------------------------------------------
 
 class _HistoryEntry {
-  const _HistoryEntry(this.media, this.episodeLabel, this.positionLabel,
-      this.progress, this.timeLabel);
+  const _HistoryEntry(
+      this.media, this.episodeLabel, this.progressLabel, this.timeSourceLabel);
 
   final MediaItem media;
   final String episodeLabel;
-  final String positionLabel;
-  final double progress;
-  final String timeLabel;
+  final String progressLabel;
+  final String timeSourceLabel;
 }
 
 final List<_HistoryEntry> _historyEntries = [
@@ -226,17 +311,24 @@ final List<_HistoryEntry> _historyEntries = [
     for (final m in s.items.take(3))
       _HistoryEntry(
         m,
-        m.tag ?? '正片',
-        _timeLabel(m),
-        _progressFor(m),
-        '今天',
+        '第${_epFor(m)}集',
+        '看到 ${_pctFor(m)}',
+        '${_daysAgo(m)} · ${_sourceName(m)}',
       ),
 ];
 
-String _timeLabel(MediaItem m) => m.id.hashCode % 2 == 0 ? '12:34' : '20:15';
+int _epFor(MediaItem m) => 3 + (m.id.hashCode.abs() % 40);
 
-double _progressFor(MediaItem m) =>
-    (0.15 + (m.id.hashCode.abs() % 70) / 100.0).clamp(0.0, 0.85);
+String _pctFor(MediaItem m) => '${(1 + m.id.hashCode.abs() % 90)}%';
+
+String _daysAgo(MediaItem m) =>
+    m.id.hashCode % 3 == 0 ? '今天' : '${3 + m.id.hashCode.abs() % 30} 天前';
+
+String _sourceName(MediaItem m) => const [
+      '豆儿公主',
+      '猫源',
+      '量子资源',
+    ][m.id.hashCode.abs() % 3];
 
 // ---------------------------------------------------------------------------
 // Widgets
@@ -441,7 +533,8 @@ class _PosterGrid extends StatelessWidget {
   }
 }
 
-/// One watch-history row: thumbnail, title, episode + progress, chevron.
+/// One watch-history row: thumbnail, title, episode + progress line, a source
+/// + time line, and a play button on the right.
 class _HistoryRow extends StatelessWidget {
   const _HistoryRow({required this.entry});
 
@@ -481,7 +574,7 @@ class _HistoryRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '${entry.episodeLabel} · 看到 ${entry.positionLabel}',
+                  '${entry.episodeLabel} · ${entry.progressLabel}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -489,43 +582,50 @@ class _HistoryRow extends StatelessWidget {
                     color: LcbColors.textSecondary,
                   ),
                 ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: SizedBox(
-                    height: 3,
-                    child: LinearProgressIndicator(
-                      value: entry.progress,
-                      backgroundColor: LcbColors.divider,
-                      valueColor: const AlwaysStoppedAnimation(
-                        LcbColors.primaryDim,
-                      ),
-                    ),
+                const SizedBox(height: 4),
+                Text(
+                  entry.timeSourceLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: LcbColors.textTertiary,
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                entry.timeLabel,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: LcbColors.textTertiary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Icon(
-                CupertinoIcons.chevron_forward,
-                size: 16,
-                color: LcbColors.chevron,
-              ),
-            ],
-          ),
+          _PlayButton(onTap: () {}),
         ],
+      ),
+    );
+  }
+}
+
+/// The original's trailing control on a history row is a round play button in
+/// the primary tint, not a chevron.
+class _PlayButton extends StatelessWidget {
+  const _PlayButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: const BoxDecoration(
+          color: LcbColors.primaryDim,
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          CupertinoIcons.play_fill,
+          size: 16,
+          color: Colors.white,
+        ),
       ),
     );
   }
