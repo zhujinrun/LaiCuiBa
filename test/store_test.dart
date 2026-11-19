@@ -218,6 +218,17 @@ void main() {
       expect(store.history, isEmpty);
     });
 
+    test('continueWatching derives from history and clears with it', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      expect(store.continueWatching, isNotEmpty);
+      expect(store.continueWatching.first.episodeLabel, '第39集');
+      expect(store.continueWatching.first.media.title, '尚公主');
+
+      await store.clearHistory();
+      expect(store.continueWatching, isEmpty);
+    });
+
     test('selectSource switches current and persists', () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();

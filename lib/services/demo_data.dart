@@ -28,15 +28,6 @@ const List<MediaItem> heroItems = [
       image: 'assets/demo/b5.jpg'),
 ];
 
-const List<ContinueWatching> continueWatching = [
-  ContinueWatching(
-    media: MediaItem(id: 'cont0', title: '尚公主', image: 'assets/demo/cont0.webp'),
-    episodeLabel: '第39集',
-    positionMs: 31840,
-    durationMs: 2905400,
-  ),
-];
-
 const List<HomeSection> homeSections = [
   HomeSection(
     title: '电影',

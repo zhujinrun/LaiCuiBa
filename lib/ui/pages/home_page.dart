@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../services/demo_data.dart';
 import '../widgets/hero_banner.dart';
@@ -19,6 +20,7 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final continueWatching = StoreScope.of(context).continueWatching;
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
       child: SingleChildScrollView(
@@ -42,36 +44,40 @@ class HomePage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: LcbMetrics.pagePadding,
-                        ),
-                        child: SectionHeader(title: '继续观看', onMore: () {}),
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        height: landscapeHeight + 9 + 20 + 4 + 16,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.only(
-                            left: LcbMetrics.pagePadding,
+                      // 继续观看 only renders when there is watch history;
+                      // the original hides the whole rail when it is empty.
+                      if (continueWatching.isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: LcbMetrics.pagePadding,
                           ),
-                          itemCount: continueWatching.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(width: 18),
-                          itemBuilder: (_, i) {
-                            final c = continueWatching[i];
-                            return LandscapeCard(
-                              item: c.media,
-                              episodeLabel: c.episodeLabel,
-                              positionLabel: c.positionLabel,
-                              progress: c.progress,
-                              width: landscapeWidth,
-                              onTap: () {},
-                            );
-                          },
+                          child: SectionHeader(title: '继续观看', onMore: () {}),
                         ),
-                      ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          height: landscapeHeight + 9 + 20 + 4 + 16,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.only(
+                              left: LcbMetrics.pagePadding,
+                            ),
+                            itemCount: continueWatching.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(width: 18),
+                            itemBuilder: (_, i) {
+                              final c = continueWatching[i];
+                              return LandscapeCard(
+                                item: c.media,
+                                episodeLabel: c.episodeLabel,
+                                positionLabel: c.positionLabel,
+                                progress: c.progress,
+                                width: landscapeWidth,
+                                onTap: () {},
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                       for (final section in homeSections) ...[
                         const SizedBox(height: 35),
                         Padding(

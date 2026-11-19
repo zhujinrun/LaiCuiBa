@@ -113,6 +113,24 @@ class AppStore extends ChangeNotifier {
 
   List<HistoryEntry> get history => List.unmodifiable(_history);
 
+  /// The home "继续观看" rail, derived from watch history (most recent first).
+  /// Ties the home feed to the same store the history page reads, so clearing
+  /// history also empties the rail — the Phase 1 data-loop goal.
+  List<ContinueWatching> get continueWatching => [
+    for (final e in _history)
+      ContinueWatching(
+        media: MediaItem(
+          id: e.key,
+          title: e.title,
+          image: e.poster.isEmpty ? null : e.poster,
+          posterSeed: e.key.hashCode,
+        ),
+        episodeLabel: e.episode,
+        positionMs: e.positionMs,
+        durationMs: e.durationMs,
+      ),
+  ];
+
   Future<void> clearHistory() async {
     _history.clear();
     await _persistHistory();
