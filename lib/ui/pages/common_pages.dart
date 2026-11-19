@@ -24,7 +24,7 @@ class ResourcesPage extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(
           LcbMetrics.settingsPaddingLeft,
-          17,
+          6,
           LcbMetrics.settingsPaddingRight,
           40,
         ),
@@ -142,11 +142,14 @@ class _FavoritesPageState extends State<FavoritesPage> {
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
       child: _favoriteItems.isEmpty
-          ? const Center(
-              child: _EmptyHint(
-                icon: CupertinoIcons.heart,
-                title: '这里还没有收藏',
-                subtitle: '在影视详情页点收藏、在直播首页长按频道，就会出现在这里。',
+          ? Center(
+              child: Transform.translate(
+                offset: const Offset(0, -13),
+                child: const _EmptyHint(
+                  icon: CupertinoIcons.heart,
+                  title: '这里还没有收藏',
+                  subtitle: '在影视详情页点收藏、在直播首页长按频道，就会出现在这里。',
+                ),
               ),
             )
           : _PosterGrid(items: _favoriteItems),
@@ -264,24 +267,24 @@ class _EmptyHint extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 54, color: LcbColors.sidebarLabel),
-        const SizedBox(height: 18),
+        const SizedBox(height: 16),
         Text(
           title,
           style: const TextStyle(
             fontFamily: LcbText.body,
-            fontSize: 16,
+            fontSize: 18,
             fontWeight: FontWeight.w600,
             color: LcbColors.text,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
           subtitle,
           textAlign: TextAlign.center,
           style: const TextStyle(
-            fontSize: 12.5,
+            fontSize: 14,
             height: 1.6,
-            color: LcbColors.textSecondary,
+            color: LcbColors.settingsQuiet,
           ),
         ),
       ],
