@@ -90,30 +90,44 @@ class _Sidebar extends StatelessWidget {
       width: LcbMetrics.sidebarWidth,
       decoration: const BoxDecoration(
         color: LcbColors.page,
-        border: Border(right: BorderSide(color: Color(0xFFEDEDF0))),
+        border: Border(right: BorderSide(color: LcbColors.topBarBorder)),
       ),
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
         children: [
-          for (final (label, items) in navGroups) ...[
+          for (final (gi, group) in navGroups.indexed) ...[
+            // Caption box is 18 high with the 11px copy centred, 8 of air below
+            // it, and 18 above the next group. The first caption starts flush
+            // with the header, so only later groups get the top gap.
             Padding(
-              padding: const EdgeInsets.fromLTRB(10, 12, 10, 6),
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: LcbColors.textTertiary,
-                  letterSpacing: 0.6,
+              padding: EdgeInsets.fromLTRB(12, gi == 0 ? 0 : 18, 12, 8),
+              child: SizedBox(
+                height: 18,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    group.$1,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: LcbColors.sidebarLabel,
+                      height: 1,
+                    ),
+                  ),
                 ),
               ),
             ),
-            for (final (icon, text, page) in items)
-              _NavItem(
-                icon: icon,
-                text: text,
-                selected: page == current,
-                onTap: () => onSelect(page),
+            for (final (ii, item) in group.$2.indexed)
+              Padding(
+                padding: EdgeInsets.only(
+                  bottom: ii == group.$2.length - 1 ? 0 : 3,
+                ),
+                child: _NavItem(
+                  icon: item.$1,
+                  text: item.$2,
+                  selected: item.$3 == current,
+                  onTap: () => onSelect(item.$3),
+                ),
               ),
           ],
         ],
@@ -148,43 +162,36 @@ class _NavItemState extends State<_NavItem> {
     final bg = selected
         ? LcbColors.primaryContainer
         : (_hover ? LcbColors.hover : Colors.transparent);
-    final fg = selected ? LcbColors.onPrimaryContainer : LcbColors.text;
+    final fg = selected ? LcbColors.primaryDim : LcbColors.text;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
-            height: 36,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              color: bg,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  widget.icon,
-                  size: 18,
-                  color: selected ? LcbColors.primary : LcbColors.textSecondary,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Icon(widget.icon, size: 20, color: fg),
+              const SizedBox(width: 10),
+              Text(
+                widget.text,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  color: fg,
                 ),
-                const SizedBox(width: 10),
-                Text(
-                  widget.text,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                    color: fg,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -203,30 +210,40 @@ class _HeaderContent extends StatelessWidget {
     final onBack = header.onBack;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(42, 0, 8, 0),
+      padding: const EdgeInsets.fromLTRB(40, 0, 8, 0),
       child: Row(
         children: [
           if (onBack != null) ...[
             _BackButton(onTap: onBack),
             const SizedBox(width: 6),
           ],
-          Text(
-            header.title,
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w600,
-              color: LcbColors.text,
+          // The original's 18px caption sits 2px below the optical centre of
+          // the 60px strip; YaHei UI centres it higher, so nudge it down.
+          Transform.translate(
+            offset: const Offset(0, 2),
+            child: Text(
+              header.title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: LcbColors.text,
+              ),
             ),
           ),
           // Source chips belong to the home feed only; other pages have their
           // own contextual controls in the original.
           if (page == LcbPage.home) ...[
-            const SizedBox(width: 22),
-            const _SourceChip(label: '豆儿猫源'),
+            const SizedBox(width: 17),
+            const _SourceChip(
+              icon: Icons.view_agenda,
+              iconSize: 12,
+              label: '豆儿猫源',
+            ),
             const SizedBox(width: 8),
-            const _SourceChip(label: '[直] 荐片'),
+            const _SourceChip(
+                icon: Icons.layers_outlined, iconSize: 20, label: '「直」荐片'),
             const SizedBox(width: 8),
-            _IconGhost(icon: Icons.dashboard_customize_outlined, onTap: () {}),
+            _IconGhost(icon: Icons.grid_view, onTap: () {}),
           ],
           const Expanded(child: HeaderDragGap()),
           const _SearchBox(),
@@ -275,9 +292,15 @@ class _BackButtonState extends State<_BackButton> {
 }
 
 class _SourceChip extends StatefulWidget {
-  const _SourceChip({required this.label});
+  const _SourceChip({
+    required this.icon,
+    required this.label,
+    this.iconSize = 16,
+  });
 
+  final IconData icon;
   final String label;
+  final double iconSize;
 
   @override
   State<_SourceChip> createState() => _SourceChipState();
@@ -293,20 +316,26 @@ class _SourceChipState extends State<_SourceChip> {
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: Container(
-        height: 30,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        height: 32,
+        padding: const EdgeInsets.only(left: 10, right: 8),
         decoration: BoxDecoration(
-          color: _hover ? LcbColors.hover : LcbColors.page,
+          color: _hover ? const Color(0xFFE8E8EC) : LcbColors.searchFill,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           children: [
+            Icon(widget.icon, size: widget.iconSize, color: LcbColors.text),
+            const SizedBox(width: 8),
             Text(
               widget.label,
-              style: const TextStyle(fontSize: 12, color: LcbColors.text),
+              style: const TextStyle(fontSize: 12.5, color: LcbColors.text),
             ),
             const SizedBox(width: 4),
-            const Icon(Icons.keyboard_arrow_down, size: 16, color: LcbColors.textSecondary),
+            const Icon(
+              Icons.keyboard_arrow_down,
+              size: 14,
+              color: LcbColors.textSecondary,
+            ),
           ],
         ),
       ),
@@ -336,13 +365,13 @@ class _IconGhostState extends State<_IconGhost> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: Container(
-          width: 30,
-          height: 30,
+          width: 32,
+          height: 32,
           decoration: BoxDecoration(
-            color: _hover ? LcbColors.hover : Colors.transparent,
+            color: _hover ? const Color(0xFFE8E8EC) : LcbColors.searchFill,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(widget.icon, size: 17, color: LcbColors.textSecondary),
+          child: Icon(widget.icon, size: 16, color: LcbColors.text),
         ),
       ),
     );
@@ -367,33 +396,53 @@ class _SearchBoxState extends State<_SearchBox> {
       onExit: (_) => setState(() => _hover = false),
       child: Container(
         width: 232,
-        height: 34,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        height: 32,
+        padding: const EdgeInsets.only(left: 12, right: 8),
         decoration: BoxDecoration(
           color: _hover ? const Color(0xFFE8E8EC) : LcbColors.searchFill,
           borderRadius: BorderRadius.circular(9),
         ),
-        child: Row(
+        child: const Row(
           children: [
-            const Icon(Icons.search, size: 16, color: LcbColors.textSecondary),
-            const SizedBox(width: 8),
-            const Text(
+            Icon(Icons.search, size: 16, color: LcbColors.textSecondary),
+            SizedBox(width: 8),
+            Text(
               '搜索...',
               style: TextStyle(fontSize: 12.5, color: LcbColors.textSecondary),
             ),
-            const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.7),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Text(
-                'Ctrl K',
-                style: TextStyle(fontSize: 10, color: LcbColors.textTertiary),
-              ),
-            ),
+            Spacer(),
+            _KeyCap('Ctrl'),
+            SizedBox(width: 6),
+            _KeyCap('K'),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The little `Ctrl` / `K` keycaps inside the search field.
+class _KeyCap extends StatelessWidget {
+  const _KeyCap(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 20,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: const Color(0xFFDEDEE1),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 11,
+          height: 1,
+          color: LcbColors.textSecondary,
         ),
       ),
     );

@@ -37,6 +37,9 @@ flutter:
     - assets/widget_samples/
     - assets/pinyin.txt
     - assets/torrent_trackers.txt
+    # Posters the original app had already cached locally; used as fixture art
+    # so the home feed matches it frame by frame. Self-use only.
+    - assets/demo/
 
   fonts:
     - family: LcbSerif

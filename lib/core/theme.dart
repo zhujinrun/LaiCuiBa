@@ -7,8 +7,11 @@ abstract final class LcbColors {
   static const primary = Color(0xFF7B68EE);
   static const primaryDim = Color(0xFF9186C2);
   static const primaryContainer = Color(0xFFE7E5F0);
-  static const onPrimaryContainer = Color(0xFF4B3FA8);
+  static const onPrimaryContainer = primaryDim;
   static const text = Color(0xFF1C1C1E);
+  /// Slightly darker than [textTertiary]: the sidebar's group captions sample
+  /// as #98989D, while settings captions really are #B0B0B6.
+  static const sidebarLabel = Color(0xFF98989D);
   static const textSecondary = Color(0xFF8A8A8F);
   static const textTertiary = Color(0xFFB0B0B6);
   static const divider = Color(0xFFE9E9EC);
@@ -58,7 +61,7 @@ abstract final class LcbMetrics {
   /// Hero height is adaptive: min(contentWidth * 0.37, windowHeight * 0.54).
   /// Fitted against 1920x1040 (561) and 1400x900 (430).
   static const heroWidthFactor = 0.37;
-  static const heroHeightFactor = 0.54;
+  static const heroHeightFactor = 0.549;
 }
 
 abstract final class LcbText {

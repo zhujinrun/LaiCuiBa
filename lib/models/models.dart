@@ -9,6 +9,7 @@ class MediaItem {
     this.year,
     this.overview,
     this.posterSeed = 0,
+    this.image,
   });
 
   final String id;
@@ -23,8 +24,11 @@ class MediaItem {
   final int? year;
   final String? overview;
 
-  /// Deterministic placeholder palette index until real artwork is wired in.
+  /// Deterministic placeholder palette index used when [image] is null.
   final int posterSeed;
+
+  /// Bundled cover artwork, mirroring the poster the original caches locally.
+  final String? image;
 }
 
 class Episode {

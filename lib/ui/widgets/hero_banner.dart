@@ -78,28 +78,35 @@ class _HeroBannerState extends State<HeroBanner> {
                       child: KeyedSubtree(
                         key: ValueKey(item.id),
                         child: ImageFiltered(
-                          imageFilter: ImageFilter.blur(sigmaX: 42, sigmaY: 42),
-                          child: Transform.scale(
-                            scale: 1.6,
-                            child: PosterArt(seed: item.posterSeed),
+                          // The original keeps recognisable shapes here: a 42px
+                          // blur plus 1.6x zoom flattened it into a flat wash.
+                          imageFilter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+                          child: PosterArt(
+                            seed: item.posterSeed,
+                            image: item.image,
+                            fit: BoxFit.fill,
                           ),
                         ),
                       ),
                     ),
                   ),
                 ),
-                // Directional scrim: keeps the headline legible over any artwork.
+                // Directional scrim: keeps the headline legible over any
+                // artwork. Sampled from the original, which is far darker than
+                // a plain 60% wash: ~97% black at the left edge, ~88% mid-left
+                // and ~68% under the poster.
                 const DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.centerLeft,
                       end: Alignment.centerRight,
                       colors: [
-                        Color(0xE60A0A0E),
-                        Color(0xA60A0A0E),
-                        Color(0x140A0A0E)
+                        Color(0xFA000000),
+                        Color(0xDC000000),
+                        Color(0x66000000),
+                        Color(0x00000000),
                       ],
-                      stops: [0.0, 0.46, 0.86],
+                      stops: [0.0, 0.38, 0.66, 1.0],
                     ),
                   ),
                 ),
@@ -115,18 +122,20 @@ class _HeroBannerState extends State<HeroBanner> {
                         Color(0x80FFFFFF),
                         Color(0xFFFFFFFF)
                       ],
-                      stops: [0.0, 0.56, 0.82, 1.0],
+                      stops: [0.0, 0.56, 0.80, 0.96],
                     ),
                   ),
                 ),
                 Positioned(
-                  top: 18,
+                  // Measured at 1920x1040: poster top sits 29 below the hero
+                  // top and spans 0.806 of its height (327x460 at 571).
+                  top: 29,
                   right: 76,
-                  height: height * 0.827,
-                  child: _HeroPoster(item: item, height: height * 0.827),
+                  height: height * 0.806,
+                  child: _HeroPoster(item: item, height: height * 0.806),
                 ),
                 Positioned(
-                  left: 42,
+                  left: 40,
                   top: 0,
                   bottom: 0,
                   right: 420,
@@ -190,8 +199,11 @@ class _HeroPoster extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: PosterArt(
         seed: item.posterSeed,
+        image: item.image,
         title: item.title,
-        showTitle: true,
+        // The cached artwork already carries its own title lock-up, so the
+        // overlay is only needed for the generated stand-in.
+        showTitle: item.image == null,
         titleSize: 22,
       ),
     );
@@ -213,7 +225,7 @@ class _HeroCopy extends StatelessWidget {
           item.title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: serifStyle(44, height: 1.1).copyWith(
+          style: serifStyle(42, height: 1.1).copyWith(
             color: Colors.white,
             shadows: const [
               Shadow(
@@ -223,7 +235,7 @@ class _HeroCopy extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 16),
         Row(
           children: [
             if (item.score != null) _ScoreBadge(score: item.score!),
@@ -232,7 +244,7 @@ class _HeroCopy extends StatelessWidget {
             if (item.tag != null) _MetaTag(label: item.tag!),
           ],
         ),
-        const SizedBox(height: 26),
+        const SizedBox(height: 21),
         Row(
           children: [
             _PillButton(
@@ -288,18 +300,21 @@ class _MetaTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Measured 44x26, #202123 fill with white copy — not the light pill the
+    // settings pages use.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+      margin: const EdgeInsets.only(left: 9),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6.5),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.92),
+        color: const Color(0xFF202123),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         label,
         style: const TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.w500,
-          color: LcbColors.text,
+          fontSize: 12,
+          fontWeight: FontWeight.w400,
+          color: Colors.white,
           height: 1.2,
         ),
       ),
@@ -329,11 +344,14 @@ class _PillButtonState extends State<_PillButton> {
 
   @override
   Widget build(BuildContext context) {
+    // Sampled from the original: the solid pill is #9186C2 (the same dimmed
+    // accent the sidebar uses), the secondary one is a hairline outline over
+    // the artwork, not a white plate.
     final filled = widget.filled;
     final bg = filled
-        ? (_hover ? const Color(0xFF6C58E8) : LcbColors.primary)
-        : (_hover ? Colors.white : Colors.white.withValues(alpha: 0.88));
-    final fg = filled ? Colors.white : LcbColors.text;
+        ? (_hover ? const Color(0xFFA196D0) : LcbColors.primaryDim)
+        : (_hover ? const Color(0x26FFFFFF) : Colors.transparent);
+    const fg = Colors.white;
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -343,15 +361,18 @@ class _PillButtonState extends State<_PillButton> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
-          height: 44,
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 26),
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(9),
+            border: filled
+                ? null
+                : Border.all(color: const Color(0x59FFFFFF), width: 1),
             boxShadow: filled
                 ? const [
                     BoxShadow(
-                        color: Color(0x4D6C58E8),
+                        color: Color(0x409186C2),
                         blurRadius: 16,
                         offset: Offset(0, 6))
                   ]
@@ -361,11 +382,11 @@ class _PillButtonState extends State<_PillButton> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(widget.icon, size: 20, color: fg),
-              const SizedBox(width: 7),
+              const SizedBox(width: 9),
               Text(
                 widget.label,
-                style: TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.w600, color: fg),
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600, color: fg),
               ),
             ],
           ),

@@ -36,7 +36,7 @@ class HomePage extends StatelessWidget {
                 return Padding(
                   padding: const EdgeInsets.fromLTRB(
                     LcbMetrics.pagePadding,
-                    34,
+                    30,
                     LcbMetrics.pagePadding,
                     44,
                   ),
@@ -44,9 +44,9 @@ class HomePage extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SectionHeader(title: '继续观看', onMore: () {}),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 15),
                       SizedBox(
-                        height: landscapeHeight + 12 + 20 + 4 + 16,
+                        height: landscapeHeight + 9 + 20 + 4 + 16,
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: continueWatching.length,
@@ -66,9 +66,9 @@ class HomePage extends StatelessWidget {
                         ),
                       ),
                       for (final section in homeSections) ...[
-                        const SizedBox(height: 38),
+                        const SizedBox(height: 33),
                         SectionHeader(title: section.title, onMore: () {}),
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 15),
                         SizedBox(
                           height: posterWidth * 1.5 + 10 + 20,
                           child: ListView.separated(

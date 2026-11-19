@@ -73,17 +73,16 @@ class _ShellHeaderState extends State<ShellHeader> with WindowListener {
             onDoubleTap: _toggleMaximize,
             child: Container(
               width: LcbMetrics.sidebarWidth,
-              padding: const EdgeInsets.only(left: 22),
+              padding: const EdgeInsets.only(left: 24),
               alignment: Alignment.centerLeft,
               color: LcbColors.page,
               child: const Text(
                 LcbAppInfo.name,
                 style: TextStyle(
                   fontFamily: LcbText.body,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF6E6E75),
-                  letterSpacing: 0.2,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: LcbColors.text,
                 ),
               ),
             ),
@@ -113,7 +112,6 @@ class _ShellHeaderState extends State<ShellHeader> with WindowListener {
                     danger: true,
                     onTap: () => windowManager.close(),
                   ),
-                  const SizedBox(width: 2),
                 ],
               ),
             ),
@@ -202,7 +200,7 @@ class _WinButtonState extends State<_WinButton> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: Container(
-          width: 44,
+          width: 46,
           height: LcbMetrics.headerHeight,
           color: bg,
           child: Icon(widget.icon, size: widget.iconSize, color: fg),

@@ -25,22 +25,47 @@ class PosterPalette {
   static PosterPalette of(int seed) => all[seed.abs() % all.length];
 }
 
+/// Cover artwork for one title.
+///
+/// When [image] is set the bundled poster the original caches locally is drawn
+/// with a cover fit; otherwise a deterministic gradient stands in so the layout
+/// still reads correctly for entries whose artwork was never fetched.
 class PosterArt extends StatelessWidget {
   const PosterArt({
     super.key,
-    required this.seed,
+    this.seed = 0,
+    this.image,
     this.title,
     this.showTitle = false,
     this.titleSize,
+    this.alignment = Alignment.topCenter,
+    this.fit = BoxFit.cover,
   });
 
   final int seed;
+  final String? image;
+  final Alignment alignment;
+  final BoxFit fit;
   final String? title;
   final bool showTitle;
   final double? titleSize;
 
   @override
   Widget build(BuildContext context) {
+    final path = image;
+    if (path != null) {
+      return Image.asset(
+        path,
+        fit: fit,
+        alignment: alignment,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (_, _, _) => _placeholder(),
+      );
+    }
+    return _placeholder();
+  }
+
+  Widget _placeholder() {
     final p = PosterPalette.of(seed);
     return DecoratedBox(
       decoration: BoxDecoration(
