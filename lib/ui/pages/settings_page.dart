@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
@@ -43,8 +44,8 @@ class _SettingsPageState extends State<SettingsPage> {
           LcbMetrics.settingsPaddingLeft,
           // Sub-pages have no group label, so they need the label's height as
           // extra top padding to keep the first card in the same place.
-          _sub == subAppearance ? 34 : 8,
-          28,
+          _sub == subAppearance ? 35 : 8,
+          LcbMetrics.settingsPaddingRight,
           40,
         ),
         children: _sub == subAppearance ? _appearanceRows() : _rootRows(),
@@ -57,7 +58,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _Group(
           rows: [
             _Row(
-              icon: Icons.contrast,
+              icon: CupertinoIcons.paintbrush_fill,
               color: LcbColors.sysIndigo,
               title: '外观',
               subtitle: '深浅色、强调色、液态玻璃、状态栏',
@@ -65,14 +66,14 @@ class _SettingsPageState extends State<SettingsPage> {
               onTap: () => _open(subAppearance),
             ),
             _Row(
-              icon: Icons.home_outlined,
+              icon: CupertinoIcons.house_fill,
               color: LcbColors.sysOrange,
               title: '首页与导航',
               subtitle: '导航栏、首页入口、轮播海报',
               onTap: () {},
             ),
             _Row(
-              icon: Icons.dashboard_customize_outlined,
+              icon: CupertinoIcons.square_grid_2x2_fill,
               color: LcbColors.sysGreen,
               title: '组件',
               subtitle: '导入组件仓库，搭建自定义首页页面',
@@ -80,21 +81,21 @@ class _SettingsPageState extends State<SettingsPage> {
               onTap: () {},
             ),
             _Row(
-              icon: Icons.search,
+              icon: CupertinoIcons.search,
               color: LcbColors.sysBlue,
               title: '搜索与输入',
               subtitle: '平台列表布局、聚合搜索、遥控器键盘',
               onTap: () {},
             ),
             _Row(
-              icon: Icons.play_arrow_rounded,
+              icon: CupertinoIcons.play_rectangle_fill,
               color: LcbColors.sysPink,
               title: '播放',
               subtitle: '手势、弹幕、倍速、字幕、短片预载',
               onTap: () {},
             ),
             _Row(
-              icon: Icons.sell_outlined,
+              icon: CupertinoIcons.rosette,
               color: LcbColors.sysPurple,
               title: '媒体徽章',
               subtitle: '4K、杜比、HDR 等规格徽章的开关、显示位置和徽章包',
@@ -103,12 +104,12 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 23),
         const _GroupLabel('账号与服务'),
         _Group(
           rows: [
             _Row(
-              icon: Icons.account_circle_outlined,
+              icon: CupertinoIcons.person_crop_circle_fill,
               color: LcbColors.sysBlueDark,
               title: '账号管理',
               subtitle: 'TMDB、服务代理、Trakt、Bangumi、豆瓣',
@@ -116,25 +117,45 @@ class _SettingsPageState extends State<SettingsPage> {
               onTap: () {},
             ),
             _Row(
-              icon: Icons.auto_awesome,
-              color: LcbColors.sysPurple,
+              icon: CupertinoIcons.sparkles,
+              color: LcbColors.sysViolet,
               title: 'AI 大模型',
               subtitle: '集名净化、Py 源安全检测、字幕翻译',
               value: '未配置',
               onTap: () {},
             ),
             _Row(
-              icon: Icons.tv,
+              icon: CupertinoIcons.device_phone_portrait,
               color: LcbColors.sysGreen,
               title: 'TV友好功能',
               subtitle: '扫码输入、扫码控制、同步配置、网页端',
               onTap: () {},
             ),
             _Row(
-              icon: Icons.link,
+              icon: CupertinoIcons.link,
               color: LcbColors.sysOrange,
               title: '推送识别',
               subtitle: '打开分享、剪贴板或其他设备推来的链接',
+              onTap: () {},
+            ),
+            _Row(
+              icon: CupertinoIcons.globe,
+              color: LcbColors.primaryDim,
+              title: '猫源配置与网盘登录',
+              subtitle: '打开源的配置网页，扫码登录网盘',
+              onTap: () {},
+            ),
+          ],
+        ),
+        const SizedBox(height: 23),
+        const _GroupLabel('数据'),
+        _Group(
+          rows: [
+            _Row(
+              icon: CupertinoIcons.archivebox_fill,
+              color: LcbColors.sysGray,
+              title: '数据与存储',
+              subtitle: '备份恢复、下载管理、缓存与观看历史',
               onTap: () {},
             ),
           ],
@@ -220,13 +241,13 @@ class _GroupLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(left: 16, bottom: 6),
+      padding: const EdgeInsets.only(left: 10, bottom: 10),
       child: Text(
         text,
         style: const TextStyle(
-          fontSize: 12.5,
+          fontSize: 13,
           fontWeight: FontWeight.w400,
-          color: LcbColors.textTertiary,
+          color: LcbColors.settingsQuiet,
         ),
       ),
     );
@@ -252,7 +273,11 @@ class _Group extends StatelessWidget {
               const Divider(
                 height: 1,
                 thickness: 1,
-                indent: 66,
+                // Starts where the row's text does (icon disc 36 + gap 14 +
+                // row padding 16 = 66 from the card, 106 from the gutter) and
+                // stops 16px short of the trailing edge.
+                indent: 106,
+                endIndent: 16,
                 color: LcbColors.cardDivider,
               ),
             rows[i],
@@ -316,18 +341,23 @@ class _RowState extends State<_Row> {
           child: Row(
             children: [
               _IconDisc(icon: widget.icon, color: widget.color),
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      widget.title,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: LcbColors.text,
+                    // The original's title ink sits one pixel lower inside the
+                    // same box: its gap to the subtitle is 9px, ours 10.
+                    Transform.translate(
+                      offset: const Offset(0, 1),
+                      child: Text(
+                        widget.title,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: LcbColors.text,
+                        ),
                       ),
                     ),
                     if (widget.subtitle != null) ...[
@@ -337,8 +367,8 @@ class _RowState extends State<_Row> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 13.5,
-                          color: LcbColors.textSecondary,
+                          fontSize: 12.5,
+                          color: LcbColors.settingsQuiet,
                         ),
                       ),
                     ],
@@ -350,8 +380,8 @@ class _RowState extends State<_Row> {
                 Text(
                   widget.value!,
                   style: const TextStyle(
-                    fontSize: 13.5,
-                    color: LcbColors.textSecondary,
+                    fontSize: 14.5,
+                    color: LcbColors.settingsQuiet,
                   ),
                 ),
               ],
@@ -375,9 +405,9 @@ class _RowState extends State<_Row> {
                 const Padding(
                   padding: EdgeInsets.only(left: 4),
                   child: Icon(
-                    Icons.chevron_right,
-                    size: 20,
-                    color: LcbColors.chevron,
+                    CupertinoIcons.chevron_forward,
+                    size: 17,
+                    color: LcbColors.settingsQuiet,
                   ),
                 ),
             ],

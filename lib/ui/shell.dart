@@ -249,6 +249,11 @@ class _HeaderContent extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _IconGhost(icon: CupertinoIcons.square_grid_2x2, onTap: () {}),
+            ] else ...[
+              // Every other page carries a bare, tinted search glyph next to
+              // its title instead of the home feed's chips.
+              const SizedBox(width: 18),
+              _HeaderGlyph(icon: CupertinoIcons.search, onTap: () {}),
             ],
             const Expanded(child: HeaderDragGap()),
             const _SearchBox(),
@@ -448,8 +453,45 @@ class _IconGhostState extends State<_IconGhost> {
   }
 }
 
-class _SearchBox extends StatefulWidget {
-  const _SearchBox();
+/// A borderless header icon (the faded search glyph on non-home pages). The
+/// original tints it with the muted primary (#9186C2), which is also what the
+/// settings list uses for its 猫源 row.
+class _HeaderGlyph extends StatefulWidget {
+  const _HeaderGlyph({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  State<_HeaderGlyph> createState() => _HeaderGlyphState();
+}
+
+class _HeaderGlyphState extends State<_HeaderGlyph> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: _hover ? const Color(0xFFE8E8EC) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(widget.icon, size: 18, color: LcbColors.primaryDim),
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchBox extends StatefulWidget {  const _SearchBox();
 
   @override
   State<_SearchBox> createState() => _SearchBoxState();

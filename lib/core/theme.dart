@@ -29,6 +29,12 @@ abstract final class LcbColors {
   static const chevron = Color(0xFFC7C7CC);
   static const switchOff = Color(0xFFE2E2E2);
 
+  /// Group captions, row subtitles, trailing values and chevrons inside the
+  /// settings list all sample as #6E6E73 -- noticeably darker than the
+  /// sidebar's captions, so they get their own token instead of reusing
+  /// [textSecondary].
+  static const settingsQuiet = Color(0xFF6E6E73);
+
   /// Apple system palette used by the settings icons.
   static const sysIndigo = Color(0xFF5856D6);
   static const sysOrange = Color(0xFFFF9500);
@@ -39,6 +45,10 @@ abstract final class LcbColors {
   static const sysTeal = Color(0xFF32ADE6);
   static const sysGray = Color(0xFF8E8E93);
   static const sysBlueDark = Color(0xFF3478F6);
+
+  /// One-off violet the original uses for AI 大模型; it is not in the system
+  /// palette, so it does not belong next to sysPurple.
+  static const sysViolet = Color(0xFF8E5CF7);
 }
 
 abstract final class LcbMetrics {
@@ -48,6 +58,7 @@ abstract final class LcbMetrics {
   /// Content gutter, measured: the first card starts at 272 screen / 264 content.
   static const pagePadding = 40.0;
   static const settingsPaddingLeft = 40.0;
+  static const settingsPaddingRight = 40.0;
   static const contentMaxWidth = 1600.0;
 
   /// Vertical poster card, measured 196x294 (exactly 2:3) with an 18px gutter.
@@ -55,7 +66,10 @@ abstract final class LcbMetrics {
   static const posterGap = 18.0;
   static const cardRadius = 12.0;
   static const settingsCardRadius = 14.0;
-  static const settingsRowHeight = 70.0;
+
+  /// Row box excluding the 1px divider under it. Six rows plus five dividers
+  /// span 417px in the original (90..507), i.e. 69.5 per row in total.
+  static const settingsRowHeight = 68.5;
   static const chipRadius = 6.0;
 
   /// Hero height is adaptive: min(contentWidth * 0.37, windowHeight * 0.54).
