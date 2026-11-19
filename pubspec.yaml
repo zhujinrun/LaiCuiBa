@@ -1,0 +1,34 @@
+name: lai_cui_ba
+description: "LaiCuiBa - a self-maintained Flutter desktop media client."
+publish_to: 'none'
+version: 0.1.0+1
+
+# Pinned to the toolchain the original app was built with. Hotfixes inside the
+# same minor are allowed; a new minor must be a deliberate, verified upgrade.
+# Verify with: dart run tool/verify_toolchain.dart
+environment:
+  sdk: ">=3.12.0 <3.13.0"
+  flutter: ">=3.44.9 <3.45.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  window_manager: 0.5.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/fonts/OFL-LICENSE.txt
+
+  fonts:
+    - family: LcbSerif
+      fonts:
+        - asset: assets/fonts/LcbSerif-SemiBold.otf
+          weight: 600

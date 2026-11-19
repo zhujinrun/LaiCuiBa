@@ -1,0 +1,20 @@
+# Normalise line endings so a Windows checkout and any future CI agree.
+* text=auto eol=lf
+
+# Fonts, images and prebuilt binaries must never be line-ending converted.
+*.otf binary
+*.ttf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.bmp binary
+*.ico binary
+*.jar binary
+*.dll binary
+*.so binary
+*.exe binary
+*.zip binary
+
+# Windows tooling expects CRLF in these.
+*.bat text eol=crlf
+*.rc  text eol=crlf
