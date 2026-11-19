@@ -220,7 +220,7 @@ class _SettingsPageState extends State<SettingsPage> {
       case '首页与导航':
         return _homeNavRows(store);
       case '搜索与输入':
-        return _searchInputRows();
+        return _searchInputRows(store);
       case '播放':
         return _playbackRows(store);
       case '媒体徽章':
@@ -373,7 +373,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ];
 
   /// 搜索与输入 — combined search, search history and the remote keyboard.
-  List<Widget> _searchInputRows() => [
+  List<Widget> _searchInputRows(AppStore store) => [
         _Group(
           rows: [
             const _Row(
@@ -397,7 +397,11 @@ class _SettingsPageState extends State<SettingsPage> {
               color: LcbColors.sysGreen,
               title: '遥控器键盘',
               subtitle: 'TV 模式下的输入方式',
-              onTap: () {},
+              toggle: true,
+              toggleValue: store.settings.tvKeyboard,
+              onToggle: (v) => store.updateSettings(
+                store.settings.copyWith(tvKeyboard: v),
+              ),
             ),
           ],
         ),

@@ -383,6 +383,7 @@ class AppSettings {
     this.navStyle = 'glass',
     this.navBehavior = 'always',
     this.tvClassicUi = false,
+    this.tvKeyboard = false,
     this.extra = const {},
   });
 
@@ -404,6 +405,7 @@ class AppSettings {
   final String navStyle;
   final String navBehavior;
   final bool tvClassicUi;
+  final bool tvKeyboard;
 
   /// Unmodelled keys carried through unchanged.
   final Map<String, dynamic> extra;
@@ -427,6 +429,7 @@ class AppSettings {
     String? navStyle,
     String? navBehavior,
     bool? tvClassicUi,
+    bool? tvKeyboard,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -447,6 +450,7 @@ class AppSettings {
       navStyle: navStyle ?? this.navStyle,
       navBehavior: navBehavior ?? this.navBehavior,
       tvClassicUi: tvClassicUi ?? this.tvClassicUi,
+      tvKeyboard: tvKeyboard ?? this.tvKeyboard,
       extra: extra,
     );
   }
@@ -471,6 +475,7 @@ class AppSettings {
     'navStyle': navStyle,
     'navBehavior': navBehavior,
     'tvClassicUi': tvClassicUi,
+    'tvKeyboard': tvKeyboard,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -505,6 +510,7 @@ class AppSettings {
       navStyle: pop('navStyle', 'glass'),
       navBehavior: pop('navBehavior', 'always'),
       tvClassicUi: pop('tvClassicUi', false),
+      tvKeyboard: pop('tvKeyboard', false),
       extra: extra,
     );
   }

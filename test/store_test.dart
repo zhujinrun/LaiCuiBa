@@ -217,6 +217,7 @@ void main() {
       expect(s.navBehavior, 'always');
       expect(s.tvClassicUi, isFalse);
       expect(s.shortDramaPreload, isFalse);
+      expect(s.tvKeyboard, isFalse);
     });
   });
 
