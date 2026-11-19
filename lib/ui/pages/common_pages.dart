@@ -72,10 +72,10 @@ class _SourceCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: LcbColors.surface,
+          color: LcbColors.card,
           borderRadius: BorderRadius.circular(LcbMetrics.settingsCardRadius),
           border: Border.all(
-            color: selected ? const Color(0xFFBBD2F5) : const Color(0xFFE6E6EA),
+            color: selected ? const Color(0xFF6FB2FC) : const Color(0xFFE2EDF7),
             width: 1,
           ),
         ),
@@ -332,7 +332,7 @@ class _HistoryRow extends StatelessWidget {
       child: Align(
         alignment: Alignment.centerLeft,
         child: Container(
-          width: 332,
+          width: 395,
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: LcbColors.card,
@@ -345,7 +345,7 @@ class _HistoryRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
                 child: SizedBox(
                   width: 64,
-                  height: 92,
+                  height: 90,
                   child: PosterArt(
                     seed: entry.title.hashCode,
                     image: entry.poster,
@@ -363,43 +363,28 @@ class _HistoryRow extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: FontWeight.w600,
                         color: LcbColors.text,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 14),
                     Text(
                       '${entry.episode} · $_progressLabel',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 13,
+                        fontSize: 12.5,
                         color: LcbColors.textSecondary,
                       ),
                     ),
-                    const SizedBox(height: 7),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(2),
-                      child: SizedBox(
-                        height: 4,
-                        width: double.infinity,
-                        child: LinearProgressIndicator(
-                          value: entry.progress,
-                          backgroundColor: LcbColors.searchFill,
-                          valueColor: const AlwaysStoppedAnimation(
-                            LcbColors.primaryDim,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 7),
+                    const SizedBox(height: 24),
                     Text(
                       _timeSourceLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 13,
+                        fontSize: 12.5,
                         color: LcbColors.textTertiary,
                       ),
                     ),
@@ -428,15 +413,15 @@ class _PlayButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 26,
-        height: 26,
+        width: 24,
+        height: 24,
         decoration: const BoxDecoration(
           color: LcbColors.primaryDim,
           shape: BoxShape.circle,
         ),
         child: const Icon(
           CupertinoIcons.play_fill,
-          size: 13,
+          size: 12,
           color: Colors.white,
         ),
       ),
