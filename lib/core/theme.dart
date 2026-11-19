@@ -35,6 +35,10 @@ abstract final class LcbColors {
   /// [textSecondary].
   static const settingsQuiet = Color(0xFF6E6E73);
 
+  /// The version line under the settings list samples lighter than the row
+  /// captions: #B3B3B6.
+  static const settingsVersion = Color(0xFFB3B3B6);
+
   /// Apple system palette used by the settings icons.
   static const sysIndigo = Color(0xFF5856D6);
   static const sysOrange = Color(0xFFFF9500);
@@ -49,6 +53,10 @@ abstract final class LcbColors {
   /// One-off violet the original uses for AI 大模型; it is not in the system
   /// palette, so it does not belong next to sysPurple.
   static const sysViolet = Color(0xFF8E5CF7);
+
+  /// 历史通知 / 联系我们 use two more one-offs: the system red and QQ's blue.
+  static const sysRed = Color(0xFFFF3B30);
+  static const sysSky = Color(0xFF12B7F5);
 }
 
 abstract final class LcbMetrics {
@@ -70,6 +78,10 @@ abstract final class LcbMetrics {
   /// Row box excluding the 1px divider under it. Six rows plus five dividers
   /// span 417px in the original (90..507), i.e. 69.5 per row in total.
   static const settingsRowHeight = 68.5;
+
+  /// Rows without a subtitle collapse to this: the 关于 card measures 62px on
+  /// 用户协议 and 历史通知 against 68.5 for the two-line rows beside them.
+  static const settingsRowCompactHeight = 62.0;
   static const chipRadius = 6.0;
 
   /// Hero height is adaptive: min(contentWidth * 0.37, windowHeight * 0.54).

@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/app_info.dart';
 import '../../core/theme.dart';
 import '../page_header.dart';
 
@@ -160,6 +161,48 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ],
         ),
+        const SizedBox(height: 23),
+        const _GroupLabel('关于'),
+        _Group(
+          rows: [
+            _Row(
+              icon: CupertinoIcons.doc_text_fill,
+              color: LcbColors.sysIndigo,
+              title: '用户协议',
+              onTap: () {},
+            ),
+            const _Row(
+              icon: CupertinoIcons.chart_bar_alt_fill,
+              color: LcbColors.sysGreen,
+              title: '匿名启动统计',
+              subtitle: '启动时只报一个随机安装编号、版本和平台，用来统计每天、每月有多少人在用',
+              toggle: true,
+              toggleOn: true,
+            ),
+            const _Row(
+              icon: CupertinoIcons.bell_circle_fill,
+              color: LcbColors.sysOrange,
+              title: '启动时弹出通知',
+              subtitle: '关闭后启动时不再弹窗（包括更新提示），通知仍可在“历史通知”里查看',
+              toggle: true,
+              toggleOn: true,
+            ),
+            _Row(
+              icon: CupertinoIcons.bell_solid,
+              color: LcbColors.sysRed,
+              title: '历史通知',
+              onTap: () {},
+            ),
+            _Row(
+              icon: CupertinoIcons.chat_bubble_2_fill,
+              color: LcbColors.sysSky,
+              title: '联系我们',
+              subtitle: 'QQ 群 1081010521 · 点击加群，长按复制群号',
+              onTap: () {},
+            ),
+          ],
+        ),
+        const _VersionFooter(),
       ];
 
   List<Widget> _appearanceRows() => [
@@ -297,6 +340,7 @@ class _Row extends StatefulWidget {
     this.value,
     this.dot,
     this.toggle,
+    this.toggleOn = false,
     this.onTap,
   });
 
@@ -310,6 +354,9 @@ class _Row extends StatefulWidget {
   /// Non-null renders a switch instead of the chevron.
   final bool? toggle;
 
+  /// Initial switch position when [toggle] is non-null.
+  final bool toggleOn;
+
   final VoidCallback? onTap;
 
   @override
@@ -318,7 +365,7 @@ class _Row extends StatefulWidget {
 
 class _RowState extends State<_Row> {
   bool _hover = false;
-  late bool _on = widget.toggle ?? false;
+  late bool _on = widget.toggleOn;
 
   @override
   Widget build(BuildContext context) {
@@ -332,7 +379,9 @@ class _RowState extends State<_Row> {
             ? () => setState(() => _on = !_on)
             : widget.onTap,
         child: Container(
-          height: LcbMetrics.settingsRowHeight,
+          height: widget.subtitle != null
+              ? LcbMetrics.settingsRowHeight
+              : LcbMetrics.settingsRowCompactHeight,
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             color: _hover ? Colors.black.withValues(alpha: 0.025) : null,
@@ -431,6 +480,32 @@ class _IconDisc extends StatelessWidget {
       height: 36,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       child: Icon(icon, size: 19, color: Colors.white),
+    );
+  }
+}
+
+/// The version line that closes the settings list, centred under the last card
+/// in the original's muted secondary colour.
+class _VersionFooter extends StatelessWidget {
+  const _VersionFooter();
+
+  @override
+  Widget build(BuildContext context) {
+    // The interpolated version string cannot be const.
+    // ignore: prefer_const_constructors
+    return Padding(
+      padding: const EdgeInsets.only(top: 26, bottom: 8),
+      // ignore: prefer_const_constructors
+      child: Center(
+        // ignore: prefer_const_constructors
+        child: Text(
+          '${LcbAppInfo.name} ${LcbAppInfo.version}（${LcbAppInfo.build}）',
+          style: const TextStyle(
+            fontSize: 12,
+            color: LcbColors.settingsVersion,
+          ),
+        ),
+      ),
     );
   }
 }
