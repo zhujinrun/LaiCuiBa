@@ -5,11 +5,14 @@ import '../../core/app_info.dart';
 import '../../core/theme.dart';
 import '../page_header.dart';
 
-/// Settings root + the 外观 sub-page.
+/// Settings root + the sub-pages reachable from it.
 ///
-/// Structure, wording and metrics come from the original 1.0.6 build: two
-/// groups on the root (通用 / 账号与服务) and a single card on 外观. Rows are
-/// 70px tall with a 36px tinted icon disc, a 17px title and a 13.5px subtitle.
+/// Structure, wording and metrics come from the original 1.0.6 build. The root
+/// lists the top-level groups; tapping a row pushes a sub-page (外观, 首页与导航,
+/// 搜索与输入, 播放, 媒体徽章 …). Rows are 70px tall with a 36px tinted icon
+/// disc, a 17px title and a 13.5px subtitle. Sub-page rows are structural
+/// placeholders — the wording mirrors the original's i18n keys but the toggles
+/// and pickers are not wired yet.
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
@@ -20,9 +23,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   static const _title = '设置';
 
-  /// Null on the root list, [subAppearance] on the 外观 sub-page.
-  static const subAppearance = '外观';
-
+  /// Null on the root list; otherwise the id of the active sub-page.
   String? _sub;
 
   void _open(String sub) {
@@ -45,11 +46,11 @@ class _SettingsPageState extends State<SettingsPage> {
           LcbMetrics.settingsPaddingLeft,
           // Sub-pages have no group label, so they need the label's height as
           // extra top padding to keep the first card in the same place.
-          _sub == subAppearance ? 35 : 8,
+          _sub != null ? 35 : 8,
           LcbMetrics.settingsPaddingRight,
           40,
         ),
-        children: _sub == subAppearance ? _appearanceRows() : _rootRows(),
+        children: _sub != null ? _subRows(_sub!) : _rootRows(),
       ),
     );
   }
@@ -64,14 +65,14 @@ class _SettingsPageState extends State<SettingsPage> {
               title: '外观',
               subtitle: '深浅色、强调色、液态玻璃、状态栏',
               value: '自动',
-              onTap: () => _open(subAppearance),
+              onTap: () => _open('外观'),
             ),
             _Row(
               icon: CupertinoIcons.house_fill,
               color: LcbColors.sysOrange,
               title: '首页与导航',
               subtitle: '导航栏、首页入口、轮播海报',
-              onTap: () {},
+              onTap: () => _open('首页与导航'),
             ),
             _Row(
               icon: CupertinoIcons.square_grid_2x2_fill,
@@ -86,14 +87,14 @@ class _SettingsPageState extends State<SettingsPage> {
               color: LcbColors.sysBlue,
               title: '搜索与输入',
               subtitle: '平台列表布局、聚合搜索、遥控器键盘',
-              onTap: () {},
+              onTap: () => _open('搜索与输入'),
             ),
             _Row(
               icon: CupertinoIcons.play_rectangle_fill,
               color: LcbColors.sysPink,
               title: '播放',
               subtitle: '手势、弹幕、倍速、字幕、短片预载',
-              onTap: () {},
+              onTap: () => _open('播放'),
             ),
             _Row(
               icon: CupertinoIcons.rosette,
@@ -101,7 +102,7 @@ class _SettingsPageState extends State<SettingsPage> {
               title: '媒体徽章',
               subtitle: '4K、杜比、HDR 等规格徽章的开关、显示位置和徽章包',
               value: '内置',
-              onTap: () {},
+              onTap: () => _open('媒体徽章'),
             ),
           ],
         ),
@@ -205,6 +206,26 @@ class _SettingsPageState extends State<SettingsPage> {
         const _VersionFooter(),
       ];
 
+  /// Dispatches the active sub-page to its row builder. New sub-pages add a
+  /// case here; unknown ids fall back to an empty card so the back button still
+  /// works while a page is being wired up.
+  List<Widget> _subRows(String sub) {
+    switch (sub) {
+      case '外观':
+        return _appearanceRows();
+      case '首页与导航':
+        return _homeNavRows();
+      case '搜索与输入':
+        return _searchInputRows();
+      case '播放':
+        return _playbackRows();
+      case '媒体徽章':
+        return _badgeRows();
+      default:
+        return const [];
+    }
+  }
+
   List<Widget> _appearanceRows() => [
         _Group(
           rows: [
@@ -270,6 +291,193 @@ class _SettingsPageState extends State<SettingsPage> {
               title: '隐藏状态栏',
               subtitle: '让首页封面延伸到屏幕顶端',
               toggle: false,
+            ),
+          ],
+        ),
+      ];
+
+  /// 首页与导航 — home carousel, home categories and the navigation bar.
+  List<Widget> _homeNavRows() => [
+        const _GroupLabel('首页'),
+        _Group(
+          rows: [
+            const _Row(
+              icon: CupertinoIcons.photo_fill_on_rectangle_fill,
+              color: LcbColors.sysIndigo,
+              title: '首页轮播海报',
+              subtitle: '顶部自动轮播的推荐海报',
+              toggle: true,
+              toggleOn: true,
+            ),
+            _Row(
+              icon: CupertinoIcons.square_grid_2x2_fill,
+              color: LcbColors.sysOrange,
+              title: '首页分类',
+              subtitle: '电影、电视剧、动漫、综艺等分区',
+              onTap: () {},
+            ),
+            const _Row(
+              icon: CupertinoIcons.clock_fill,
+              color: LcbColors.sysGreen,
+              title: '继续观看',
+              subtitle: '首页显示上次播放到一半的内容',
+              toggle: true,
+              toggleOn: true,
+            ),
+          ],
+        ),
+        const SizedBox(height: 23),
+        const _GroupLabel('导航'),
+        _Group(
+          rows: [
+            _Row(
+              icon: CupertinoIcons.list_bullet,
+              color: LcbColors.sysBlue,
+              title: '导航栏',
+              subtitle: '侧栏分组与入口的显示',
+              onTap: () {},
+            ),
+            const _Row(
+              icon: CupertinoIcons.tv_fill,
+              color: LcbColors.sysPurple,
+              title: '电视模式',
+              subtitle: '顶部导航、遥控器方向键操作',
+              toggle: false,
+            ),
+          ],
+        ),
+      ];
+
+  /// 搜索与输入 — combined search, search history and the remote keyboard.
+  List<Widget> _searchInputRows() => [
+        _Group(
+          rows: [
+            const _Row(
+              icon: CupertinoIcons.doc_text_search,
+              color: LcbColors.sysBlue,
+              title: '聚合搜索',
+              subtitle: '同时在所有源里搜索',
+              toggle: true,
+              toggleOn: true,
+            ),
+            const _Row(
+              icon: CupertinoIcons.clock,
+              color: LcbColors.sysIndigo,
+              title: '搜索历史',
+              subtitle: '记住输入过的关键词',
+              toggle: true,
+              toggleOn: true,
+            ),
+            _Row(
+              icon: CupertinoIcons.keyboard,
+              color: LcbColors.sysGreen,
+              title: '遥控器键盘',
+              subtitle: 'TV 模式下的输入方式',
+              onTap: () {},
+            ),
+          ],
+        ),
+      ];
+
+  /// 播放 — kernel, decode mode, speed, subtitles, danmaku and short-drama
+  /// preload. All structural; the actual engine wiring lands in Phase 3.
+  List<Widget> _playbackRows() => [
+        const _GroupLabel('内核'),
+        _Group(
+          rows: [
+            _Row(
+              icon: CupertinoIcons.play_rectangle_fill,
+              color: LcbColors.sysIndigo,
+              title: '播放内核',
+              subtitle: 'mpv / ijk 等播放引擎',
+              value: 'mpv',
+              onTap: () {},
+            ),
+            _Row(
+              icon: CupertinoIcons.slider_horizontal_3,
+              color: LcbColors.sysOrange,
+              title: '内核设置',
+              subtitle: '默认内核、解码方式',
+              onTap: () {},
+            ),
+            _Row(
+              icon: Icons.memory,
+              color: LcbColors.sysGreen,
+              title: '解码方式',
+              value: '硬件',
+              onTap: () {},
+            ),
+          ],
+        ),
+        const SizedBox(height: 23),
+        const _GroupLabel('播放'),
+        const _Group(
+          rows: [
+            _Row(
+              icon: CupertinoIcons.arrow_right_arrow_left,
+              color: LcbColors.sysBlue,
+              title: '跳过片头片尾',
+              subtitle: '自动跳过片头片尾',
+              toggle: true,
+              toggleOn: true,
+            ),
+            _Row(
+              icon: CupertinoIcons.speedometer,
+              color: LcbColors.sysPurple,
+              title: '默认倍速',
+              subtitle: '开始播放时的速度',
+              value: '1.0x',
+            ),
+            _Row(
+              icon: CupertinoIcons.captions_bubble,
+              color: LcbColors.sysPink,
+              title: '字幕',
+              subtitle: '外挂字幕、默认语言',
+            ),
+            _Row(
+              icon: CupertinoIcons.chat_bubble_2,
+              color: LcbColors.sysTeal,
+              title: '弹幕',
+              subtitle: '弹幕源、显示开关',
+            ),
+            _Row(
+              icon: CupertinoIcons.film,
+              color: LcbColors.sysGray,
+              title: '短剧预载',
+              subtitle: '提前加载下一集',
+              toggle: false,
+            ),
+          ],
+        ),
+      ];
+
+  /// 媒体徽章 — 4K / 杜比 / HDR specification badges and their badge pack.
+  List<Widget> _badgeRows() => [
+        _Group(
+          rows: [
+            const _Row(
+              icon: CupertinoIcons.rosette,
+              color: LcbColors.sysPurple,
+              title: '显示媒体徽章',
+              subtitle: '4K、杜比、HDR 等规格标签',
+              toggle: true,
+              toggleOn: true,
+            ),
+            _Row(
+              icon: CupertinoIcons.rectangle_stack,
+              color: LcbColors.sysBlue,
+              title: '徽章包',
+              subtitle: '徽章的样式与图标',
+              value: '内置',
+              onTap: () {},
+            ),
+            _Row(
+              icon: CupertinoIcons.rectangle_3_offgrid,
+              color: LcbColors.sysGreen,
+              title: '显示位置',
+              subtitle: '海报角落还是列表行内',
+              value: '左上角',
+              onTap: () {},
             ),
           ],
         ),

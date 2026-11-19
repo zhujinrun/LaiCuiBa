@@ -218,6 +218,24 @@ void main() {
       expect(store.history, isEmpty);
     });
 
+    test('selectSource switches current and persists', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      final firstId = store.currentSourceId;
+
+      // Add a second source so there is something to switch to.
+      await store.selectSource('another-source');
+      expect(store.currentSourceId, 'another-source');
+
+      // Reloading from the same prefs restores the selection.
+      final reloaded = await AppStore.load();
+      expect(reloaded.currentSourceId, 'another-source');
+
+      // Switching back to the seed id still works.
+      await reloaded.selectSource(firstId!);
+      expect(reloaded.currentSourceId, firstId);
+    });
+
     test(
       'putHistory upserts by key (same key updates, new key prepends)',
       () async {

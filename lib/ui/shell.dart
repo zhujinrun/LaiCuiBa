@@ -238,6 +238,48 @@ class _HeaderContent extends StatelessWidget {
     );
   }
 
+  /// Confirmation dialog before wiping the watch history, mirroring the
+  /// original's guard on the destructive 清空 action.
+  Future<void> _confirmClearHistory(BuildContext context) async {
+    final store = StoreScope.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        title: const Text(
+          '清空观看历史',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+        ),
+        content: const Text(
+          '清空后将无法恢复，确定要删除全部观看记录吗？',
+          style: TextStyle(fontSize: 13, color: LcbColors.settingsQuiet),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(
+              '取消',
+              style: TextStyle(color: LcbColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              '清空',
+              style: TextStyle(color: LcbColors.sysRed),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await store.clearHistory();
+    }
+  }
+
   Widget _buildHeaderLeft(
     BuildContext context,
     LcbPage page,
@@ -283,7 +325,7 @@ class _HeaderContent extends StatelessWidget {
             ),
             const SizedBox(width: 27),
             TextButton(
-              onPressed: () => StoreScope.of(context).clearHistory(),
+              onPressed: () => _confirmClearHistory(context),
               style: TextButton.styleFrom(
                 padding: EdgeInsets.zero,
                 minimumSize: Size.zero,

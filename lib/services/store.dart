@@ -25,7 +25,7 @@ class AppStore extends ChangeNotifier {
   final List<FavoriteEntry> _favorites;
   final List<FavoriteFolder> _favoriteFolders;
   final List<SourceInfo> _sources;
-  final String? _current;
+  String? _current;
 
   /// Active favourites sub-tab (0 = 收藏, 1 = 追剧). Kept here so the header
   /// tabs and the body stay in sync without threading a controller through.
@@ -185,6 +185,16 @@ class AppStore extends ChangeNotifier {
       if (s.id == _current) return s;
     }
     return _sources.isNotEmpty ? _sources.first : null;
+  }
+
+  /// Switches the active source and persists the choice. The original stores
+  /// the id JSON-quoted under `flutter.current`; we keep the raw string here
+  /// and only quote it when it is read back from disk.
+  Future<void> selectSource(String id) async {
+    if (id == _current) return;
+    _current = id;
+    await _prefs.setString(_kCurrent, jsonEncode(id));
+    notifyListeners();
   }
 
   // -------------------------------------------------------------------------

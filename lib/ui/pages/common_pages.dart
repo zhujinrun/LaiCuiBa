@@ -9,23 +9,29 @@ import '../widgets/poster_art.dart';
 
 /// 资源页：源订阅与网络挂载的列表。
 ///
-/// The original shows each source as a white card with a light-grey film-strip
-/// icon, a bold name, a blue "当前使用 · N 部" status line, a red latency value
-/// on the right and a "···" overflow button. The list is read from the store's
-/// persisted source list.
+/// The original shows each source as a white card with a light-grey icon that
+/// varies with the source type (TVBox / 猫源 / Emby / 网盘挂载), a bold name, a
+/// blue "当前使用 · N 部" status line, a red latency value on the right and a
+/// "···" overflow button. The list is read from the store's persisted source
+/// list and tapping a card switches the active source.
 class ResourcesPage extends StatelessWidget {
   const ResourcesPage({super.key});
-
-  String _latencyLabel(int ms) {
-    if (ms <= 0) return '—';
-    return '${(ms / 1000).toStringAsFixed(1)}s';
-  }
 
   @override
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
     final sources = store.sources;
     final current = store.currentSourceId;
+
+    if (sources.isEmpty) {
+      return const Center(
+        child: _EmptyHint(
+          icon: CupertinoIcons.tray_2,
+          title: '还没有资源',
+          subtitle: '点右上角的 + 添加一个源',
+        ),
+      );
+    }
 
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
@@ -39,10 +45,9 @@ class ResourcesPage extends StatelessWidget {
         children: [
           for (final s in sources)
             _SourceCard(
-              name: s.name,
-              status: s.id == current ? '当前使用 · ${s.movieCount} 部' : '未使用',
-              latency: _latencyLabel(s.latencyMs),
+              source: s,
               selected: s.id == current,
+              onTap: () => store.selectSource(s.id),
             ),
         ],
       ),
@@ -50,92 +55,171 @@ class ResourcesPage extends StatelessWidget {
   }
 }
 
+/// Icon + tint for each source type. The original's `flutter.sources` carries a
+/// `type` discriminator (`tvbox` / `cat` / `emby` / `webdav` / `alist` /
+/// `mount` / `hiker` / `kazumi` / `php`); each gets a distinct glyph so the
+/// list is scannable without opening a card.
+extension SourceTypeStyle on String {
+  IconData get sourceIcon {
+    switch (this) {
+      case 'cat':
+        return CupertinoIcons.square_grid_2x2;
+      case 'emby':
+        return CupertinoIcons.tv;
+      case 'webdav':
+      case 'alist':
+      case 'mount':
+        return CupertinoIcons.folder;
+      case 'hiker':
+      case 'kazumi':
+        return CupertinoIcons.cloud;
+      case 'php':
+        return CupertinoIcons.gear;
+      case 'tvbox':
+      default:
+        return CupertinoIcons.film;
+    }
+  }
+
+  /// Human label for the type, shown as the small type tag on the card's right.
+  String get sourceTypeLabel {
+    switch (this) {
+      case 'cat':
+        return '猫源';
+      case 'emby':
+        return 'Emby';
+      case 'webdav':
+        return 'WebDAV';
+      case 'alist':
+        return 'AList';
+      case 'mount':
+        return '挂载';
+      case 'hiker':
+        return '海阔';
+      case 'kazumi':
+        return 'Kazumi';
+      case 'php':
+        return 'PHP';
+      case 'tvbox':
+      default:
+        return 'TVBox';
+    }
+  }
+}
+
 /// One source card: icon + name + status line, latency and overflow on the
 /// right. The selected card uses the light blue outline matching the original.
 class _SourceCard extends StatelessWidget {
   const _SourceCard({
-    required this.name,
-    required this.status,
-    required this.latency,
+    required this.source,
     required this.selected,
+    required this.onTap,
   });
 
-  final String name;
-  final String status;
-  final String latency;
+  final SourceInfo source;
   final bool selected;
+  final VoidCallback onTap;
+
+  String get _status {
+    final count = source.movieCount + source.showCount;
+    if (!selected) return '未使用';
+    return '当前使用 · $count 部';
+  }
+
+  String get _latency {
+    final ms = source.latencyMs;
+    if (ms <= 0) return '—';
+    return '${(ms / 1000).toStringAsFixed(1)}s';
+  }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: LcbColors.card,
-          borderRadius: BorderRadius.circular(LcbMetrics.settingsCardRadius),
-          border: Border.all(
-            color: selected ? const Color(0xFF6FB2FC) : const Color(0xFFE2EDF7),
-            width: 1,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: LcbColors.card,
+              borderRadius: BorderRadius.circular(LcbMetrics.settingsCardRadius),
+              border: Border.all(
+                color: selected
+                    ? const Color(0xFF6FB2FC)
+                    : const Color(0xFFE2EDF7),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFEFF2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    source.type.sourceIcon,
+                    size: 20,
+                    color: const Color(0xFF1D1D1F),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        source.name,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: LcbColors.text,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _status,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: selected
+                              ? LcbColors.sysBlueDark
+                              : LcbColors.textTertiary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  source.type.sourceTypeLabel,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: LcbColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  _latency,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: LcbColors.sysRed,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(
+                  CupertinoIcons.ellipsis,
+                  size: 18,
+                  color: LcbColors.textTertiary,
+                ),
+              ],
+            ),
           ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: const Color(0xFFEFEFF2),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                CupertinoIcons.film,
-                size: 20,
-                color: Color(0xFF1D1D1F),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: LcbColors.text,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    status,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: selected
-                          ? LcbColors.sysBlueDark
-                          : LcbColors.textTertiary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              latency,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: LcbColors.sysRed,
-              ),
-            ),
-            const SizedBox(width: 8),
-            const Icon(
-              CupertinoIcons.ellipsis,
-              size: 18,
-              color: LcbColors.textTertiary,
-            ),
-          ],
         ),
       ),
     );
