@@ -32,8 +32,8 @@ class ResourcesPage extends StatelessWidget {
           _SourceCard(
             icon: CupertinoIcons.book_fill,
             iconBg: Color(0xFF3A4A6B),
-            name: '豆儿播澈',
-            status: '当前使用 · 58 集',
+            name: '豆儿猫源',
+            status: '当前使用 · 58 部',
             latency: '5.0s',
           ),
           SizedBox(height: 24),

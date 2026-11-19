@@ -287,7 +287,7 @@ class _HeaderContent extends StatelessWidget {
               child: const Text(
                 '清空',
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 15,
                   color: LcbColors.primaryDim,
                 ),
               ),
@@ -305,15 +305,15 @@ class _HeaderContent extends StatelessWidget {
                 color: LcbColors.text,
               ),
             ),
-            const SizedBox(width: 18),
+            const SizedBox(width: 35),
             const _HeaderToolIcon(icon: CupertinoIcons.line_horizontal_3),
-            const SizedBox(width: 8),
+            const SizedBox(width: 11),
             const _HeaderToolIcon(icon: CupertinoIcons.search),
-            const SizedBox(width: 8),
+            const SizedBox(width: 11),
             const _HeaderToolIcon(icon: CupertinoIcons.plus),
-            const SizedBox(width: 8),
+            const SizedBox(width: 11),
             const _HeaderToolIcon(icon: CupertinoIcons.checkmark_circle),
-            const SizedBox(width: 8),
+            const SizedBox(width: 11),
             const _HeaderToolIcon(icon: CupertinoIcons.waveform_path_ecg),
           ],
         );
@@ -602,13 +602,13 @@ class _FavoritesHeaderTabsState extends State<_FavoritesHeaderTabs> {
     return Row(
       children: [
         tab('收藏', 0),
-        const SizedBox(width: 21),
+        const SizedBox(width: 19),
         tab('追剧', 1),
-        const SizedBox(width: 24),
+        const SizedBox(width: 36),
         const Icon(CupertinoIcons.search, size: 17, color: LcbColors.settingsQuiet),
-        const SizedBox(width: 12),
+        const SizedBox(width: 26),
         const Icon(CupertinoIcons.folder, size: 17, color: LcbColors.settingsQuiet),
-        const SizedBox(width: 12),
+        const SizedBox(width: 26),
         const Icon(CupertinoIcons.line_horizontal_3, size: 17, color: LcbColors.settingsQuiet),
       ],
     );
