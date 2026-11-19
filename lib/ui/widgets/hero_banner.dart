@@ -118,7 +118,9 @@ class _HeroBannerState extends State<HeroBanner> {
                         Color(0x80FFFFFF),
                         Color(0xFFFFFFFF)
                       ],
-                      stops: [0.0, 0.56, 0.80, 0.96],
+                      // The original only reaches pure white 9px lower than a
+                      // 0.96 end stop did: 613 against our 604.
+                      stops: [0.0, 0.56, 0.79, 0.974],
                     ),
                   ),
                 ),
