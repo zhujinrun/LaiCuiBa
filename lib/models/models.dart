@@ -357,3 +357,107 @@ class FavoriteFolder {
     name: json['name'] as String? ?? '',
   );
 }
+
+/// Application settings, matching the original's `flutter.settings` map.
+///
+/// Only the fields the rebuilt UI currently reads/writes are modelled; the
+/// rest of the original's ~80 keys are preserved verbatim in [extra] so a
+/// round-trip never drops data the real source layer will need later.
+class AppSettings {
+  const AppSettings({
+    this.themeMode = 'system',
+    this.accent = '自定义',
+    this.customAccent = 0,
+    this.fontScale = 1.0,
+    this.language = 'zh',
+    this.liquidGlass = true,
+    this.hideStatusBar = false,
+    this.adaptiveColor = false,
+    this.homeBannerEnabled = true,
+    this.skipIntroOutro = true,
+    this.extra = const {},
+  });
+
+  final String themeMode;
+  final String accent;
+  final int customAccent;
+  final double fontScale;
+  final String language;
+  final bool liquidGlass;
+  final bool hideStatusBar;
+  final bool adaptiveColor;
+  final bool homeBannerEnabled;
+  final bool skipIntroOutro;
+
+  /// Unmodelled keys carried through unchanged.
+  final Map<String, dynamic> extra;
+
+  AppSettings copyWith({
+    String? themeMode,
+    String? accent,
+    int? customAccent,
+    double? fontScale,
+    String? language,
+    bool? liquidGlass,
+    bool? hideStatusBar,
+    bool? adaptiveColor,
+    bool? homeBannerEnabled,
+    bool? skipIntroOutro,
+  }) {
+    return AppSettings(
+      themeMode: themeMode ?? this.themeMode,
+      accent: accent ?? this.accent,
+      customAccent: customAccent ?? this.customAccent,
+      fontScale: fontScale ?? this.fontScale,
+      language: language ?? this.language,
+      liquidGlass: liquidGlass ?? this.liquidGlass,
+      hideStatusBar: hideStatusBar ?? this.hideStatusBar,
+      adaptiveColor: adaptiveColor ?? this.adaptiveColor,
+      homeBannerEnabled: homeBannerEnabled ?? this.homeBannerEnabled,
+      skipIntroOutro: skipIntroOutro ?? this.skipIntroOutro,
+      extra: extra,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    ...extra,
+    'themeMode': themeMode,
+    'accent': accent,
+    'customAccent': customAccent,
+    'fontScale': fontScale,
+    'language': language,
+    'liquidGlass': liquidGlass,
+    'hideStatusBar': hideStatusBar,
+    'adaptiveColor': adaptiveColor,
+    'homeBannerEnabled': homeBannerEnabled,
+    'skipIntroOutro': skipIntroOutro,
+  };
+
+  factory AppSettings.fromJson(Map<String, dynamic> json) {
+    // The modelled keys are popped out; everything else survives in [extra].
+    final extra = Map<String, dynamic>.from(json);
+    T pop<T>(String key, T fallback) {
+      if (extra.containsKey(key)) {
+        final v = extra.remove(key);
+        if (v is T) return v;
+        if (v is num && T == double) return v.toDouble() as T;
+        if (v is num && T == int) return v.toInt() as T;
+      }
+      return fallback;
+    }
+
+    return AppSettings(
+      themeMode: pop('themeMode', 'system'),
+      accent: pop('accent', '自定义'),
+      customAccent: pop('customAccent', 0),
+      fontScale: pop('fontScale', 1.0),
+      language: pop('language', 'zh'),
+      liquidGlass: pop('liquidGlass', true),
+      hideStatusBar: pop('hideStatusBar', false),
+      adaptiveColor: pop('adaptiveColor', false),
+      homeBannerEnabled: pop('homeBannerEnabled', true),
+      skipIntroOutro: pop('skipIntroOutro', true),
+      extra: extra,
+    );
+  }
+}

@@ -2,7 +2,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/app_info.dart';
+import '../../core/store_scope.dart';
 import '../../core/theme.dart';
+import '../../services/store.dart';
 import '../page_header.dart';
 
 /// Settings root + the sub-pages reachable from it.
@@ -50,7 +52,9 @@ class _SettingsPageState extends State<SettingsPage> {
           LcbMetrics.settingsPaddingRight,
           40,
         ),
-        children: _sub != null ? _subRows(_sub!) : _rootRows(),
+        children: _sub != null
+            ? _subRows(_sub!, StoreScope.of(context))
+            : _rootRows(),
       ),
     );
   }
@@ -209,10 +213,10 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Dispatches the active sub-page to its row builder. New sub-pages add a
   /// case here; unknown ids fall back to an empty card so the back button still
   /// works while a page is being wired up.
-  List<Widget> _subRows(String sub) {
+  List<Widget> _subRows(String sub, AppStore store) {
     switch (sub) {
       case '外观':
-        return _appearanceRows();
+        return _appearanceRows(store);
       case '首页与导航':
         return _homeNavRows();
       case '搜索与输入':
@@ -226,7 +230,7 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  List<Widget> _appearanceRows() => [
+  List<Widget> _appearanceRows(AppStore store) => [
         _Group(
           rows: [
             _Row(
@@ -263,19 +267,25 @@ class _SettingsPageState extends State<SettingsPage> {
               title: '字体与字号',
               onTap: () {},
             ),
-            const _Row(
+            _Row(
               icon: Icons.palette_outlined,
               color: LcbColors.sysPurple,
               title: '自适应颜色',
               subtitle: '首页配色跟随顶部推荐封面的主色',
-              toggle: false,
+              toggle: true,
+              toggleValue: store.settings.adaptiveColor,
+              onToggle: (v) =>
+                  store.updateSettings(store.settings.copyWith(adaptiveColor: v)),
             ),
-            const _Row(
+            _Row(
               icon: Icons.blur_on,
               color: LcbColors.sysTeal,
               title: '液态玻璃',
               subtitle: '关闭后底栏与悬浮按钮使用纯色',
-              toggle: false,
+              toggle: true,
+              toggleValue: store.settings.liquidGlass,
+              onToggle: (v) =>
+                  store.updateSettings(store.settings.copyWith(liquidGlass: v)),
             ),
             _Row(
               icon: Icons.tv,
@@ -285,12 +295,16 @@ class _SettingsPageState extends State<SettingsPage> {
               value: '自动（非电视）',
               onTap: () {},
             ),
-            const _Row(
+            _Row(
               icon: Icons.auto_fix_high_outlined,
               color: LcbColors.sysPurple,
               title: '隐藏状态栏',
               subtitle: '让首页封面延伸到屏幕顶端',
-              toggle: false,
+              toggle: true,
+              toggleValue: store.settings.hideStatusBar,
+              onToggle: (v) => store.updateSettings(
+                store.settings.copyWith(hideStatusBar: v),
+              ),
             ),
           ],
         ),
@@ -549,6 +563,8 @@ class _Row extends StatefulWidget {
     this.dot,
     this.toggle,
     this.toggleOn = false,
+    this.toggleValue,
+    this.onToggle,
     this.onTap,
   });
 
@@ -562,8 +578,16 @@ class _Row extends StatefulWidget {
   /// Non-null renders a switch instead of the chevron.
   final bool? toggle;
 
-  /// Initial switch position when [toggle] is non-null.
+  /// Initial switch position when [toggle] is non-null and [toggleValue] is
+  /// null (uncontrolled).
   final bool toggleOn;
+
+  /// When non-null the switch is controlled: it shows this value and flips it
+  /// via [onToggle] instead of keeping local state.
+  final bool? toggleValue;
+
+  /// Callback for a controlled switch, receives the new (flipped) value.
+  final ValueChanged<bool>? onToggle;
 
   final VoidCallback? onTap;
 
@@ -575,6 +599,20 @@ class _RowState extends State<_Row> {
   bool _hover = false;
   late bool _on = widget.toggleOn;
 
+  bool get _isOn => widget.toggleValue ?? _on;
+
+  void _handleTap() {
+    if (widget.toggle != null) {
+      if (widget.onToggle != null) {
+        widget.onToggle!(!_isOn);
+      } else {
+        setState(() => _on = !_on);
+      }
+    } else {
+      widget.onTap?.call();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
@@ -583,9 +621,7 @@ class _RowState extends State<_Row> {
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: widget.toggle != null
-            ? () => setState(() => _on = !_on)
-            : widget.onTap,
+        onTap: _handleTap,
         child: Container(
           height: widget.subtitle != null
               ? LcbMetrics.settingsRowHeight
@@ -656,7 +692,7 @@ class _RowState extends State<_Row> {
               if (widget.toggle != null)
                 Padding(
                   padding: const EdgeInsets.only(left: 12),
-                  child: _Switch(value: _on),
+                  child: _Switch(value: _isOn),
                 )
               else
                 const Padding(

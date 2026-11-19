@@ -17,6 +17,7 @@ class AppStore extends ChangeNotifier {
     this._favoriteFolders,
     this._sources,
     this._current,
+    this._settings,
   );
 
   final SharedPreferences _prefs;
@@ -26,6 +27,7 @@ class AppStore extends ChangeNotifier {
   final List<FavoriteFolder> _favoriteFolders;
   final List<SourceInfo> _sources;
   String? _current;
+  AppSettings _settings;
 
   /// Active favourites sub-tab (0 = 收藏, 1 = 追剧). Kept here so the header
   /// tabs and the body stay in sync without threading a controller through.
@@ -40,6 +42,7 @@ class AppStore extends ChangeNotifier {
   static const _kFavoriteFolders = 'flutter.favoriteFolders';
   static const _kSources = 'flutter.sources';
   static const _kCurrent = 'flutter.current';
+  static const _kSettings = 'flutter.settings';
 
   // -------------------------------------------------------------------------
   // Load
@@ -71,6 +74,10 @@ class AppStore extends ChangeNotifier {
       current = jsonDecode(current) as String;
     }
 
+    var settings = AppSettings.fromJson(
+      _decodeMap(prefs.getString(_kSettings)),
+    );
+
     // Seed a single demo source + one history entry on first launch so the
     // rebuilt pages stay frame-comparable with the original's live session.
     if (sources.isEmpty) {
@@ -93,7 +100,22 @@ class AppStore extends ChangeNotifier {
       current = sources.isNotEmpty ? sources.first.id : null;
     }
 
-    return AppStore._(prefs, history, favorites, folders, sources, current);
+    return AppStore._(
+      prefs,
+      history,
+      favorites,
+      folders,
+      sources,
+      current,
+      settings,
+    );
+  }
+
+  static Map<String, dynamic> _decodeMap(String? raw) {
+    if (raw == null || raw.isEmpty) return const {};
+    final decoded = jsonDecode(raw);
+    if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    return const {};
   }
 
   static List<T> _decodeList<T>(
@@ -229,6 +251,24 @@ class AppStore extends ChangeNotifier {
     await _persistFolders();
     await _persistFavorites();
     notifyListeners();
+  }
+
+  // -------------------------------------------------------------------------
+  // Settings
+  // -------------------------------------------------------------------------
+
+  AppSettings get settings => _settings;
+
+  /// Updates a subset of settings and persists the whole map under
+  /// `flutter.settings`, mirroring the original's flat JSON blob.
+  Future<void> updateSettings(AppSettings next) async {
+    _settings = next;
+    await _persistSettings();
+    notifyListeners();
+  }
+
+  Future<void> _persistSettings() async {
+    await _prefs.setString(_kSettings, jsonEncode(_settings.toJson()));
   }
 
   // -------------------------------------------------------------------------

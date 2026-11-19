@@ -149,6 +149,46 @@ void main() {
     });
   });
 
+  group('AppSettings', () {
+    test('round-trips modelled fields and preserves unknown keys', () {
+      final s = AppSettings.fromJson({
+        'themeMode': 'dark',
+        'liquidGlass': false,
+        'adaptiveColor': true,
+        'skipIntroOutro': false,
+        'playerKernel': 'mpv', // unmodelled -> extra
+        'danmaku': {'enabled': true},
+      });
+
+      expect(s.themeMode, 'dark');
+      expect(s.liquidGlass, isFalse);
+      expect(s.adaptiveColor, isTrue);
+      expect(s.skipIntroOutro, isFalse);
+      expect(s.extra['playerKernel'], 'mpv');
+      expect(s.extra['danmaku'], {'enabled': true});
+
+      // Round-trip keeps the unmodelled keys.
+      final back = AppSettings.fromJson(s.toJson());
+      expect(back.extra['playerKernel'], 'mpv');
+      expect(back.liquidGlass, isFalse);
+    });
+
+    test('defaults when the map is empty', () {
+      final s = AppSettings.fromJson({});
+      expect(s.themeMode, 'system');
+      expect(s.language, 'zh');
+      expect(s.liquidGlass, isTrue);
+      expect(s.extra, isEmpty);
+    });
+
+    test('copyWith overrides only the given fields', () {
+      const s = AppSettings(liquidGlass: false);
+      final next = s.copyWith(liquidGlass: true);
+      expect(next.liquidGlass, isTrue);
+      expect(next.hideStatusBar, isFalse); // untouched default
+    });
+  });
+
   group('AppStore', () {
     test(
       'seeds demo source, history, folder and favourite on first launch',
@@ -227,6 +267,20 @@ void main() {
 
       await store.clearHistory();
       expect(store.continueWatching, isEmpty);
+    });
+
+    test('updateSettings persists and survives reload', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      await store.updateSettings(
+        store.settings.copyWith(liquidGlass: false, adaptiveColor: true),
+      );
+      expect(store.settings.liquidGlass, isFalse);
+      expect(store.settings.adaptiveColor, isTrue);
+
+      final reloaded = await AppStore.load();
+      expect(reloaded.settings.liquidGlass, isFalse);
+      expect(reloaded.settings.adaptiveColor, isTrue);
     });
 
     test('selectSource switches current and persists', () async {
