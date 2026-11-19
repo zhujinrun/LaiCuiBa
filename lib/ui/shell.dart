@@ -6,7 +6,8 @@ import '../services/demo_data.dart';
 import 'pages/common_pages.dart';
 import 'pages/home_page.dart';
 import 'pages/settings_page.dart';
-import 'widgets/title_bar.dart';
+import 'page_header.dart';
+import 'widgets/shell_header.dart';
 
 class Shell extends StatefulWidget {
   const Shell({super.key});
@@ -17,6 +18,7 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> {
   LcbPage _page = LcbPage.home;
+  final _header = LcbPageHeader('首页');
 
   static const _titles = {
     LcbPage.home: '首页',
@@ -25,6 +27,17 @@ class _ShellState extends State<Shell> {
     LcbPage.history: '历史',
     LcbPage.settings: '设置',
   };
+
+  @override
+  void dispose() {
+    _header.dispose();
+    super.dispose();
+  }
+
+  void _select(LcbPage page) {
+    setState(() => _page = page);
+    _header.reset(_titles[page]!);
+  }
 
   Widget _body() {
     switch (_page) {
@@ -45,28 +58,21 @@ class _ShellState extends State<Shell> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: LcbColors.surface,
-      body: Column(
-        children: [
-          const TitleBar(),
-          Expanded(
-            child: Row(
-              children: [
-                _Sidebar(
-                  current: _page,
-                  onSelect: (p) => setState(() => _page = p),
-                ),
-                Expanded(
-                  child: Column(
-                    children: [
-                      _TopBar(title: _titles[_page]!),
-                      Expanded(child: _body()),
-                    ],
-                  ),
-                ),
-              ],
+      body: LcbPageHeaderScope(
+        controller: _header,
+        child: Column(
+          children: [
+            ShellHeader(content: _HeaderContent(page: _page)),
+            Expanded(
+              child: Row(
+                children: [
+                  _Sidebar(current: _page, onSelect: _select),
+                  Expanded(child: _body()),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -186,36 +192,82 @@ class _NavItemState extends State<_NavItem> {
   }
 }
 
-class _TopBar extends StatelessWidget {
-  const _TopBar({required this.title});
+class _HeaderContent extends StatelessWidget {
+  const _HeaderContent({required this.page});
 
-  final String title;
+  final LcbPage page;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: LcbMetrics.topBarHeight,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: LcbMetrics.pagePadding),
-        child: Row(
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: LcbColors.text,
-              ),
+    final header = LcbPageHeaderScope.of(context);
+    final onBack = header.onBack;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(30, 0, 8, 0),
+      child: Row(
+        children: [
+          if (onBack != null) ...[
+            _BackButton(onTap: onBack),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            header.title,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+              color: LcbColors.text,
             ),
+          ),
+          // Source chips belong to the home feed only; other pages have their
+          // own contextual controls in the original.
+          if (page == LcbPage.home) ...[
             const SizedBox(width: 22),
             const _SourceChip(label: '豆儿猫源'),
             const SizedBox(width: 8),
             const _SourceChip(label: '[直] 荐片'),
             const SizedBox(width: 8),
             _IconGhost(icon: Icons.dashboard_customize_outlined, onTap: () {}),
-            const Spacer(),
-            const _SearchBox(),
           ],
+          const Expanded(child: HeaderDragGap()),
+          const _SearchBox(),
+        ],
+      ),
+    );
+  }
+}
+
+class _BackButton extends StatefulWidget {
+  const _BackButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_BackButton> createState() => _BackButtonState();
+}
+
+class _BackButtonState extends State<_BackButton> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: _hover ? LcbColors.hover : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(
+            Icons.arrow_back,
+            size: 18,
+            color: LcbColors.textSecondary,
+          ),
         ),
       ),
     );

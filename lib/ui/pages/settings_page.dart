@@ -1,74 +1,385 @@
 import 'package:flutter/material.dart';
 
-import '../../core/app_info.dart';
 import '../../core/theme.dart';
+import '../page_header.dart';
 
-class SettingsPage extends StatelessWidget {
+/// Settings root + the 外观 sub-page.
+///
+/// Structure, wording and metrics come from the original 1.0.6 build: two
+/// groups on the root (通用 / 账号与服务) and a single card on 外观. Rows are
+/// 70px tall with a 36px tinted icon disc, a 17px title and a 13.5px subtitle.
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  static const _title = '设置';
+
+  /// Null on the root list, [subAppearance] on the 外观 sub-page.
+  static const subAppearance = '外观';
+
+  String? _sub;
+
+  void _open(String sub) {
+    setState(() => _sub = sub);
+    LcbPageHeaderScope.of(context).push(sub, _back);
+  }
+
+  void _back() {
+    if (!mounted) return;
+    setState(() => _sub = null);
+    LcbPageHeaderScope.of(context).reset(_title);
+  }
 
   @override
   Widget build(BuildContext context) {
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(
-          LcbMetrics.pagePadding,
-          4,
-          LcbMetrics.pagePadding,
-          48,
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(
+          LcbMetrics.settingsPaddingLeft,
+          // Sub-pages have no group label, so they need the label's height as
+          // extra top padding to keep the first card in the same place.
+          _sub == subAppearance ? 34 : 8,
+          28,
+          40,
         ),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 780),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        children: _sub == subAppearance ? _appearanceRows() : _rootRows(),
+      ),
+    );
+  }
+
+  List<Widget> _rootRows() => [
+        const _GroupLabel('通用'),
+        _Group(
+          rows: [
+            _Row(
+              icon: Icons.contrast,
+              color: LcbColors.sysIndigo,
+              title: '外观',
+              subtitle: '深浅色、强调色、液态玻璃、状态栏',
+              value: '自动',
+              onTap: () => _open(subAppearance),
+            ),
+            _Row(
+              icon: Icons.home_outlined,
+              color: LcbColors.sysOrange,
+              title: '首页与导航',
+              subtitle: '导航栏、首页入口、轮播海报',
+              onTap: () {},
+            ),
+            _Row(
+              icon: Icons.dashboard_customize_outlined,
+              color: LcbColors.sysGreen,
+              title: '组件',
+              subtitle: '导入组件仓库，搭建自定义首页页面',
+              value: '4 个仓库',
+              onTap: () {},
+            ),
+            _Row(
+              icon: Icons.search,
+              color: LcbColors.sysBlue,
+              title: '搜索与输入',
+              subtitle: '平台列表布局、聚合搜索、遥控器键盘',
+              onTap: () {},
+            ),
+            _Row(
+              icon: Icons.play_arrow_rounded,
+              color: LcbColors.sysPink,
+              title: '播放',
+              subtitle: '手势、弹幕、倍速、字幕、短片预载',
+              onTap: () {},
+            ),
+            _Row(
+              icon: Icons.sell_outlined,
+              color: LcbColors.sysPurple,
+              title: '媒体徽章',
+              subtitle: '4K、杜比、HDR 等规格徽章的开关、显示位置和徽章包',
+              value: '内置',
+              onTap: () {},
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        const _GroupLabel('账号与服务'),
+        _Group(
+          rows: [
+            _Row(
+              icon: Icons.account_circle_outlined,
+              color: LcbColors.sysBlueDark,
+              title: '账号管理',
+              subtitle: 'TMDB、服务代理、Trakt、Bangumi、豆瓣',
+              value: '未登录',
+              onTap: () {},
+            ),
+            _Row(
+              icon: Icons.auto_awesome,
+              color: LcbColors.sysPurple,
+              title: 'AI 大模型',
+              subtitle: '集名净化、Py 源安全检测、字幕翻译',
+              value: '未配置',
+              onTap: () {},
+            ),
+            _Row(
+              icon: Icons.tv,
+              color: LcbColors.sysGreen,
+              title: 'TV友好功能',
+              subtitle: '扫码输入、扫码控制、同步配置、网页端',
+              onTap: () {},
+            ),
+            _Row(
+              icon: Icons.link,
+              color: LcbColors.sysOrange,
+              title: '推送识别',
+              subtitle: '打开分享、剪贴板或其他设备推来的链接',
+              onTap: () {},
+            ),
+          ],
+        ),
+      ];
+
+  List<Widget> _appearanceRows() => [
+        _Group(
+          rows: [
+            _Row(
+              icon: Icons.contrast,
+              color: LcbColors.sysIndigo,
+              title: '外观模式',
+              value: '自动',
+              onTap: () {},
+            ),
+            _Row(
+              icon: Icons.water_drop_outlined,
+              color: LcbColors.sysBlue,
+              title: '强调色',
+              dot: LcbColors.primary,
+              onTap: () {},
+            ),
+            _Row(
+              icon: Icons.image_outlined,
+              color: LcbColors.sysGreen,
+              title: '自定义背景',
+              value: '未设置',
+              onTap: () {},
+            ),
+            _Row(
+              icon: Icons.translate,
+              color: LcbColors.sysBlue,
+              title: '语言',
+              value: '简体中文',
+              onTap: () {},
+            ),
+            _Row(
+              icon: Icons.text_fields,
+              color: LcbColors.sysGray,
+              title: '字体与字号',
+              onTap: () {},
+            ),
+            const _Row(
+              icon: Icons.palette_outlined,
+              color: LcbColors.sysPurple,
+              title: '自适应颜色',
+              subtitle: '首页配色跟随顶部推荐封面的主色',
+              toggle: false,
+            ),
+            const _Row(
+              icon: Icons.blur_on,
+              color: LcbColors.sysTeal,
+              title: '液态玻璃',
+              subtitle: '关闭后底栏与悬浮按钮使用纯色',
+              toggle: false,
+            ),
+            _Row(
+              icon: Icons.tv,
+              color: LcbColors.sysBlue,
+              title: '电视模式',
+              subtitle: '顶部导航、遥控器方向键操作；盒子没被识别成电视时手动开启',
+              value: '自动（非电视）',
+              onTap: () {},
+            ),
+            const _Row(
+              icon: Icons.auto_fix_high_outlined,
+              color: LcbColors.sysPurple,
+              title: '隐藏状态栏',
+              subtitle: '让首页封面延伸到屏幕顶端',
+              toggle: false,
+            ),
+          ],
+        ),
+      ];
+}
+
+class _GroupLabel extends StatelessWidget {
+  const _GroupLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, bottom: 6),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w400,
+          color: LcbColors.textTertiary,
+        ),
+      ),
+    );
+  }
+}
+
+class _Group extends StatelessWidget {
+  const _Group({required this.rows});
+
+  final List<_Row> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: LcbColors.card,
+        borderRadius: BorderRadius.circular(LcbMetrics.settingsCardRadius),
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0)
+              const Divider(
+                height: 1,
+                thickness: 1,
+                indent: 66,
+                color: LcbColors.cardDivider,
+              ),
+            rows[i],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _Row extends StatefulWidget {
+  const _Row({
+    required this.icon,
+    required this.color,
+    required this.title,
+    this.subtitle,
+    this.value,
+    this.dot,
+    this.toggle,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String? subtitle;
+  final String? value;
+  final Color? dot;
+
+  /// Non-null renders a switch instead of the chevron.
+  final bool? toggle;
+
+  final VoidCallback? onTap;
+
+  @override
+  State<_Row> createState() => _RowState();
+}
+
+class _RowState extends State<_Row> {
+  bool _hover = false;
+  late bool _on = widget.toggle ?? false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.toggle != null
+            ? () => setState(() => _on = !_on)
+            : widget.onTap,
+        child: Container(
+          height: LcbMetrics.settingsRowHeight,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: _hover ? Colors.black.withValues(alpha: 0.025) : null,
+            borderRadius: BorderRadius.circular(LcbMetrics.settingsCardRadius),
+          ),
+          child: Row(
             children: [
-              Text('设置', style: serifStyle(22)),
-              const SizedBox(height: 22),
-              const _Group(
-                title: '播放',
-                tiles: [
-                  _Tile(Icons.memory_outlined, '播放内核', 'mpv / 内置解码，硬件加速与缓存策略'),
-                  _Tile(Icons.subtitles_outlined, '字幕', '字幕站点、样式、字号与描边'),
-                  _Tile(Icons.forum_outlined, '弹幕', '弹幕源、透明度、速度与屏蔽词'),
-                  _Tile(Icons.skip_next_outlined, '跳过片头片尾', '按剧集自动记录并跳过'),
-                ],
+              _IconDisc(icon: widget.icon, color: widget.color),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.title,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: LcbColors.text,
+                      ),
+                    ),
+                    if (widget.subtitle != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        widget.subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          color: LcbColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
-              const _Group(
-                title: '外观',
-                tiles: [
-                  _Tile(Icons.wallpaper_outlined, '背景与主题', '首页背景、取色与透明度'),
-                  _Tile(Icons.text_fields, '字体', '界面字体与标题衬线字体'),
-                  _Tile(Icons.grid_view_outlined, '首页布局', '分区顺序、每行数量与卡片比例'),
-                ],
-              ),
-              const _Group(
-                title: '源与刮削',
-                tiles: [
-                  _Tile(Icons.cloud_download_outlined, '源订阅', '猫源、TVBox 配置与更新策略'),
-                  _Tile(Icons.image_outlined, '海报与刮削', 'TMDB / Bangumi / 豆瓣信息源'),
-                  _Tile(Icons.emoji_events_outlined, '评分与徽章', '评分来源与徽章样式'),
-                ],
-              ),
-              const _Group(
-                title: '数据',
-                tiles: [
-                  _Tile(Icons.backup_outlined, '备份与同步', 'WebDAV 备份、配置与历史同步'),
-                  _Tile(Icons.download_outlined, '下载', '下载目录、并发数与外部下载器'),
-                ],
-              ),
-              const _Group(
-                title: '网络',
-                tiles: [
-                  _Tile(Icons.vpn_lock_outlined, '代理', 'HTTP / SOCKS 代理与分流域名'),
-                  _Tile(Icons.wifi_tethering, '本地服务', '局域网投送与网页控制端'),
-                ],
-              ),
-              const _Group(
-                title: '关于',
-                tiles: [
-                  _Tile(Icons.info_outline, '版本', '${LcbAppInfo.name} ${LcbAppInfo.version} · Flutter'),
-                ],
-              ),
+              if (widget.value != null) ...[
+                const SizedBox(width: 12),
+                Text(
+                  widget.value!,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    color: LcbColors.textSecondary,
+                  ),
+                ),
+              ],
+              if (widget.dot != null) ...[
+                const SizedBox(width: 10),
+                Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: widget.dot,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
+              if (widget.toggle != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 12),
+                  child: _Switch(value: _on),
+                )
+              else
+                const Padding(
+                  padding: EdgeInsets.only(left: 4),
+                  child: Icon(
+                    Icons.chevron_right,
+                    size: 20,
+                    color: LcbColors.chevron,
+                  ),
+                ),
             ],
           ),
         ),
@@ -77,105 +388,62 @@ class SettingsPage extends StatelessWidget {
   }
 }
 
-class _Group extends StatelessWidget {
-  const _Group({required this.title, required this.tiles});
+class _IconDisc extends StatelessWidget {
+  const _IconDisc({required this.icon, required this.color});
 
-  final String title;
-  final List<_Tile> tiles;
+  final IconData icon;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 2, bottom: 8),
-            child: Text(
-              title,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: LcbColors.textTertiary,
-                letterSpacing: 0.6,
-              ),
-            ),
-          ),
-          Container(
-            decoration: BoxDecoration(
-              color: LcbColors.page,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFEDEDF0)),
-            ),
-            child: Column(
-              children: [
-                for (var i = 0; i < tiles.length; i++) ...[
-                  if (i > 0)
-                    const Divider(height: 1, thickness: 1, color: Color(0xFFEDEDF0), indent: 50),
-                  tiles[i],
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      child: Icon(icon, size: 19, color: Colors.white),
     );
   }
 }
 
-class _Tile extends StatefulWidget {
-  const _Tile(this.icon, this.title, this.subtitle);
+/// iOS-style switch: 50x30 track, 26px thumb, #E2E2E2 when off and the theme's
+/// muted violet when on (both sampled from the original).
+class _Switch extends StatelessWidget {
+  const _Switch({required this.value});
 
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  @override
-  State<_Tile> createState() => _TileState();
-}
-
-class _TileState extends State<_Tile> {
-  bool _hover = false;
+  final bool value;
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: Container(
-        height: 58,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          color: _hover ? Colors.white : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Icon(widget.icon, size: 18, color: LcbColors.textSecondary),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.title,
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: LcbColors.text),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    widget.subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11.5, color: LcbColors.textSecondary),
-                  ),
-                ],
-              ),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOut,
+      width: 50,
+      height: 30,
+      decoration: BoxDecoration(
+        color: value ? LcbColors.primaryDim : LcbColors.switchOff,
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: AnimatedAlign(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Container(
+            width: 26,
+            height: 26,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Color(0x1F000000),
+                  blurRadius: 2,
+                  offset: Offset(0, 1),
+                ),
+              ],
             ),
-            const Icon(Icons.chevron_right, size: 18, color: LcbColors.textTertiary),
-          ],
+          ),
         ),
       ),
     );

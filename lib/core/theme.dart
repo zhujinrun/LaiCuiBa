@@ -15,14 +15,38 @@ abstract final class LcbColors {
   static const searchFill = Color(0xFFEFEFF2);
   static const scoreGreen = Color(0xFF00B51D);
   static const hover = Color(0xFFEDECF2);
+
+  // Settings surfaces, sampled from the original.
+  //
+  // Note the inversion against the sidebar: the page is pure white and the
+  // grouped cards are the grey element (#F6F6F8), not the other way round.
+  static const card = Color(0xFFF6F6F8);
+  static const cardDivider = Color(0xFFF0F0F3);
+  static const topBarBorder = Color(0xFFE5E5EA);
+  static const chevron = Color(0xFFC7C7CC);
+  static const switchOff = Color(0xFFE2E2E2);
+
+  /// Apple system palette used by the settings icons.
+  static const sysIndigo = Color(0xFF5856D6);
+  static const sysOrange = Color(0xFFFF9500);
+  static const sysGreen = Color(0xFF34C759);
+  static const sysBlue = Color(0xFF007AFF);
+  static const sysPink = Color(0xFFFF2D55);
+  static const sysPurple = Color(0xFFAF52DE);
+  static const sysTeal = Color(0xFF32ADE6);
+  static const sysGray = Color(0xFF8E8E93);
+  static const sysBlueDark = Color(0xFF3478F6);
 }
 
 abstract final class LcbMetrics {
   static const sidebarWidth = 232.0;
-  static const topBarHeight = 56.0;
+  static const headerHeight = 60.0;
   static const pagePadding = 28.0;
+  static const settingsPaddingLeft = 40.0;
   static const contentMaxWidth = 1600.0;
   static const cardRadius = 12.0;
+  static const settingsCardRadius = 14.0;
+  static const settingsRowHeight = 70.0;
   static const chipRadius = 6.0;
 }
 
