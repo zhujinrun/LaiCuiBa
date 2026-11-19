@@ -171,6 +171,15 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Removes a single history entry by key. No-op if absent.
+  Future<void> removeHistory(String key) async {
+    final before = _history.length;
+    _history.removeWhere((e) => e.key == key);
+    if (_history.length == before) return;
+    await _persistHistory();
+    notifyListeners();
+  }
+
   // -------------------------------------------------------------------------
   // Favourites (own store, matching flutter.favorites / flutter.favoriteFolders)
   // -------------------------------------------------------------------------

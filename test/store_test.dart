@@ -398,5 +398,30 @@ void main() {
         expect(store.history.first.title, 'B2');
       },
     );
+
+    test('removeHistory drops one entry and persists; absent key is a no-op',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      // Add an extra entry so removing one leaves the list non-empty (and the
+      // first-launch seed does not kick back in on reload).
+      await store.putHistory(
+        _entry(key: 'src|nodejs_jianpian|7', title: 'Extra'),
+      );
+      final before = store.history.length;
+      final targetKey = 'src|nodejs_jianpian|7';
+
+      await store.removeHistory(targetKey);
+      expect(store.history, hasLength(before - 1));
+      expect(store.history.any((e) => e.key == targetKey), isFalse);
+
+      // Reload restores the deletion.
+      final reloaded = await AppStore.load();
+      expect(reloaded.history.any((e) => e.key == targetKey), isFalse);
+
+      // Removing an unknown key leaves the list unchanged.
+      await store.removeHistory('no-such-key');
+      expect(store.history, hasLength(before - 1));
+    });
   });
 }

@@ -535,11 +535,21 @@ class _EmptyHint extends StatelessWidget {
 }
 
 /// One watch-history row: thumbnail, title, episode + progress line, a source
-/// + time line, and a play button on the right.
-class _HistoryRow extends StatelessWidget {
+/// + time line, and a play button on the right. Hovering the card reveals a
+/// delete button in its top-right corner.
+class _HistoryRow extends StatefulWidget {
   const _HistoryRow({required this.entry});
 
   final HistoryEntry entry;
+
+  @override
+  State<_HistoryRow> createState() => _HistoryRowState();
+}
+
+class _HistoryRowState extends State<_HistoryRow> {
+  bool _hover = false;
+
+  HistoryEntry get entry => widget.entry;
 
   String get _progressLabel {
     final pct = (entry.progress * 100).round();
@@ -565,69 +575,117 @@ class _HistoryRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Align(
         alignment: Alignment.centerLeft,
-        child: Container(
-          width: 395,
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: LcbColors.card,
-            borderRadius: BorderRadius.circular(LcbMetrics.cardRadius),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+        child: MouseRegion(
+          onEnter: (_) => setState(() => _hover = true),
+          onExit: (_) => setState(() => _hover = false),
+          child: Stack(
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 64,
-                  height: 90,
-                  child: PosterArt(
-                    seed: entry.title.hashCode,
-                    image: entry.poster,
-                  ),
+              Container(
+                width: 395,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: LcbColors.card,
+                  borderRadius: BorderRadius.circular(LcbMetrics.cardRadius),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      entry.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: LcbColors.text,
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: SizedBox(
+                        width: 64,
+                        height: 90,
+                        child: PosterArt(
+                          seed: entry.title.hashCode,
+                          image: entry.poster,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    Text(
-                      '${entry.episode} · $_progressLabel',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        color: LcbColors.textSecondary,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            entry.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: LcbColors.text,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            '${entry.episode} · $_progressLabel',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              color: LcbColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          Text(
+                            _timeSourceLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              color: LcbColors.textTertiary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    Text(
-                      _timeSourceLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        color: LcbColors.textTertiary,
-                      ),
-                    ),
+                    const SizedBox(width: 10),
+                    _PlayButton(onTap: () {}),
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
-              _PlayButton(onTap: () {}),
+              if (_hover)
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: _DeleteButton(onTap: () {
+                    StoreScope.of(context).removeHistory(entry.key);
+                  }),
+                ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A small circular delete affordance shown on hover, matching the app's
+/// quiet grey-on-card idiom.
+class _DeleteButton extends StatelessWidget {
+  const _DeleteButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color: LcbColors.card,
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFFE2EDF7)),
+          ),
+          child: const Icon(
+            CupertinoIcons.trash,
+            size: 13,
+            color: LcbColors.sysRed,
           ),
         ),
       ),
