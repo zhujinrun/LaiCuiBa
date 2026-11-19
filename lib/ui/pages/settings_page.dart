@@ -218,11 +218,11 @@ class _SettingsPageState extends State<SettingsPage> {
       case '外观':
         return _appearanceRows(store);
       case '首页与导航':
-        return _homeNavRows();
+        return _homeNavRows(store);
       case '搜索与输入':
         return _searchInputRows();
       case '播放':
-        return _playbackRows();
+        return _playbackRows(store);
       case '媒体徽章':
         return _badgeRows();
       default:
@@ -311,17 +311,20 @@ class _SettingsPageState extends State<SettingsPage> {
       ];
 
   /// 首页与导航 — home carousel, home categories and the navigation bar.
-  List<Widget> _homeNavRows() => [
+  List<Widget> _homeNavRows(AppStore store) => [
         const _GroupLabel('首页'),
         _Group(
           rows: [
-            const _Row(
+            _Row(
               icon: CupertinoIcons.photo_fill_on_rectangle_fill,
               color: LcbColors.sysIndigo,
               title: '首页轮播海报',
               subtitle: '顶部自动轮播的推荐海报',
               toggle: true,
-              toggleOn: true,
+              toggleValue: store.settings.homeBannerEnabled,
+              onToggle: (v) => store.updateSettings(
+                store.settings.copyWith(homeBannerEnabled: v),
+              ),
             ),
             _Row(
               icon: CupertinoIcons.square_grid_2x2_fill,
@@ -330,13 +333,16 @@ class _SettingsPageState extends State<SettingsPage> {
               subtitle: '电影、电视剧、动漫、综艺等分区',
               onTap: () {},
             ),
-            const _Row(
+            _Row(
               icon: CupertinoIcons.clock_fill,
               color: LcbColors.sysGreen,
               title: '继续观看',
               subtitle: '首页显示上次播放到一半的内容',
               toggle: true,
-              toggleOn: true,
+              toggleValue: store.settings.secondHome,
+              onToggle: (v) => store.updateSettings(
+                store.settings.copyWith(secondHome: v),
+              ),
             ),
           ],
         ),
@@ -351,12 +357,16 @@ class _SettingsPageState extends State<SettingsPage> {
               subtitle: '侧栏分组与入口的显示',
               onTap: () {},
             ),
-            const _Row(
+            _Row(
               icon: CupertinoIcons.tv_fill,
               color: LcbColors.sysPurple,
               title: '电视模式',
               subtitle: '顶部导航、遥控器方向键操作',
-              toggle: false,
+              toggle: true,
+              toggleValue: store.settings.tvClassicUi,
+              onToggle: (v) => store.updateSettings(
+                store.settings.copyWith(tvClassicUi: v),
+              ),
             ),
           ],
         ),
@@ -395,7 +405,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// 播放 — kernel, decode mode, speed, subtitles, danmaku and short-drama
   /// preload. All structural; the actual engine wiring lands in Phase 3.
-  List<Widget> _playbackRows() => [
+  List<Widget> _playbackRows(AppStore store) => [
         const _GroupLabel('内核'),
         _Group(
           rows: [
@@ -425,7 +435,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         const SizedBox(height: 23),
         const _GroupLabel('播放'),
-        const _Group(
+        _Group(
           rows: [
             _Row(
               icon: CupertinoIcons.arrow_right_arrow_left,
@@ -433,7 +443,10 @@ class _SettingsPageState extends State<SettingsPage> {
               title: '跳过片头片尾',
               subtitle: '自动跳过片头片尾',
               toggle: true,
-              toggleOn: true,
+              toggleValue: store.settings.skipIntroOutro,
+              onToggle: (v) => store.updateSettings(
+                store.settings.copyWith(skipIntroOutro: v),
+              ),
             ),
             _Row(
               icon: CupertinoIcons.speedometer,
@@ -441,25 +454,32 @@ class _SettingsPageState extends State<SettingsPage> {
               title: '默认倍速',
               subtitle: '开始播放时的速度',
               value: '1.0x',
+              onTap: () {},
             ),
             _Row(
               icon: CupertinoIcons.captions_bubble,
               color: LcbColors.sysPink,
               title: '字幕',
               subtitle: '外挂字幕、默认语言',
+              onTap: () {},
             ),
             _Row(
               icon: CupertinoIcons.chat_bubble_2,
               color: LcbColors.sysTeal,
               title: '弹幕',
               subtitle: '弹幕源、显示开关',
+              onTap: () {},
             ),
             _Row(
               icon: CupertinoIcons.film,
               color: LcbColors.sysGray,
               title: '短剧预载',
               subtitle: '提前加载下一集',
-              toggle: false,
+              toggle: true,
+              toggleValue: store.settings.shortDramaPreload,
+              onToggle: (v) => store.updateSettings(
+                store.settings.copyWith(shortDramaPreload: v),
+              ),
             ),
           ],
         ),

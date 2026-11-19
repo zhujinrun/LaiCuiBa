@@ -187,6 +187,37 @@ void main() {
       expect(next.liquidGlass, isTrue);
       expect(next.hideStatusBar, isFalse); // untouched default
     });
+
+    test('home/nav and playback fields round-trip with defaults', () {
+      final s = AppSettings.fromJson({
+        'homeBannerEnabled': false,
+        'secondHome': false,
+        'navStyle': 'solid',
+        'navBehavior': 'scroll',
+        'tvClassicUi': true,
+        'shortDramaPreload': true,
+      });
+      expect(s.homeBannerEnabled, isFalse);
+      expect(s.secondHome, isFalse);
+      expect(s.navStyle, 'solid');
+      expect(s.navBehavior, 'scroll');
+      expect(s.tvClassicUi, isTrue);
+      expect(s.shortDramaPreload, isTrue);
+
+      final back = AppSettings.fromJson(s.toJson());
+      expect(back.navStyle, 'solid');
+      expect(back.shortDramaPreload, isTrue);
+    });
+
+    test('new fields default sensibly when absent', () {
+      final s = AppSettings.fromJson({});
+      expect(s.homeBannerEnabled, isTrue);
+      expect(s.secondHome, isTrue);
+      expect(s.navStyle, 'glass');
+      expect(s.navBehavior, 'always');
+      expect(s.tvClassicUi, isFalse);
+      expect(s.shortDramaPreload, isFalse);
+    });
   });
 
   group('AppStore', () {

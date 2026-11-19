@@ -375,6 +375,14 @@ class AppSettings {
     this.adaptiveColor = false,
     this.homeBannerEnabled = true,
     this.skipIntroOutro = true,
+    this.shortDramaPreload = false,
+    this.secondHome = true,
+    this.homeCategoryButton = true,
+    this.homePlatformButton = true,
+    this.homeSourceButton = true,
+    this.navStyle = 'glass',
+    this.navBehavior = 'always',
+    this.tvClassicUi = false,
     this.extra = const {},
   });
 
@@ -388,6 +396,14 @@ class AppSettings {
   final bool adaptiveColor;
   final bool homeBannerEnabled;
   final bool skipIntroOutro;
+  final bool shortDramaPreload;
+  final bool secondHome;
+  final bool homeCategoryButton;
+  final bool homePlatformButton;
+  final bool homeSourceButton;
+  final String navStyle;
+  final String navBehavior;
+  final bool tvClassicUi;
 
   /// Unmodelled keys carried through unchanged.
   final Map<String, dynamic> extra;
@@ -403,6 +419,14 @@ class AppSettings {
     bool? adaptiveColor,
     bool? homeBannerEnabled,
     bool? skipIntroOutro,
+    bool? shortDramaPreload,
+    bool? secondHome,
+    bool? homeCategoryButton,
+    bool? homePlatformButton,
+    bool? homeSourceButton,
+    String? navStyle,
+    String? navBehavior,
+    bool? tvClassicUi,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -415,6 +439,14 @@ class AppSettings {
       adaptiveColor: adaptiveColor ?? this.adaptiveColor,
       homeBannerEnabled: homeBannerEnabled ?? this.homeBannerEnabled,
       skipIntroOutro: skipIntroOutro ?? this.skipIntroOutro,
+      shortDramaPreload: shortDramaPreload ?? this.shortDramaPreload,
+      secondHome: secondHome ?? this.secondHome,
+      homeCategoryButton: homeCategoryButton ?? this.homeCategoryButton,
+      homePlatformButton: homePlatformButton ?? this.homePlatformButton,
+      homeSourceButton: homeSourceButton ?? this.homeSourceButton,
+      navStyle: navStyle ?? this.navStyle,
+      navBehavior: navBehavior ?? this.navBehavior,
+      tvClassicUi: tvClassicUi ?? this.tvClassicUi,
       extra: extra,
     );
   }
@@ -431,6 +463,14 @@ class AppSettings {
     'adaptiveColor': adaptiveColor,
     'homeBannerEnabled': homeBannerEnabled,
     'skipIntroOutro': skipIntroOutro,
+    'shortDramaPreload': shortDramaPreload,
+    'secondHome': secondHome,
+    'homeCategoryButton': homeCategoryButton,
+    'homePlatformButton': homePlatformButton,
+    'homeSourceButton': homeSourceButton,
+    'navStyle': navStyle,
+    'navBehavior': navBehavior,
+    'tvClassicUi': tvClassicUi,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -457,6 +497,14 @@ class AppSettings {
       adaptiveColor: pop('adaptiveColor', false),
       homeBannerEnabled: pop('homeBannerEnabled', true),
       skipIntroOutro: pop('skipIntroOutro', true),
+      shortDramaPreload: pop('shortDramaPreload', false),
+      secondHome: pop('secondHome', true),
+      homeCategoryButton: pop('homeCategoryButton', true),
+      homePlatformButton: pop('homePlatformButton', true),
+      homeSourceButton: pop('homeSourceButton', true),
+      navStyle: pop('navStyle', 'glass'),
+      navBehavior: pop('navBehavior', 'always'),
+      tvClassicUi: pop('tvClassicUi', false),
       extra: extra,
     );
   }
