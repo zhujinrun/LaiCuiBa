@@ -36,7 +36,7 @@ class HomePage extends StatelessWidget {
                 return Padding(
                   padding: const EdgeInsets.fromLTRB(
                     LcbMetrics.pagePadding,
-                    30,
+                    16,
                     LcbMetrics.pagePadding,
                     44,
                   ),

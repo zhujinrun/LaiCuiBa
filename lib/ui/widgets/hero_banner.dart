@@ -128,11 +128,11 @@ class _HeroBannerState extends State<HeroBanner> {
                 ),
                 Positioned(
                   // Measured at 1920x1040: poster top sits 29 below the hero
-                  // top and spans 0.806 of its height (327x460 at 571).
+                  // top and spans 0.822 of its height (336x469 at 571).
                   top: 29,
-                  right: 76,
-                  height: height * 0.806,
-                  child: _HeroPoster(item: item, height: height * 0.806),
+                  right: 65,
+                  height: height * 0.822,
+                  child: _HeroPoster(item: item, height: height * 0.822),
                 ),
                 Positioned(
                   left: 40,
