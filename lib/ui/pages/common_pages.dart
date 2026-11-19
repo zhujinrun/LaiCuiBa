@@ -30,14 +30,12 @@ class ResourcesPage extends StatelessWidget {
         ),
         children: const [
           _SourceCard(
-            icon: CupertinoIcons.book_fill,
-            iconBg: Color(0xFF3A4A6B),
+            icon: CupertinoIcons.film,
+            iconBg: Color(0xFFEFEFF2),
             name: '豆儿猫源',
             status: '当前使用 · 58 部',
             latency: '5.0s',
           ),
-          SizedBox(height: 24),
-          _AddCard(label: '添加资源'),
         ],
       ),
     );
@@ -73,13 +71,13 @@ class _SourceCard extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
               color: iconBg,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, size: 22, color: Colors.white),
+            child: Icon(icon, size: 20, color: const Color(0xFF1D1D1F)),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -265,7 +263,7 @@ class _EmptyHint extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 44, color: LcbColors.sidebarLabel),
+        Icon(icon, size: 54, color: LcbColors.sidebarLabel),
         const SizedBox(height: 18),
         Text(
           title,
@@ -287,50 +285,6 @@ class _EmptyHint extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// A tappable dashed-less "add" tile used at the top of the sources list.
-class _AddCard extends StatelessWidget {
-  const _AddCard({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 24),
-      child: InkWell(
-        onTap: () {},
-        borderRadius: BorderRadius.circular(LcbMetrics.settingsCardRadius),
-        child: Container(
-          height: 52,
-          decoration: BoxDecoration(
-            color: LcbColors.card,
-            borderRadius: BorderRadius.circular(LcbMetrics.settingsCardRadius),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                CupertinoIcons.plus,
-                size: 18,
-                color: LcbColors.primaryDim,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w500,
-                  color: LcbColors.primaryDim,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
