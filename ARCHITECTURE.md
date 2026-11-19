@@ -139,13 +139,88 @@ flutter test                    # 冒烟测试
   `git -C /e/app/Android/flutter checkout 3.24.5`，但那会让本工程版本校验失败。
 - 代码使用新 API（`Color.withValues`），不要写回 `withOpacity`。
 - `window_manager ^0.5.2`（3.44 起可用；旧版 0.4.3 是为兼容 3.24 才降级的）。
-- 换 SDK 后必须 `flutter clean`，否则增量缓存不会重拷 material 字体，图标全变方块。
-- 切 SDK 后如果图标变成方块，是 `flutter clean` 没做 → material 字体没拷进
-  `flutter_assets/fonts/`，clean 重来即可。
+- 换 SDK 后必须 `flutter clean`，否则增量缓存不会重拷 material 字体，
+  `flutter_assets/fonts/` 为空、图标全变方块。
 - 截图对照脚本：`../.probe/shot_win.py <窗口标题> <输出.bmp>`，会临时置顶，
   避开被前台窗口遮挡导致的抓屏错误。
 
 ## 八、边界
 
-仅自用与自维护，不分发、不内置任何付费内容或破解手段。原版为闭源商业软件，
-本工程不复用其代码，只复用 OFL 授权的字体与公开的第三方协议实现知识。
+仅自用与自维护，不分发、不内置任何付费内容或破解手段。
+
+**代码层面**：不复用原版代码。原版是闭源商业软件，且其 Dart 部分是 AOT 机器码，
+本来也拿不到。
+
+**资源层面**：`assets/` 下除字体外的美术资源（图标包 webp、小组件样图、
+加载动画）是从原版包中原样提取的，属于原作者的版权资产。自用无碍；若将来要分发，
+这批图必须重画或替换，`lib/core/assets.dart` 里的键名保持不变即可平滑换图。
+字体 `LcbSerif` 为 SIL OFL 1.1，可随软件分发。
+
+**脚本层面**：`cat_host.js`、`widgets/*.js`、`php/*.php`、`python/*.py` 是原版
+以资源文件形式附带的明文脚本，复制在 `../.probe/bcl106-hosts/`，**仅作协议参考，
+不进本仓库**。Phase 2 落地时按协议重写，不搬运原文件。
+
+**⚠️ 已通过资源包修正的一个判断**：`lib/core/theme.dart` 的色值原先全部来自截图
+采样，浮点误差明显；后续应以 `liquid_glass_widgets` 的实际渲染参数与 `i18n`
+文案为准重新校准，截图只用于校验尺寸与间距。
+
+---
+
+## 附录：原版资源与依赖清单（逆向所得）
+
+### A. 资源包（`data/flutter_assets/`，79 个 assets 文件）
+
+| 路径 | 内容 | 用途 |
+| --- | --- | --- |
+| `assets/app_icons/` | 39 个 webp + `icons.json` + `standard.png` | 图标包选择器，“派大星图标包”四组：BieCuiLe / 线条 / 画家 / 团子 |
+| `assets/i18n/` | `en/es/it/ja/ru.json` + `s2t.txt`(90KB) | 210 条文案，**中文是源语言，键名即中文原文** |
+| `assets/widget_samples/` | `p1-p8.jpg` + `b1-b8.jpg` + `samples.json` | 桌面小组件样图，含真实片名/年份/评分/简介 |
+| `assets/loading/lunyi.webp` | 244KB | 加载动画 |
+| `assets/tv/bg.jpg` | 224KB | 电视模式背景 |
+| `assets/shaders/Anime4K_Upscale_CNN_x2_S.glsl` | Anime4K CNN x2 | 超分着色器 |
+| `assets/pinyin.txt` | 831KB | 拼音搜索索引 |
+| `assets/torrent_trackers.txt` | 2.8KB | BT tracker 列表 |
+
+已搬入 `assets/`，共 71 个文件 6.4MB，键名集中在 `lib/core/assets.dart`，
+`test/assets_test.dart` 校验每个文件确实进了包。
+
+### B. 依赖清单（`app.so` 字符串表中的 `package:` URI）
+
+`NOTICES.Z`（解压 1.4MB）只给许可证不给版本号，版本靠着色器文件集合比对确认。
+
+| 包 | 作用 | 备注 |
+| --- | --- | --- |
+| `liquid_glass_widgets` | **液态玻璃** | 73 处引用 + 5 个 .frag；本地 1.18.0 的着色器集合与原版完全一致 |
+| `media_kit` + `media_kit_video` + `fvp` | 播放内核 | `fvp` 是 mpv 后端（非默认 libmdk） |
+| `canvas_danmaku` | 弹幕渲染 | |
+| `reorderable_grid_view` | 可拖拽网格 | 首页分类排序 |
+| `mobile_scanner` + `qr_flutter` + `qr` | 扫码导源 | |
+| `flutter_svg` + `cached_network_image` + `octo_image` | 图片 | |
+| `dio` + `http` + `http_parser` | 网络 | |
+| `petitparser` + `xml` + `html` + `csslib` + `xpath_selector` | 网页解析 | 刮削与源解析 |
+| `pointycastle` + `crypto` + `archive` | 加密/压缩 | |
+| `provider` + `rxdart` | 状态 | |
+| `window_manager` + `screen_retriever` + `wakelock_plus` | 桌面外壳 | |
+| `file_picker` + `windows_file_picker` + `package_info_plus` + `shared_preferences` + `path_provider` + `url_launcher` | 系统集成 | |
+| `image` | 图像处理 | 取色、封面处理 |
+| `vector_graphics(_compiler)` | 矢量图标 | |
+
+### C. 功能面（由 210 条 i18n 键反推，比截图可见范围大一个量级）
+
+外观与外观模式/强调色/字体字号/液态玻璃/自适应颜色、电视模式与遥控器键盘、
+播放内核与解码方式切换、跳过片头片尾、上下滑动换集、短剧预载、弹幕源、
+外挂字幕/音轨/视轨、倍速、画面比例与对比度饱和度色相伽马、黑边虚化、
+投屏、下载管理、网盘账号挂载、磁力播放、推送识别、网络代理与服务代理、
+备份与恢复、收藏夹管理、自定义组件与新建页面、追更与追更平台、
+多语言、用户协议。
+
+### D. 明文脚本（`../.probe/bcl106-hosts/`，仅参考）
+
+| 文件 | 行数 | 内容 |
+| --- | --- | --- |
+| `desktop/cat_host.js` | 136 | 猫源宿主：每个源跑在独立 Worker（避免争抢 `globalThis`）、自起 HTTP、端口回传 Flutter、stdin 断开即退出 |
+| `desktop/widget_host_node.js` | 150 | 小组件宿主 |
+| `desktop/linkedom.js` / `polywasm.js` | 310KB | 源站依赖的 DOM / wasm 垫片 |
+| `widgets/douban|bangumi|mikan|tmdb.js` | 1230 | 四个刮削站点脚本全文 |
+| `php/lib/spider.php` + `HtmlParser.php` | 20KB | PHP 源支持 |
+| `python/runner.py` + `desktop_host.py` | 410 | TVBox CPython spider 宿主 |

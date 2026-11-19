@@ -1,0 +1,66 @@
+[
+ {
+  "title": "时光代理人",
+  "year": "2021",
+  "rating": 8.2,
+  "overview": "在繁华都市的某个角落，有一家叫做“时光照相馆”的小店还在照常营业。虽然门庭冷落，但它背后其实由两个具有特殊能力的男人——程小时和陆光经营着。为了完成顾客的委托，陆光和程小时组队配合使用超能力进入照片，然而事情的发展却没能按他们所想的那样。",
+  "poster": "assets/widget_samples/p1.jpg",
+  "backdrop": "assets/widget_samples/b1.jpg"
+ },
+ {
+  "title": "火柴盒大电影",
+  "year": "2026",
+  "rating": 7.7,
+  "overview": "一群儿时好友重聚后，生活发生巨变。曾离开家乡的前领袖、中央情报局卧底特工肖恩突然归来，意外将众人卷入一场紧张的国际追逐行动，必须合力拯救世界。",
+  "poster": "assets/widget_samples/p2.jpg",
+  "backdrop": "assets/widget_samples/b2.jpg"
+ },
+ {
+  "title": "人性本兽",
+  "year": "2026",
+  "rating": 7.3,
+  "overview": "在儿子被人绑架后，一位洛杉矶市长候选人和妻子一边急忙筹赎金，一边做出选择，而这些选择可能彻底改变他们的生活。",
+  "poster": "assets/widget_samples/p3.jpg",
+  "backdrop": "assets/widget_samples/b3.jpg"
+ },
+ {
+  "title": "魔女嘉莉",
+  "year": "2026",
+  "rating": 8.3,
+  "overview": "父亲的突然离世迫使嘉莉进入到了残酷的公立高中，她不得不面对席卷社区的校园霸凌丑闻、社交媒体时代无情的压力和冷酷无情，以及伴随青春期而觉醒的神秘心灵感应能力。",
+  "poster": "assets/widget_samples/p4.jpg",
+  "backdrop": "assets/widget_samples/b4.jpg"
+ },
+ {
+  "title": "蜘蛛侠：崭新之日",
+  "year": "2026",
+  "rating": 8.4,
+  "overview": "彼得·帕克以蜘蛛侠的身份全职打击犯罪，却发现自己的身体发生了无法控制的变化。与此同时，一股神秘而强大的新威胁正向他和所爱之人逼近。",
+  "poster": "assets/widget_samples/p5.jpg",
+  "backdrop": "assets/widget_samples/b5.jpg"
+ },
+ {
+  "title": "暗潮之下",
+  "year": "2026",
+  "rating": 7.3,
+  "overview": "当一只神秘的海洋生物威胁着纽芬兰的一个小镇时，一位坚韧的渔夫和他的家人奋力保护他们这个紧密相连的社区。",
+  "poster": "assets/widget_samples/p6.jpg",
+  "backdrop": "assets/widget_samples/b6.jpg"
+ },
+ {
+  "title": "Doctor X：白色黑手党时代",
+  "year": "2026",
+  "rating": 7.7,
+  "overview": "一名神秘且出色的外科医生来到一家人人自大、腐败横行的医院，面对强烈的反对，接手看似无法医治的病例。",
+  "poster": "assets/widget_samples/p7.jpg",
+  "backdrop": "assets/widget_samples/b7.jpg"
+ },
+ {
+  "title": "恋爱充电中",
+  "year": "2026",
+  "rating": 6.3,
+  "overview": "白虎狼（金英光 饰）是冷峻的财阀三代。他依赖人工心脏存活，却面临电池即将耗尽的危机，而电视剧编剧罗宝培（蔡秀彬 饰）在小时候遭雷击后身体充满了电流，更因此获得了能让别人触电的超能力。她无法与人亲近，却发现自己的超能力对白浩朗不起作用。白浩朗面临电池耗尽时，意外发现只要待在罗宝贝身边，人工心脏就能自动充电。最终，俩人签订了为期三个月的“身体接触契约”，奇幻的浪漫故事就此展开。",
+  "poster": "assets/widget_samples/p8.jpg",
+  "backdrop": "assets/widget_samples/b8.jpg"
+ }
+]
