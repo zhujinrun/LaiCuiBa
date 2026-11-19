@@ -31,6 +31,25 @@ HistoryEntry _entry({
   );
 }
 
+FavoriteEntry _fav({
+  String key = 'src|nodejs_jianpian|9',
+  String title = '欢迎来龙餐馆',
+  String? folderId,
+  String latest = '共 2 集',
+}) {
+  return FavoriteEntry(
+    key: key,
+    sourceId: 'src',
+    title: title,
+    poster: '',
+    siteKey: 'nodejs_jianpian',
+    vodId: '9',
+    folderId: folderId,
+    latest: latest,
+    addedAt: 0,
+  );
+}
+
 void main() {
   group('HistoryEntry', () {
     test('round-trips through json preserving all fields', () {
@@ -76,6 +95,35 @@ void main() {
     });
   });
 
+  group('FavoriteEntry', () {
+    test('round-trips through json preserving all fields', () {
+      final e = _fav(folderId: 'folder1', latest: '共 2 集');
+      final back = FavoriteEntry.fromJson(e.toJson());
+
+      expect(back.key, e.key);
+      expect(back.title, '欢迎来龙餐馆');
+      expect(back.siteKey, 'nodejs_jianpian');
+      expect(back.vodId, '9');
+      expect(back.folderId, 'folder1');
+      expect(back.latest, '共 2 集');
+    });
+
+    test('toMediaItem maps title/latest/image', () {
+      final m = _fav().toMediaItem();
+      expect(m.title, '欢迎来龙餐馆');
+      expect(m.tag, '共 2 集');
+    });
+  });
+
+  group('FavoriteFolder', () {
+    test('round-trips through json', () {
+      const f = FavoriteFolder(id: 'id1', name: '好看的电影');
+      final back = FavoriteFolder.fromJson(f.toJson());
+      expect(back.id, 'id1');
+      expect(back.name, '好看的电影');
+    });
+  });
+
   group('SourceInfo', () {
     test('round-trips through json preserving all fields', () {
       const s = SourceInfo(
@@ -102,58 +150,63 @@ void main() {
   });
 
   group('AppStore', () {
-    test('seeds demo source and history on first launch', () async {
+    test(
+      'seeds demo source, history, folder and favourite on first launch',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final store = await AppStore.load();
+
+        expect(store.sources, isNotEmpty);
+        expect(store.sources.first.name, '豆儿猫源');
+        expect(store.history, isNotEmpty);
+        expect(store.history.first.title, '尚公主');
+        expect(store.favorites, isNotEmpty);
+        expect(store.favorites.first.title, '欢迎来龙餐馆');
+        expect(store.favoriteFolders, isNotEmpty);
+        expect(store.favoriteFolders.first.name, '好看的电影');
+        expect(store.currentSourceId, store.sources.first.id);
+      },
+    );
+
+    test('visibleFavorites returns all when no folder selected', () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();
-
-      expect(store.sources, isNotEmpty);
-      expect(store.sources.first.name, '豆儿猫源');
-      expect(store.history, isNotEmpty);
-      expect(store.history.first.title, '尚公主');
-      expect(store.currentSourceId, store.sources.first.id);
+      // Seed has one favourite; no folder selected => all visible.
+      expect(store.visibleFavorites, hasLength(1));
     });
 
-    test('favorites filters only flagged history entries', () async {
+    test('visibleFavorites filters by selected folder', () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();
-      // Seed has one history entry with no favorite flag.
-      expect(store.favorites, isEmpty);
+      final folderId = store.favoriteFolders.first.id;
 
-      await store.putHistory(_entry(
-        key: 'src|nodejs_jianpian|2',
-        title: '欢迎来龙餐馆',
-        favorite: true,
-      ));
-      expect(store.favorites, hasLength(1));
-      expect(store.favorites.first.title, '欢迎来龙餐馆');
+      // Add a second favourite in a different folder.
+      await store.toggleFavorite(
+        _fav(
+          key: 'src|nodejs_jianpian|10',
+          title: '另一部',
+          folderId: 'other-folder',
+        ),
+      );
+
+      store.setFavoriteFolder(folderId);
+      expect(store.visibleFavorites, hasLength(1));
+      expect(store.visibleFavorites.first.title, '欢迎来龙餐馆');
+
+      store.setFavoriteFolder(null);
+      expect(store.visibleFavorites, hasLength(2));
     });
 
-    test('following filters only following-flagged entries', () async {
+    test('toggleFavorite adds then removes an entry', () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();
-      expect(store.following, isEmpty);
+      final entry = _fav(key: 'src|nodejs_jianpian|11', title: '临时收藏');
 
-      await store.putHistory(_entry(
-        key: 'src|nodejs_jianpian|3',
-        title: '追更剧',
-        following: true,
-      ));
-      expect(store.following, hasLength(1));
-      expect(store.favorites, isEmpty);
-    });
+      await store.toggleFavorite(entry);
+      expect(store.favorites.any((e) => e.key == entry.key), isTrue);
 
-    test('toggleFavorite flips the flag and persists', () async {
-      SharedPreferences.setMockInitialValues({});
-      final store = await AppStore.load();
-      await store.putHistory(_entry(key: 'src|nodejs_jianpian|4'));
-      final key = 'src|nodejs_jianpian|4';
-
-      expect(store.favorites, isEmpty);
-      await store.toggleFavorite(key);
-      expect(store.favorites, hasLength(1));
-
-      await store.toggleFavorite(key);
-      expect(store.favorites, isEmpty);
+      await store.toggleFavorite(entry);
+      expect(store.favorites.any((e) => e.key == entry.key), isFalse);
     });
 
     test('clearHistory empties the list', () async {
@@ -165,22 +218,29 @@ void main() {
       expect(store.history, isEmpty);
     });
 
-    test('putHistory upserts by key (same key updates, new key prepends)', () async {
-      SharedPreferences.setMockInitialValues({});
-      final store = await AppStore.load();
+    test(
+      'putHistory upserts by key (same key updates, new key prepends)',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final store = await AppStore.load();
 
-      final first = _entry(key: 'src|nodejs_jianpian|5', title: 'A');
-      await store.putHistory(first);
-      await store.putHistory(_entry(key: 'src|nodejs_jianpian|6', title: 'B'));
+        final first = _entry(key: 'src|nodejs_jianpian|5', title: 'A');
+        await store.putHistory(first);
+        await store.putHistory(
+          _entry(key: 'src|nodejs_jianpian|6', title: 'B'),
+        );
 
-      // New entry prepends.
-      expect(store.history.first.title, 'B');
-      expect(store.history, hasLength(3)); // demo + A + B
+        // New entry prepends.
+        expect(store.history.first.title, 'B');
+        expect(store.history, hasLength(3)); // demo + A + B
 
-      // Upsert same key updates in place without growing the list.
-      await store.putHistory(_entry(key: 'src|nodejs_jianpian|6', title: 'B2'));
-      expect(store.history, hasLength(3));
-      expect(store.history.first.title, 'B2');
-    });
+        // Upsert same key updates in place without growing the list.
+        await store.putHistory(
+          _entry(key: 'src|nodejs_jianpian|6', title: 'B2'),
+        );
+        expect(store.history, hasLength(3));
+        expect(store.history.first.title, 'B2');
+      },
+    );
   });
 }

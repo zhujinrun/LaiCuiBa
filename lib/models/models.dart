@@ -32,7 +32,11 @@ class MediaItem {
 }
 
 class Episode {
-  const Episode({required this.index, required this.title, this.durationMs = 0});
+  const Episode({
+    required this.index,
+    required this.title,
+    this.durationMs = 0,
+  });
 
   final int index;
   final String title;
@@ -52,7 +56,8 @@ class ContinueWatching {
   final int positionMs;
   final int durationMs;
 
-  double get progress => durationMs <= 0 ? 0 : (positionMs / durationMs).clamp(0.0, 1.0);
+  double get progress =>
+      durationMs <= 0 ? 0 : (positionMs / durationMs).clamp(0.0, 1.0);
 
   String get positionLabel {
     final total = positionMs ~/ 1000;
@@ -75,9 +80,11 @@ enum LcbPage { home, resources, favorites, history, settings }
 // Persistence models (aligned with the original's shared_preferences keys)
 // ---------------------------------------------------------------------------
 
-/// One watch-history / favourites entry. The original merges favourites into
-/// history: a record carries optional [isFavorite] / [isFollowing] flags, and
-/// the favourites page renders the subset that is flagged.
+/// One watch-history entry, matching the original's `flutter.history`. The
+/// original keeps favourites in their own `flutter.favorites` store (see
+/// [FavoriteEntry]); the legacy [isFavorite] / [isFollowing] flags here are
+/// kept only for backward-compatible deserialization and are no longer used to
+/// drive the favourites page.
 class HistoryEntry {
   const HistoryEntry({
     required this.key,
@@ -118,16 +125,17 @@ class HistoryEntry {
   final bool isFavorite;
   final bool isFollowing;
 
-  double get progress => durationMs <= 0 ? 0 : (positionMs / durationMs).clamp(0.0, 1.0);
+  double get progress =>
+      durationMs <= 0 ? 0 : (positionMs / durationMs).clamp(0.0, 1.0);
 
   /// A lightweight [MediaItem] view for grid rendering (favourites / follow).
   MediaItem toMediaItem() => MediaItem(
-        id: key,
-        title: title,
-        tag: episode,
-        image: poster.isEmpty ? null : poster,
-        posterSeed: key.hashCode,
-      );
+    id: key,
+    title: title,
+    tag: episode,
+    image: poster.isEmpty ? null : poster,
+    posterSeed: key.hashCode,
+  );
 
   HistoryEntry copyWith({
     bool? isFavorite,
@@ -155,24 +163,24 @@ class HistoryEntry {
   }
 
   Map<String, dynamic> toJson() => {
-        'key': key,
-        'sourceId': sourceId,
-        'title': title,
-        'poster': poster,
-        'episode': episode,
-        'episodeIndex': episodeIndex,
-        'positionMs': positionMs,
-        'durationMs': durationMs,
-        'updatedAt': updatedAt,
-        'payload': {
-          if (siteKey != null) 'siteKey': siteKey,
-          if (vodId != null) 'vodId': vodId,
-          if (flag != null) 'flag': flag,
-        },
-        'sourceName': sourceName,
-        if (isFavorite) 'favorite': true,
-        if (isFollowing) 'following': true,
-      };
+    'key': key,
+    'sourceId': sourceId,
+    'title': title,
+    'poster': poster,
+    'episode': episode,
+    'episodeIndex': episodeIndex,
+    'positionMs': positionMs,
+    'durationMs': durationMs,
+    'updatedAt': updatedAt,
+    'payload': {
+      if (siteKey != null) 'siteKey': siteKey,
+      if (vodId != null) 'vodId': vodId,
+      if (flag != null) 'flag': flag,
+    },
+    'sourceName': sourceName,
+    if (isFavorite) 'favorite': true,
+    if (isFollowing) 'following': true,
+  };
 
   factory HistoryEntry.fromJson(Map<String, dynamic> json) {
     final payload = json['payload'] as Map<String, dynamic>? ?? const {};
@@ -224,28 +232,115 @@ class SourceInfo {
   final int checkedAt;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'type': type,
-        'name': name,
-        'url': url,
-        'username': username,
-        'password': password,
-        'latencyMs': latencyMs,
-        'movieCount': movieCount,
-        'showCount': showCount,
-        'checkedAt': checkedAt,
-      };
+    'id': id,
+    'type': type,
+    'name': name,
+    'url': url,
+    'username': username,
+    'password': password,
+    'latencyMs': latencyMs,
+    'movieCount': movieCount,
+    'showCount': showCount,
+    'checkedAt': checkedAt,
+  };
 
   factory SourceInfo.fromJson(Map<String, dynamic> json) => SourceInfo(
-        id: json['id'] as String,
-        type: json['type'] as String? ?? 'tvbox',
-        name: json['name'] as String? ?? '',
-        url: json['url'] as String? ?? '',
-        username: json['username'] as String? ?? '',
-        password: json['password'] as String? ?? '',
-        latencyMs: json['latencyMs'] as int? ?? 0,
-        movieCount: json['movieCount'] as int? ?? 0,
-        showCount: json['showCount'] as int? ?? 0,
-        checkedAt: json['checkedAt'] as int? ?? 0,
-      );
+    id: json['id'] as String,
+    type: json['type'] as String? ?? 'tvbox',
+    name: json['name'] as String? ?? '',
+    url: json['url'] as String? ?? '',
+    username: json['username'] as String? ?? '',
+    password: json['password'] as String? ?? '',
+    latencyMs: json['latencyMs'] as int? ?? 0,
+    movieCount: json['movieCount'] as int? ?? 0,
+    showCount: json['showCount'] as int? ?? 0,
+    checkedAt: json['checkedAt'] as int? ?? 0,
+  );
+}
+
+/// One favourite, matching the original's `flutter.favorites` array. The
+/// original keeps favourites in their own store (NOT folded into history):
+/// each entry references a [folderId] and carries a human-readable [latest]
+/// label ("共 N 集") plus an [addedAt] timestamp.
+class FavoriteEntry {
+  const FavoriteEntry({
+    required this.key,
+    required this.sourceId,
+    required this.title,
+    required this.poster,
+    this.siteKey,
+    this.vodId,
+    this.folderId,
+    this.latest = '',
+    this.addedAt = 0,
+  });
+
+  final String key;
+  final String sourceId;
+  final String title;
+  final String poster;
+
+  /// Source payload.
+  final String? siteKey;
+  final String? vodId;
+
+  /// The folder this favourite belongs to (null = uncategorised).
+  final String? folderId;
+
+  /// Human-readable progress label, e.g. "共 2 集".
+  final String latest;
+  final int addedAt;
+
+  MediaItem toMediaItem() => MediaItem(
+    id: key,
+    title: title,
+    tag: latest.isEmpty ? null : latest,
+    image: poster.isEmpty ? null : poster,
+    posterSeed: key.hashCode,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'key': key,
+    'sourceId': sourceId,
+    'title': title,
+    'poster': poster,
+    'payload': {
+      if (siteKey != null) 'siteKey': siteKey,
+      if (vodId != null) 'vodId': vodId,
+    },
+    if (folderId != null) 'folderId': folderId,
+    'latest': latest,
+    'addedAt': addedAt,
+  };
+
+  factory FavoriteEntry.fromJson(Map<String, dynamic> json) {
+    final payload = json['payload'] as Map<String, dynamic>? ?? const {};
+    return FavoriteEntry(
+      key: json['key'] as String,
+      sourceId: json['sourceId'] as String,
+      title: json['title'] as String? ?? '',
+      poster: json['poster'] as String? ?? '',
+      siteKey: payload['siteKey'] as String?,
+      vodId: payload['vodId'] as String?,
+      folderId: json['folderId'] as String?,
+      latest: json['latest'] as String? ?? '',
+      addedAt: json['addedAt'] as int? ?? 0,
+    );
+  }
+}
+
+/// A favourite folder (category), matching `flutter.favoriteFolders`. The
+/// favourites page renders one tab per folder plus a leading "全部".
+class FavoriteFolder {
+  const FavoriteFolder({required this.id, required this.name});
+
+  final String id;
+  final String name;
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name};
+
+  factory FavoriteFolder.fromJson(Map<String, dynamic> json) => FavoriteFolder(
+    id: json['id'] as String,
+    name: json['name'] as String? ?? '',
+  );
 }

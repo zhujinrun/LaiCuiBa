@@ -5,17 +5,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
 
-/// Application-wide persistent state: watch history (which also carries the
-/// favourites/following flags), the source list and the active source. This is
-/// the Phase-1 store that replaces the hard-coded fixtures; the on-disk format
-/// mirrors the original's `shared_preferences` keys so behaviour stays
-/// comparable frame by frame.
+/// Application-wide persistent state: watch history, favourites (in their own
+/// store, matching the original's `flutter.favorites` + `flutter.favoriteFolders`),
+/// the source list and the active source. The on-disk format mirrors the
+/// original's `shared_preferences` keys so behaviour stays comparable.
 class AppStore extends ChangeNotifier {
-  AppStore._(this._prefs, this._history, this._sources, this._current);
+  AppStore._(
+    this._prefs,
+    this._history,
+    this._favorites,
+    this._favoriteFolders,
+    this._sources,
+    this._current,
+  );
 
   final SharedPreferences _prefs;
 
   final List<HistoryEntry> _history;
+  final List<FavoriteEntry> _favorites;
+  final List<FavoriteFolder> _favoriteFolders;
   final List<SourceInfo> _sources;
   final String? _current;
 
@@ -23,7 +31,13 @@ class AppStore extends ChangeNotifier {
   /// tabs and the body stay in sync without threading a controller through.
   int favoritesTab = 0;
 
+  /// Selected favourite folder; null = "全部". Persisted so the filter survives
+  /// navigation.
+  String? favoriteFolderId;
+
   static const _kHistory = 'flutter.history';
+  static const _kFavorites = 'flutter.favorites';
+  static const _kFavoriteFolders = 'flutter.favoriteFolders';
   static const _kSources = 'flutter.sources';
   static const _kCurrent = 'flutter.current';
 
@@ -35,8 +49,22 @@ class AppStore extends ChangeNotifier {
   static Future<AppStore> load() async {
     final prefs = await SharedPreferences.getInstance();
 
-    final history = _decodeList(prefs.getString(_kHistory), HistoryEntry.fromJson);
-    final sources = _decodeList(prefs.getString(_kSources), SourceInfo.fromJson);
+    final history = _decodeList(
+      prefs.getString(_kHistory),
+      HistoryEntry.fromJson,
+    );
+    final favorites = _decodeList(
+      prefs.getString(_kFavorites),
+      FavoriteEntry.fromJson,
+    );
+    final folders = _decodeList(
+      prefs.getString(_kFavoriteFolders),
+      FavoriteFolder.fromJson,
+    );
+    final sources = _decodeList(
+      prefs.getString(_kSources),
+      SourceInfo.fromJson,
+    );
 
     var current = prefs.getString(_kCurrent);
     if (current != null && current.length >= 2 && current.startsWith('"')) {
@@ -51,13 +79,21 @@ class AppStore extends ChangeNotifier {
     if (history.isEmpty) {
       history.add(_demoHistoryEntry(sources.first.id, sources.first.name));
     }
+    // Seed one favourite folder + one favourite so the favourites page has a
+    // categorised card to render (mirrors the original's live session).
+    if (folders.isEmpty) {
+      folders.add(_demoFolder());
+    }
+    if (favorites.isEmpty) {
+      favorites.add(_demoFavorite(folders.first.id));
+    }
 
     // Fall back to the first source so the resources page has a card to show.
     if (current == null || current.isEmpty) {
       current = sources.isNotEmpty ? sources.first.id : null;
     }
 
-    return AppStore._(prefs, history, sources, current);
+    return AppStore._(prefs, history, favorites, folders, sources, current);
   }
 
   static List<T> _decodeList<T>(
@@ -72,38 +108,10 @@ class AppStore extends ChangeNotifier {
   }
 
   // -------------------------------------------------------------------------
-  // History / favourites
+  // History
   // -------------------------------------------------------------------------
 
   List<HistoryEntry> get history => List.unmodifiable(_history);
-
-  List<HistoryEntry> get favorites =>
-      _history.where((e) => e.isFavorite).toList();
-
-  List<HistoryEntry> get following =>
-      _history.where((e) => e.isFollowing).toList();
-
-  void setFavoritesTab(int tab) {
-    if (tab == favoritesTab) return;
-    favoritesTab = tab;
-    notifyListeners();
-  }
-
-  Future<void> toggleFavorite(String key) async {
-    final i = _history.indexWhere((e) => e.key == key);
-    if (i < 0) return;
-    _history[i] = _history[i].copyWith(isFavorite: !_history[i].isFavorite);
-    await _persistHistory();
-    notifyListeners();
-  }
-
-  Future<void> toggleFollowing(String key) async {
-    final i = _history.indexWhere((e) => e.key == key);
-    if (i < 0) return;
-    _history[i] = _history[i].copyWith(isFollowing: !_history[i].isFollowing);
-    await _persistHistory();
-    notifyListeners();
-  }
 
   Future<void> clearHistory() async {
     _history.clear();
@@ -120,6 +128,47 @@ class AppStore extends ChangeNotifier {
       _history.insert(0, entry);
     }
     await _persistHistory();
+    notifyListeners();
+  }
+
+  // -------------------------------------------------------------------------
+  // Favourites (own store, matching flutter.favorites / flutter.favoriteFolders)
+  // -------------------------------------------------------------------------
+
+  List<FavoriteEntry> get favorites => List.unmodifiable(_favorites);
+
+  List<FavoriteFolder> get favoriteFolders =>
+      List.unmodifiable(_favoriteFolders);
+
+  /// Favourites filtered by the selected folder (null = "全部").
+  List<FavoriteEntry> get visibleFavorites {
+    final id = favoriteFolderId;
+    if (id == null) return favorites;
+    return _favorites.where((e) => e.folderId == id).toList();
+  }
+
+  void setFavoritesTab(int tab) {
+    if (tab == favoritesTab) return;
+    favoritesTab = tab;
+    notifyListeners();
+  }
+
+  void setFavoriteFolder(String? folderId) {
+    if (folderId == favoriteFolderId) return;
+    favoriteFolderId = folderId;
+    notifyListeners();
+  }
+
+  /// Adds or removes a favourite. When removing, the whole entry is dropped
+  /// (the original has no per-entry favourite flag — it is its own record).
+  Future<void> toggleFavorite(FavoriteEntry entry) async {
+    final i = _favorites.indexWhere((e) => e.key == entry.key);
+    if (i >= 0) {
+      _favorites.removeAt(i);
+    } else {
+      _favorites.insert(0, entry);
+    }
+    await _persistFavorites();
     notifyListeners();
   }
 
@@ -149,15 +198,23 @@ class AppStore extends ChangeNotifier {
     );
   }
 
+  Future<void> _persistFavorites() async {
+    await _prefs.setString(
+      _kFavorites,
+      jsonEncode(_favorites.map((e) => e.toJson()).toList()),
+    );
+  }
+
   static SourceInfo _demoSource() => const SourceInfo(
-        id: '1794457036493149',
-        type: 'tvbox',
-        name: '豆儿猫源',
-        url: 'https://gh-proxy.com/raw.githubusercontent.com/Darklessing/catvod/refs/heads/main/douer/index.js.md5',
-        latencyMs: 5000,
-        movieCount: 58,
-        showCount: 1,
-      );
+    id: '1794457036493149',
+    type: 'tvbox',
+    name: '豆儿猫源',
+    url:
+        'https://gh-proxy.com/raw.githubusercontent.com/Darklessing/catvod/refs/heads/main/douer/index.js.md5',
+    latencyMs: 5000,
+    movieCount: 58,
+    showCount: 1,
+  );
 
   static HistoryEntry _demoHistoryEntry(String sourceId, String sourceName) =>
       HistoryEntry(
@@ -175,4 +232,19 @@ class AppStore extends ChangeNotifier {
         flag: 'LZ线路',
         sourceName: sourceName,
       );
+
+  static FavoriteFolder _demoFolder() =>
+      const FavoriteFolder(id: '1795101875822513', name: '好看的电影');
+
+  static FavoriteEntry _demoFavorite(String folderId) => FavoriteEntry(
+    key: '1794457036493149|nodejs_jianpian|575252',
+    sourceId: '1794457036493149',
+    title: '欢迎来龙餐馆',
+    poster: 'assets/demo/cont0.webp',
+    siteKey: 'nodejs_jianpian',
+    vodId: '575252',
+    folderId: folderId,
+    latest: '共 2 集',
+    addedAt: 1795101878495,
+  );
 }

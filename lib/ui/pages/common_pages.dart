@@ -144,22 +144,35 @@ class _SourceCard extends StatelessWidget {
 
 /// 收藏页：收藏的影片与追更的剧集。
 ///
-/// The 收藏 / 追剧 tabs live in the shell's top bar; the body shows either the
-/// favourites grid or the empty state. The data comes from the store's history
-/// entries flagged as favourite / following (the original folds favourites into
-/// history).
+/// The 收藏 / 追剧 tabs live in the shell's top bar. The 收藏 body shows a
+/// folder filter row (「全部 N」 + one chip per folder) above a poster grid,
+/// matching the original's `flutter.favorites` + `flutter.favoriteFolders`
+/// structure. 追剧 stays an empty state until its storage semantics are pinned
+/// down.
 class FavoritesPage extends StatelessWidget {
   const FavoritesPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
-    final entries = store.favoritesTab == 0 ? store.favorites : store.following;
-    final items = entries.map((e) => e.toMediaItem()).toList();
+
+    // 追剧 tab: no data model yet — show the empty state.
+    if (store.favoritesTab != 0) {
+      return const Center(
+        child: _EmptyHint(
+          icon: CupertinoIcons.heart,
+          title: '还没有追剧',
+          subtitle: '关注的剧集更新后会出现在这里',
+        ),
+      );
+    }
+
+    final folders = store.favoriteFolders;
+    final visible = store.visibleFavorites;
 
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-      child: items.isEmpty
+      child: visible.isEmpty
           ? Center(
               child: Transform.translate(
                 offset: const Offset(0, -13),
@@ -170,7 +183,184 @@ class FavoritesPage extends StatelessWidget {
                 ),
               ),
             )
-          : _PosterGrid(items: items),
+          : _FavoritesBody(
+              folders: folders,
+              favorites: visible,
+              total: store.favorites.length,
+              selectedFolderId: store.favoriteFolderId,
+              onFolderSelected: store.setFavoriteFolder,
+            ),
+    );
+  }
+}
+
+/// The favourites body: a folder filter row on top, then the poster grid.
+class _FavoritesBody extends StatelessWidget {
+  const _FavoritesBody({
+    required this.folders,
+    required this.favorites,
+    required this.total,
+    required this.selectedFolderId,
+    required this.onFolderSelected,
+  });
+
+  final List<FavoriteFolder> folders;
+  final List<FavoriteEntry> favorites;
+  final int total;
+  final String? selectedFolderId;
+  final ValueChanged<String?> onFolderSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            LcbMetrics.pagePadding,
+            18,
+            LcbMetrics.pagePadding,
+            14,
+          ),
+          child: _FolderFilterRow(
+            folders: folders,
+            total: total,
+            selectedFolderId: selectedFolderId,
+            onSelected: onFolderSelected,
+          ),
+        ),
+        Expanded(
+          child: _FavoritesGrid(
+            items: favorites.map((e) => e.toMediaItem()).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Horizontal row of folder chips: 「全部 N」 then one chip per folder.
+class _FolderFilterRow extends StatelessWidget {
+  const _FolderFilterRow({
+    required this.folders,
+    required this.total,
+    required this.selectedFolderId,
+    required this.onSelected,
+  });
+
+  final List<FavoriteFolder> folders;
+  final int total;
+  final String? selectedFolderId;
+  final ValueChanged<String?> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _FolderChip(
+            label: '全部',
+            count: total,
+            selected: selectedFolderId == null,
+            onTap: () => onSelected(null),
+          ),
+          for (final folder in folders)
+            Padding(
+              padding: const EdgeInsets.only(left: 24),
+              child: _FolderChip(
+                label: folder.name,
+                count: 0, // FIXME: per-folder count once multiple folders seed
+                selected: selectedFolderId == folder.id,
+                onTap: () => onSelected(folder.id),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A single filter chip. Selected = purple capsule with white text; unselected
+/// = plain dark text. Both carry a trailing count.
+class _FolderChip extends StatelessWidget {
+  const _FolderChip({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor = selected ? Colors.white : LcbColors.text;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? LcbColors.primaryDim : Colors.transparent,
+          borderRadius: BorderRadius.circular(17),
+        ),
+        child: Text(
+          '$label $count',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+            color: textColor,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Responsive poster grid for the favourites page, reusing the home poster
+/// card. The original shows 169px-wide vertical cards; the column count adapts
+/// to the content width the same way the home sections do.
+class _FavoritesGrid extends StatelessWidget {
+  const _FavoritesGrid({required this.items});
+
+  final List<MediaItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gutter = LcbMetrics.posterGap;
+        final columns =
+            (constraints.maxWidth / (LcbMetrics.posterWidth + gutter))
+                .floor()
+                .clamp(3, 8);
+        final cellWidth =
+            (constraints.maxWidth - gutter * (columns - 1)) / columns;
+
+        return GridView.builder(
+          padding: const EdgeInsets.fromLTRB(
+            LcbMetrics.pagePadding,
+            4,
+            LcbMetrics.pagePadding,
+            40,
+          ),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisSpacing: 24,
+            crossAxisSpacing: gutter,
+            // PosterCard = poster (width*1.5) + 10 gap + one title line.
+            // The title is a fixed 20px line; 2 extra pixels of headroom keep
+            // the Column from overflowing regardless of the test font.
+            mainAxisExtent: cellWidth * 1.5 + 32,
+          ),
+          itemCount: items.length,
+          itemBuilder: (_, i) =>
+              PosterCard(item: items[i], width: cellWidth, onTap: () {}),
+        );
+      },
     );
   }
 }
@@ -256,46 +446,6 @@ class _EmptyHint extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// Responsive poster grid for the favourites page.
-class _PosterGrid extends StatelessWidget {
-  const _PosterGrid({required this.items});
-
-  final List<MediaItem> items;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const gutter = LcbMetrics.posterGap;
-        final columns =
-            (constraints.maxWidth / (LcbMetrics.posterWidth + gutter))
-                .floor()
-                .clamp(3, 8);
-        final cellWidth =
-            (constraints.maxWidth - gutter * (columns - 1)) / columns;
-
-        return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(
-            LcbMetrics.pagePadding,
-            17,
-            LcbMetrics.pagePadding,
-            40,
-          ),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            mainAxisSpacing: 24,
-            crossAxisSpacing: gutter,
-            childAspectRatio: cellWidth / (cellWidth * 1.5 + 10 + 20),
-          ),
-          itemCount: items.length,
-          itemBuilder: (_, i) =>
-              PosterCard(item: items[i], width: cellWidth, onTap: () {}),
-        );
-      },
     );
   }
 }
