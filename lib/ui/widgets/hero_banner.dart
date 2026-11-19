@@ -130,7 +130,13 @@ class _HeroBannerState extends State<HeroBanner> {
                   top: 0,
                   bottom: 0,
                   right: 420,
-                  child: Center(child: _HeroCopy(item: item)),
+                  // Measured: the copy block sits ~12px above the hero centre.
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 24),
+                      child: _HeroCopy(item: item),
+                    ),
+                  ),
                 ),
                 Positioned(
                   left: 42,
