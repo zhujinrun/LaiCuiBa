@@ -7,11 +7,16 @@ import '../../core/theme.dart';
 import '../../models/models.dart';
 import 'poster_art.dart';
 
+/// Full-bleed hero carousel.
+///
+/// Height is adaptive, not fixed: the original resolves to
+/// `min(contentWidth * 0.37, windowHeight * 0.54)`, which is 561px at
+/// 1920x1040 and 430px at 1400x900. A fixed height makes the whole page read
+/// wrong once the window is maximised.
 class HeroBanner extends StatefulWidget {
-  const HeroBanner({super.key, required this.items, this.height = 396});
+  const HeroBanner({super.key, required this.items});
 
   final List<MediaItem> items;
-  final double height;
 
   @override
   State<HeroBanner> createState() => _HeroBannerState();
@@ -50,108 +55,125 @@ class _HeroBannerState extends State<HeroBanner> {
   Widget build(BuildContext context) {
     final item = widget.items[_index];
 
-    return SizedBox(
-      height: widget.height,
-      width: double.infinity,
-      child: ClipRect(
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Positioned.fill(
-              child: ColoredBox(
-                color: const Color(0xFF14131A),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 700),
-                  layoutBuilder: (current, previous) => Stack(
-                    fit: StackFit.expand,
-                    children: [...previous, if (current != null) current],
-                  ),
-                  child: KeyedSubtree(
-                    key: ValueKey(item.id),
-                    child: ImageFiltered(
-                      imageFilter: ImageFilter.blur(sigmaX: 42, sigmaY: 42),
-                      child: Transform.scale(
-                        scale: 1.6,
-                        child: PosterArt(seed: item.posterSeed),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final height = _heroHeight(constraints.maxWidth, context);
+
+        return SizedBox(
+          height: height,
+          width: double.infinity,
+          child: ClipRect(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Positioned.fill(
+                  child: ColoredBox(
+                    color: const Color(0xFF14131A),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 700),
+                      layoutBuilder: (current, previous) => Stack(
+                        fit: StackFit.expand,
+                        children: [...previous, if (current != null) current],
+                      ),
+                      child: KeyedSubtree(
+                        key: ValueKey(item.id),
+                        child: ImageFiltered(
+                          imageFilter: ImageFilter.blur(sigmaX: 42, sigmaY: 42),
+                          child: Transform.scale(
+                            scale: 1.6,
+                            child: PosterArt(seed: item.posterSeed),
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ),
-            // Directional scrim: keeps the headline legible over any artwork.
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [
-                    Color(0xE60A0A0E),
-                    Color(0xA60A0A0E),
-                    Color(0x140A0A0E)
-                  ],
-                  stops: [0.0, 0.46, 0.86],
+                // Directional scrim: keeps the headline legible over any artwork.
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        Color(0xE60A0A0E),
+                        Color(0xA60A0A0E),
+                        Color(0x140A0A0E)
+                      ],
+                      stops: [0.0, 0.46, 0.86],
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            // Melt into the white page at the bottom edge.
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Color(0x00FFFFFF),
-                    Color(0xC7FFFFFF),
-                    Color(0xFFFFFFFF)
-                  ],
-                  stops: [0.0, 0.7, 0.93, 1.0],
+                // Melt into the white page at the bottom edge.
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0x00FFFFFF),
+                        Color(0x00FFFFFF),
+                        Color(0x80FFFFFF),
+                        Color(0xFFFFFFFF)
+                      ],
+                      stops: [0.0, 0.56, 0.82, 1.0],
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            Positioned(
-              right: 76,
-              top: (widget.height - 354) / 2 - 10,
-              child: _HeroPoster(item: item),
-            ),
-            Positioned(
-              left: 52,
-              bottom: 86,
-              right: 320,
-              child: _HeroCopy(item: item),
-            ),
-            Positioned(
-              left: 52,
-              right: 52,
-              bottom: 26,
-              child: Center(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var i = 0; i < widget.items.length; i++)
-                      _Dot(active: i == _index, onTap: () => _goTo(i)),
-                  ],
+                Positioned(
+                  top: 18,
+                  right: 76,
+                  height: height * 0.827,
+                  child: _HeroPoster(item: item, height: height * 0.827),
                 ),
-              ),
+                Positioned(
+                  left: 42,
+                  top: 0,
+                  bottom: 0,
+                  right: 420,
+                  child: Center(child: _HeroCopy(item: item)),
+                ),
+                Positioned(
+                  left: 42,
+                  right: 42,
+                  bottom: 25,
+                  child: Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var i = 0; i < widget.items.length; i++)
+                          _Dot(active: i == _index, onTap: () => _goTo(i)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
+  }
+
+  double _heroHeight(double contentWidth, BuildContext context) {
+    final byWidth = contentWidth * LcbMetrics.heroWidthFactor;
+    final byHeight =
+        MediaQuery.sizeOf(context).height * LcbMetrics.heroHeightFactor;
+    return byWidth < byHeight ? byWidth : byHeight;
   }
 }
 
 class _HeroPoster extends StatelessWidget {
-  const _HeroPoster({required this.item});
+  const _HeroPoster({required this.item, required this.height});
 
   final MediaItem item;
+  final double height;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 236,
-      height: 354,
+      // Measured at 1920x1040: 327x460, i.e. 0.583 x 0.82 of the hero height.
+      width: height * 0.71,
+      height: height,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
         boxShadow: const [
@@ -164,7 +186,7 @@ class _HeroPoster extends StatelessWidget {
         seed: item.posterSeed,
         title: item.title,
         showTitle: true,
-        titleSize: 20,
+        titleSize: 22,
       ),
     );
   }
@@ -185,7 +207,7 @@ class _HeroCopy extends StatelessWidget {
           item.title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: serifStyle(52, height: 1.12).copyWith(
+          style: serifStyle(44, height: 1.1).copyWith(
             color: Colors.white,
             shadows: const [
               Shadow(
@@ -195,7 +217,7 @@ class _HeroCopy extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 22),
         Row(
           children: [
             if (item.score != null) _ScoreBadge(score: item.score!),
@@ -204,7 +226,7 @@ class _HeroCopy extends StatelessWidget {
             if (item.tag != null) _MetaTag(label: item.tag!),
           ],
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 26),
         Row(
           children: [
             _PillButton(
@@ -263,7 +285,7 @@ class _MetaTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.9),
+        color: Colors.white.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
@@ -315,8 +337,8 @@ class _PillButtonState extends State<_PillButton> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 18),
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(9),
@@ -332,12 +354,12 @@ class _PillButtonState extends State<_PillButton> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(widget.icon, size: 19, color: fg),
-              const SizedBox(width: 6),
+              Icon(widget.icon, size: 20, color: fg),
+              const SizedBox(width: 7),
               Text(
                 widget.label,
                 style: TextStyle(
-                    fontSize: 13.5, fontWeight: FontWeight.w600, color: fg),
+                    fontSize: 14, fontWeight: FontWeight.w600, color: fg),
               ),
             ],
           ),

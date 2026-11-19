@@ -39,15 +39,26 @@ abstract final class LcbColors {
 }
 
 abstract final class LcbMetrics {
-  static const sidebarWidth = 232.0;
+  static const sidebarWidth = 224.0;
   static const headerHeight = 60.0;
-  static const pagePadding = 28.0;
+
+  /// Content gutter, measured: the first card starts at 272 screen / 264 content.
+  static const pagePadding = 40.0;
   static const settingsPaddingLeft = 40.0;
   static const contentMaxWidth = 1600.0;
+
+  /// Vertical poster card, measured 196x294 (exactly 2:3) with an 18px gutter.
+  static const posterWidth = 196.0;
+  static const posterGap = 18.0;
   static const cardRadius = 12.0;
   static const settingsCardRadius = 14.0;
   static const settingsRowHeight = 70.0;
   static const chipRadius = 6.0;
+
+  /// Hero height is adaptive: min(contentWidth * 0.37, windowHeight * 0.54).
+  /// Fitted against 1920x1040 (561) and 1400x900 (430).
+  static const heroWidthFactor = 0.37;
+  static const heroHeightFactor = 0.54;
 }
 
 abstract final class LcbText {

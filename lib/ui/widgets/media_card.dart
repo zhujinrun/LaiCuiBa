@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
@@ -20,10 +22,10 @@ class SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Text(title, style: serifStyle(18.5, height: 1.2)),
+        // Measured ink height 18px for both 继续观看 and 电影.
+        Text(title, style: serifStyle(20, height: 1.15)),
         const Spacer(),
-        if (onMore != null)
-          _MoreButton(label: moreLabel, onTap: onMore!),
+        if (onMore != null) _MoreButton(label: moreLabel, onTap: onMore!),
       ],
     );
   }
@@ -56,7 +58,7 @@ class _MoreButtonState extends State<_MoreButton> {
             Text(
               widget.label,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 12.5,
                 color: _hover ? LcbColors.primary : LcbColors.textSecondary,
               ),
             ),
@@ -73,23 +75,30 @@ class _MoreButtonState extends State<_MoreButton> {
 }
 
 /// 16:9 still used by "continue watching" rows.
+///
+/// Width is adaptive: the original resolves to
+/// `min(contentWidth / 3.5, 360)`, giving 360 at 1680 and 331 at 1160.
 class LandscapeCard extends StatefulWidget {
   const LandscapeCard({
     super.key,
     required this.item,
     required this.episodeLabel,
     required this.positionLabel,
+    required this.width,
     this.progress = 0,
-    this.width = 320,
     this.onTap,
   });
 
   final MediaItem item;
   final String episodeLabel;
   final String positionLabel;
-  final double progress;
   final double width;
+  final double progress;
   final VoidCallback? onTap;
+
+  static double widthFor(double contentWidth) {
+    return math.min(contentWidth / 3.5, 360);
+  }
 
   @override
   State<LandscapeCard> createState() => _LandscapeCardState();
@@ -118,7 +127,12 @@ class _LandscapeCardState extends State<LandscapeCard> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(LcbMetrics.cardRadius),
                   boxShadow: _hover
-                      ? const [BoxShadow(color: Color(0x26000000), blurRadius: 18, offset: Offset(0, 8))]
+                      ? const [
+                          BoxShadow(
+                              color: Color(0x26000000),
+                              blurRadius: 18,
+                              offset: Offset(0, 8))
+                        ]
                       : null,
                 ),
                 clipBehavior: Clip.antiAlias,
@@ -131,8 +145,8 @@ class _LandscapeCardState extends State<LandscapeCard> {
                       child: PosterArt(seed: widget.item.posterSeed),
                     ),
                     const Positioned(
-                      left: 10,
-                      top: 10,
+                      left: 12,
+                      bottom: 12,
                       child: _PlayGlyph(),
                     ),
                     Positioned(
@@ -152,19 +166,26 @@ class _LandscapeCardState extends State<LandscapeCard> {
                   ],
                 ),
               ),
-              const SizedBox(height: 9),
+              const SizedBox(height: 12),
               Text(
                 widget.item.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: LcbColors.text),
+                style: const TextStyle(
+                    fontSize: 14,
+                    height: 1.43,
+                    fontWeight: FontWeight.w500,
+                    color: LcbColors.text),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 4),
               Text(
                 '${widget.episodeLabel} · 看到 ${widget.positionLabel}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11.5, color: LcbColors.textSecondary),
+                style: const TextStyle(
+                    fontSize: 12,
+                    height: 1.33,
+                    color: LcbColors.textSecondary),
               ),
             ],
           ),
@@ -180,23 +201,24 @@ class _PlayGlyph extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 26,
-      height: 26,
+      width: 30,
+      height: 30,
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.42),
         shape: BoxShape.circle,
       ),
-      child: const Icon(Icons.play_arrow_rounded, size: 17, color: Colors.white),
+      child: const Icon(Icons.play_arrow_rounded, size: 19, color: Colors.white),
     );
   }
 }
 
-/// 2:3 vertical poster used by library rows.
+/// 2:3 vertical poster used by library rows. Fixed 196x294 with an 18 gutter,
+/// which is why eight cards overflow a 1680 content column.
 class PosterCard extends StatefulWidget {
   const PosterCard({
     super.key,
     required this.item,
-    this.width = 112,
+    this.width = LcbMetrics.posterWidth,
     this.onTap,
   });
 
@@ -230,9 +252,14 @@ class _PosterCardState extends State<PosterCard> {
                 height: h,
                 transform: Matrix4.translationValues(0, _hover ? -3 : 0, 0),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                   boxShadow: _hover
-                      ? const [BoxShadow(color: Color(0x33000000), blurRadius: 20, offset: Offset(0, 10))]
+                      ? const [
+                          BoxShadow(
+                              color: Color(0x33000000),
+                              blurRadius: 20,
+                              offset: Offset(0, 10))
+                        ]
                       : null,
                 ),
                 clipBehavior: Clip.antiAlias,
@@ -240,55 +267,90 @@ class _PosterCardState extends State<PosterCard> {
                   fit: StackFit.expand,
                   children: [
                     PosterArt(seed: widget.item.posterSeed),
-                    if (widget.item.score != null)
-                      Positioned(
-                        left: 6,
-                        top: 6,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                          decoration: BoxDecoration(
-                            color: LcbColors.scoreGreen,
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                          child: Text(
-                            widget.item.score!.toStringAsFixed(1),
-                            style: const TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                              height: 1.2,
-                            ),
-                          ),
-                        ),
+                    // Both chips sit together in the top-left corner.
+                    Positioned(
+                      left: 8,
+                      top: 8,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (widget.item.score != null) ...[
+                            _ScoreChip(score: widget.item.score!),
+                            if (widget.item.tag != null)
+                              const SizedBox(width: 4),
+                          ],
+                          if (widget.item.tag != null)
+                            _TagChip(label: widget.item.tag!),
+                        ],
                       ),
-                    if (widget.item.tag != null)
-                      Positioned(
-                        right: 6,
-                        top: 6,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                          child: Text(
-                            widget.item.tag!,
-                            style: const TextStyle(fontSize: 10, color: Colors.white, height: 1.2),
-                          ),
-                        ),
-                      ),
+                    ),
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(
                 widget.item.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: LcbColors.text),
+                style: const TextStyle(
+                    fontSize: 14,
+                    height: 1.43,
+                    fontWeight: FontWeight.w500,
+                    color: LcbColors.text),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ScoreChip extends StatelessWidget {
+  const _ScoreChip({required this.score});
+
+  final double score;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+      decoration: BoxDecoration(
+        color: LcbColors.scoreGreen,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        score.toStringAsFixed(1),
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
+          height: 1.15,
+        ),
+      ),
+    );
+  }
+}
+
+class _TagChip extends StatelessWidget {
+  const _TagChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 11,
+          color: Colors.white,
+          height: 1.15,
         ),
       ),
     );

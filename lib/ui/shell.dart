@@ -203,7 +203,7 @@ class _HeaderContent extends StatelessWidget {
     final onBack = header.onBack;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(30, 0, 8, 0),
+      padding: const EdgeInsets.fromLTRB(42, 0, 8, 0),
       child: Row(
         children: [
           if (onBack != null) ...[
@@ -366,7 +366,7 @@ class _SearchBoxState extends State<_SearchBox> {
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: Container(
-        width: 300,
+        width: 232,
         height: 34,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
