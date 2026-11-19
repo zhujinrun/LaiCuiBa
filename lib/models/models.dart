@@ -299,6 +299,19 @@ class FavoriteEntry {
     posterSeed: key.hashCode,
   );
 
+  /// Returns a copy moved to a different folder (null = uncategorised).
+  FavoriteEntry copyWithFolder(String? folderId) => FavoriteEntry(
+    key: key,
+    sourceId: sourceId,
+    title: title,
+    poster: poster,
+    siteKey: siteKey,
+    vodId: vodId,
+    folderId: folderId,
+    latest: latest,
+    addedAt: addedAt,
+  );
+
   Map<String, dynamic> toJson() => {
     'key': key,
     'sourceId': sourceId,

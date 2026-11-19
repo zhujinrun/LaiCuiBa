@@ -172,6 +172,47 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Creates a folder and persists it. The id mirrors the original's
+  /// 13-digit millisecond timestamp (e.g. `1795101875822513`).
+  Future<void> createFavoriteFolder(String name) async {
+    _favoriteFolders.add(
+      FavoriteFolder(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        name: name,
+      ),
+    );
+    await _persistFolders();
+    notifyListeners();
+  }
+
+  /// Renames a folder in place. No-op if the id is unknown.
+  Future<void> renameFavoriteFolder(String id, String name) async {
+    final i = _favoriteFolders.indexWhere((f) => f.id == id);
+    if (i < 0) return;
+    _favoriteFolders[i] = FavoriteFolder(id: id, name: name);
+    await _persistFolders();
+    notifyListeners();
+  }
+
+  /// Deletes a folder and returns its favourites to the uncategorised pool
+  /// (folderId → null). The folder id stays valid on the surviving entries'
+  /// other fields.
+  Future<void> deleteFavoriteFolder(String id) async {
+    _favoriteFolders.removeWhere((f) => f.id == id);
+    for (var i = 0; i < _favorites.length; i++) {
+      if (_favorites[i].folderId == id) {
+        _favorites[i] = _favorites[i].copyWithFolder(null);
+      }
+    }
+    // If the deleted folder was the active filter, reset to 全部.
+    if (favoriteFolderId == id) {
+      favoriteFolderId = null;
+    }
+    await _persistFolders();
+    await _persistFavorites();
+    notifyListeners();
+  }
+
   // -------------------------------------------------------------------------
   // Sources
   // -------------------------------------------------------------------------
@@ -212,6 +253,13 @@ class AppStore extends ChangeNotifier {
     await _prefs.setString(
       _kFavorites,
       jsonEncode(_favorites.map((e) => e.toJson()).toList()),
+    );
+  }
+
+  Future<void> _persistFolders() async {
+    await _prefs.setString(
+      _kFavoriteFolders,
+      jsonEncode(_favoriteFolders.map((e) => e.toJson()).toList()),
     );
   }
 

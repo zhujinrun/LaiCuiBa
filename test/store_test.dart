@@ -236,6 +236,47 @@ void main() {
       expect(reloaded.currentSourceId, firstId);
     });
 
+    test('createFavoriteFolder adds a folder with a fresh id', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      final before = store.favoriteFolders.length;
+
+      await store.createFavoriteFolder('新收藏夹');
+      expect(store.favoriteFolders, hasLength(before + 1));
+      expect(store.favoriteFolders.last.name, '新收藏夹');
+      expect(store.favoriteFolders.last.id, isNotEmpty);
+    });
+
+    test('renameFavoriteFolder renames in place', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      final id = store.favoriteFolders.first.id;
+
+      await store.renameFavoriteFolder(id, '重命名后');
+      expect(store.favoriteFolders.first.name, '重命名后');
+      expect(store.favoriteFolders.first.id, id);
+    });
+
+    test(
+      'deleteFavoriteFolder removes it and returns favourites to uncategorised',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final store = await AppStore.load();
+        final folderId = store.favoriteFolders.first.id;
+        // The seed favourite already belongs to this folder.
+        expect(store.favorites.first.folderId, folderId);
+
+        // Select the folder, then delete it.
+        store.setFavoriteFolder(folderId);
+        await store.deleteFavoriteFolder(folderId);
+
+        expect(store.favoriteFolders, isEmpty);
+        expect(store.favorites.first.folderId, isNull);
+        // Active filter resets to 全部 after the folder disappears.
+        expect(store.favoriteFolderId, isNull);
+      },
+    );
+
     test(
       'putHistory upserts by key (same key updates, new key prepends)',
       () async {

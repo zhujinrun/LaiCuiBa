@@ -9,6 +9,7 @@ import 'pages/common_pages.dart';
 import 'pages/home_page.dart';
 import 'pages/settings_page.dart';
 import 'page_header.dart';
+import 'widgets/manage_folders_sheet.dart';
 import 'widgets/shell_header.dart';
 
 class Shell extends StatefulWidget {
@@ -651,10 +652,55 @@ class _FavoritesHeaderTabs extends StatelessWidget {
         const SizedBox(width: 36),
         const Icon(CupertinoIcons.search, size: 17, color: LcbColors.settingsQuiet),
         const SizedBox(width: 26),
-        const Icon(CupertinoIcons.folder, size: 17, color: LcbColors.settingsQuiet),
+        _HeaderIconButton(
+          icon: CupertinoIcons.folder,
+          onTap: () => showManageFoldersSheet(context),
+        ),
         const SizedBox(width: 26),
         const Icon(CupertinoIcons.line_horizontal_3, size: 17, color: LcbColors.settingsQuiet),
       ],
+    );
+  }
+}
+
+/// A small square hoverable icon button used in the favourites header (folder
+/// management). Mirrors the header tool icons' 32px rounded tile but without
+/// the filled background so it sits flush with the plain text tabs.
+class _HeaderIconButton extends StatefulWidget {
+  const _HeaderIconButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  State<_HeaderIconButton> createState() => _HeaderIconButtonState();
+}
+
+class _HeaderIconButtonState extends State<_HeaderIconButton> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: _hover ? LcbColors.hover : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            widget.icon,
+            size: 17,
+            color: _hover ? LcbColors.text : LcbColors.settingsQuiet,
+          ),
+        ),
+      ),
     );
   }
 }
