@@ -230,6 +230,28 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  String _themeModeLabel(String mode) {
+    switch (mode) {
+      case 'dark':
+        return '深色';
+      case 'light':
+        return '浅色';
+      default:
+        return '自动';
+    }
+  }
+
+  String _languageLabel(String lang) {
+    switch (lang) {
+      case 'en':
+        return 'English';
+      case 'zh-TW':
+        return '繁體中文';
+      default:
+        return '简体中文';
+    }
+  }
+
   List<Widget> _appearanceRows(AppStore store) => [
         _Group(
           rows: [
@@ -237,7 +259,7 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: Icons.contrast,
               color: LcbColors.sysIndigo,
               title: '外观模式',
-              value: '自动',
+              value: _themeModeLabel(store.settings.themeMode),
               onTap: () {},
             ),
             _Row(
@@ -258,7 +280,7 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: Icons.translate,
               color: LcbColors.sysBlue,
               title: '语言',
-              value: '简体中文',
+              value: _languageLabel(store.settings.language),
               onTap: () {},
             ),
             _Row(
