@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 
 import '../models/models.dart';
 
@@ -95,16 +95,18 @@ const List<HomeSection> homeSections = [
   ),
 ];
 
-/// Sidebar model: four groups with a label each, matching the original.
+/// Sidebar model: four groups with a label each, matching the original. The
+/// original draws its navigation glyphs from CupertinoIcons, not Material Icons,
+/// so the shapes are kept here rather than swapped for near equivalents.
 const List<(String, List<(IconData, String, LcbPage)>)> navGroups = [
-  ('媒体库', [(Icons.home_outlined, '首页', LcbPage.home)]),
-  ('来源', [(Icons.video_library_outlined, '资源', LcbPage.resources)]),
+  ('媒体库', [(CupertinoIcons.home, '首页', LcbPage.home)]),
+  ('来源', [(CupertinoIcons.tray_2, '资源', LcbPage.resources)]),
   (
     '列表',
     [
-      (Icons.favorite_border, '收藏', LcbPage.favorites),
-      (Icons.history, '历史', LcbPage.history),
+      (CupertinoIcons.heart, '收藏', LcbPage.favorites),
+      (CupertinoIcons.clock, '历史', LcbPage.history),
     ]
   ),
-  ('其他', [(Icons.settings_outlined, '设置', LcbPage.settings)]),
+  ('其他', [(CupertinoIcons.gear, '设置', LcbPage.settings)]),
 ];

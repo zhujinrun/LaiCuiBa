@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
@@ -105,13 +106,18 @@ class _Sidebar extends StatelessWidget {
                 height: 18,
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(
-                    group.$1,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: LcbColors.sidebarLabel,
-                      height: 1,
+                  // The measured original sits one pixel above the optical
+                  // centre of the caption box.
+                  child: Transform.translate(
+                    offset: const Offset(0, -1),
+                    child: Text(
+                      group.$1,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: LcbColors.sidebarLabel,
+                        height: 1,
+                      ),
                     ),
                   ),
                 ),
@@ -181,8 +187,8 @@ class _NavItemState extends State<_NavItem> {
           ),
           child: Row(
             children: [
-              Icon(widget.icon, size: 20, color: fg),
-              const SizedBox(width: 10),
+              Icon(widget.icon, size: 18, color: fg),
+              const SizedBox(width: 12),
               Text(
                 widget.text,
                 style: TextStyle(
@@ -211,17 +217,17 @@ class _HeaderContent extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(40, 0, 8, 0),
-      child: Row(
-        children: [
-          if (onBack != null) ...[
-            _BackButton(onTap: onBack),
-            const SizedBox(width: 6),
-          ],
-          // The original's 18px caption sits 2px below the optical centre of
-          // the 60px strip; YaHei UI centres it higher, so nudge it down.
-          Transform.translate(
-            offset: const Offset(0, 2),
-            child: Text(
+      // The whole strip sits 2px below the optical centre of the 60px header in
+      // the original; YaHei UI centres it higher, so nudge the row down.
+      child: Transform.translate(
+        offset: const Offset(0, 2),
+        child: Row(
+          children: [
+            if (onBack != null) ...[
+              _BackButton(onTap: onBack),
+              const SizedBox(width: 6),
+            ],
+            Text(
               header.title,
               style: const TextStyle(
                 fontSize: 18,
@@ -229,25 +235,25 @@ class _HeaderContent extends StatelessWidget {
                 color: LcbColors.text,
               ),
             ),
-          ),
-          // Source chips belong to the home feed only; other pages have their
-          // own contextual controls in the original.
-          if (page == LcbPage.home) ...[
-            const SizedBox(width: 17),
-            const _SourceChip(
-              icon: Icons.view_agenda,
-              iconSize: 12,
-              label: '豆儿猫源',
-            ),
-            const SizedBox(width: 8),
-            const _SourceChip(
-                icon: Icons.layers_outlined, iconSize: 20, label: '「直」荐片'),
-            const SizedBox(width: 8),
-            _IconGhost(icon: Icons.grid_view, onTap: () {}),
+            // Source chips belong to the home feed only; other pages have their
+            // own contextual controls in the original.
+            if (page == LcbPage.home) ...[
+              const SizedBox(width: 16),
+              const _SourceChip(label: '豆儿猫源', glyph: _SourceGlyph()),
+              const SizedBox(width: 8),
+              const _SourceChip(
+                icon: CupertinoIcons.layers,
+                iconSize: 15,
+                label: '「直」荐片',
+                labelGap: 5,
+              ),
+              const SizedBox(width: 8),
+              _IconGhost(icon: CupertinoIcons.square_grid_2x2, onTap: () {}),
+            ],
+            const Expanded(child: HeaderDragGap()),
+            const _SearchBox(),
           ],
-          const Expanded(child: HeaderDragGap()),
-          const _SearchBox(),
-        ],
+        ),
       ),
     );
   }
@@ -291,16 +297,63 @@ class _BackButtonState extends State<_BackButton> {
   }
 }
 
+/// The mark on the first chip is a 10x7 pictogram that neither bundled icon font
+/// carries: a hairline rounded frame holding two short bars. It is painted from
+/// the measured pixels rather than approximated with a similar glyph.
+class _SourceGlyph extends StatelessWidget {
+  const _SourceGlyph();
+
+  @override
+  Widget build(BuildContext context) => const CustomPaint(
+    size: Size(10, 7),
+    painter: _SourceGlyphPainter(LcbColors.text),
+  );
+}
+
+class _SourceGlyphPainter extends CustomPainter {
+  const _SourceGlyphPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(0.5, 0.5, size.width - 1, size.height - 1),
+        const Radius.circular(1.5),
+      ),
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
+    final bar = Paint()..color = color;
+    canvas.drawRect(const Rect.fromLTWH(3, 1, 4, 2), bar);
+    canvas.drawRect(const Rect.fromLTWH(3, 4, 4, 2), bar);
+  }
+
+  @override
+  bool shouldRepaint(_SourceGlyphPainter old) => old.color != color;
+}
+
 class _SourceChip extends StatefulWidget {
   const _SourceChip({
-    required this.icon,
     required this.label,
+    this.icon,
     this.iconSize = 16,
+    this.glyph,
+    this.labelGap = 8,
   });
 
-  final IconData icon;
+  final IconData? icon;
   final String label;
   final double iconSize;
+
+  /// Replaces [icon] when the mark is not in any bundled icon font.
+  final Widget? glyph;
+
+  /// Air between the label and the chevron.
+  final double labelGap;
 
   @override
   State<_SourceChip> createState() => _SourceChipState();
@@ -317,23 +370,40 @@ class _SourceChipState extends State<_SourceChip> {
       onExit: (_) => setState(() => _hover = false),
       child: Container(
         height: 32,
-        padding: const EdgeInsets.only(left: 10, right: 8),
+        padding: const EdgeInsets.only(left: 10, right: 9),
         decoration: BoxDecoration(
           color: _hover ? const Color(0xFFE8E8EC) : LcbColors.searchFill,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           children: [
-            Icon(widget.icon, size: widget.iconSize, color: LcbColors.text),
-            const SizedBox(width: 8),
+            // Both chips reserve a 20 wide slot for their glyph so the labels
+            // line up even though one mark is drawn much smaller than the other.
+            SizedBox(
+              width: 20,
+              child: Center(
+                child:
+                    widget.glyph ??
+                    Icon(
+                      widget.icon,
+                      size: widget.iconSize,
+                      color: LcbColors.text,
+                    ),
+              ),
+            ),
+            const SizedBox(width: 6),
             Text(
               widget.label,
-              style: const TextStyle(fontSize: 12.5, color: LcbColors.text),
+              style: const TextStyle(
+                fontSize: 12.5,
+                letterSpacing: -0.5,
+                color: LcbColors.text,
+              ),
             ),
-            const SizedBox(width: 4),
+            SizedBox(width: widget.labelGap),
             const Icon(
-              Icons.keyboard_arrow_down,
-              size: 14,
+              CupertinoIcons.chevron_compact_down,
+              size: 12,
               color: LcbColors.textSecondary,
             ),
           ],
@@ -371,7 +441,7 @@ class _IconGhostState extends State<_IconGhost> {
             color: _hover ? const Color(0xFFE8E8EC) : LcbColors.searchFill,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(widget.icon, size: 16, color: LcbColors.text),
+          child: Icon(widget.icon, size: 15, color: LcbColors.text),
         ),
       ),
     );
@@ -396,15 +466,19 @@ class _SearchBoxState extends State<_SearchBox> {
       onExit: (_) => setState(() => _hover = false),
       child: Container(
         width: 232,
-        height: 32,
-        padding: const EdgeInsets.only(left: 12, right: 8),
+        height: 36,
+        padding: const EdgeInsets.only(left: 12, right: 12),
         decoration: BoxDecoration(
           color: _hover ? const Color(0xFFE8E8EC) : LcbColors.searchFill,
           borderRadius: BorderRadius.circular(9),
         ),
         child: const Row(
           children: [
-            Icon(Icons.search, size: 16, color: LcbColors.textSecondary),
+            Icon(
+              CupertinoIcons.search,
+              size: 16,
+              color: LcbColors.textSecondary,
+            ),
             SizedBox(width: 8),
             Text(
               '搜索...',
@@ -412,7 +486,7 @@ class _SearchBoxState extends State<_SearchBox> {
             ),
             Spacer(),
             _KeyCap('Ctrl'),
-            SizedBox(width: 6),
+            SizedBox(width: 4),
             _KeyCap('K'),
           ],
         ),
@@ -431,7 +505,7 @@ class _KeyCap extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 20,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6),
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: const Color(0xFFDEDEE1),
