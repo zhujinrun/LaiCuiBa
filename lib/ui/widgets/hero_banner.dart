@@ -142,7 +142,7 @@ class _HeroBannerState extends State<HeroBanner> {
                   // Measured: the copy block sits ~12px above the hero centre.
                   child: Center(
                     child: Padding(
-                      padding: const EdgeInsets.only(bottom: 24),
+                      padding: const EdgeInsets.only(bottom: 46),
                       child: _HeroCopy(item: item),
                     ),
                   ),
@@ -239,12 +239,10 @@ class _HeroCopy extends StatelessWidget {
         Row(
           children: [
             if (item.score != null) _ScoreBadge(score: item.score!),
-            if (item.score != null && item.tag != null)
-              const SizedBox(width: 8),
             if (item.tag != null) _MetaTag(label: item.tag!),
           ],
         ),
-        const SizedBox(height: 21),
+        const SizedBox(height: 22),
         Row(
           children: [
             _PillButton(
@@ -274,21 +272,40 @@ class _ScoreBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: LcbColors.scoreGreen,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        score.toStringAsFixed(1),
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: Colors.white,
-          height: 1.2,
+    // Measured: a 16x17 green tile holding the 豆 mark, 4px then the number in
+    // plain white — the score is not inside the tile.
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 16,
+          height: 17,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: LcbColors.scoreGreen,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: const Text(
+            '豆',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              height: 1,
+            ),
+          ),
         ),
-      ),
+        const SizedBox(width: 4),
+        Text(
+          score.toStringAsFixed(1),
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+            height: 1,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -303,11 +320,14 @@ class _MetaTag extends StatelessWidget {
     // Measured 44x26, #202123 fill with white copy — not the light pill the
     // settings pages use.
     return Container(
-      margin: const EdgeInsets.only(left: 9),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6.5),
+      height: 26,
+      margin: const EdgeInsets.only(left: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: const Color(0xFF202123),
-        borderRadius: BorderRadius.circular(4),
+        color: const Color(0xFF212526),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFF5F6262)),
       ),
       child: Text(
         label,

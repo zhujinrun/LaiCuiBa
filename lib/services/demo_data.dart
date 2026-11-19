@@ -7,13 +7,25 @@ import '../models/models.dart';
 /// compared with the original frame by frame. Replaced by the real source layer
 /// in a later phase.
 
+/// Douban scores the original shows beside each banner, read off the running
+/// app (八仙！ has no entry in the cache, so it carries no badge there either).
 const List<MediaItem> heroItems = [
-    MediaItem(id: 'b0', title: '欢迎来龙餐馆', tag: '枪版', image: 'assets/demo/b0.jpg'),
-    MediaItem(id: 'b1', title: '蜘蛛侠：崭新之日', tag: 'TC中字', image: 'assets/demo/b1.jpg'),
-    MediaItem(id: 'b2', title: '奥德赛', tag: '枪版', image: 'assets/demo/b2.jpg'),
-    MediaItem(id: 'b3', title: '八仙！', tag: '枪版', image: 'assets/demo/b3.jpg'),
-    MediaItem(id: 'b4', title: '特立独行', tag: '正片', image: 'assets/demo/b4.jpg'),
-    MediaItem(id: 'b5', title: '给阿嬷的情书', tag: 'TC国语', image: 'assets/demo/b5.jpg'),
+  MediaItem(
+      id: 'b0', title: '欢迎来龙餐馆', tag: '枪版', score: 8.7,
+      image: 'assets/demo/b0.jpg'),
+  MediaItem(
+      id: 'b1', title: '蜘蛛侠：崭新之日', tag: 'TC中字', score: 7.7,
+      image: 'assets/demo/b1.jpg'),
+  MediaItem(
+      id: 'b2', title: '奥德赛', tag: '枪版', score: 6.1,
+      image: 'assets/demo/b2.jpg'),
+  MediaItem(id: 'b3', title: '八仙！', tag: '枪版', image: 'assets/demo/b3.jpg'),
+  MediaItem(
+      id: 'b4', title: '特立独行', tag: '正片', score: 6.6,
+      image: 'assets/demo/b4.jpg'),
+  MediaItem(
+      id: 'b5', title: '给阿嬷的情书', tag: 'TC国语', score: 9.3,
+      image: 'assets/demo/b5.jpg'),
 ];
 
 const List<ContinueWatching> continueWatching = [

@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 
 import '../../core/theme.dart';
 import '../../models/models.dart';
@@ -22,8 +22,19 @@ class SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        // Measured ink height 18px for both 继续观看 and 电影.
-        Text(title, style: serifStyle(20, height: 1.15)),
+        // Measured ink height 18-19px for both 继续观看 and 电影, and the 电影
+        // run is 35x18 — a 18px bold 微软雅黑 exactly, not the serif the hero
+        // headline uses.
+        Text(
+          title,
+          style: const TextStyle(
+            fontFamily: LcbText.body,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: LcbColors.text,
+            height: 1.15,
+          ),
+        ),
         const Spacer(),
         if (onMore != null) _MoreButton(label: moreLabel, onTap: onMore!),
       ],
@@ -62,9 +73,10 @@ class _MoreButtonState extends State<_MoreButton> {
                 color: _hover ? LcbColors.primary : LcbColors.textSecondary,
               ),
             ),
+            const SizedBox(width: 3),
             Icon(
-              Icons.chevron_right,
-              size: 16,
+              CupertinoIcons.chevron_forward,
+              size: 15,
               color: _hover ? LcbColors.primary : LcbColors.textTertiary,
             ),
           ],
@@ -146,12 +158,17 @@ class _LandscapeCardState extends State<LandscapeCard> {
                       child: PosterArt(
                         seed: widget.item.posterSeed,
                         image: widget.item.image,
+                        // The 2:3 art covers a 16:9 slot, so 337px of height is
+                        // cropped. The original anchors the crop 93px down from
+                        // the top (a template match lands at that offset), not at
+                        // the centre: Alignment.y = 2 * 93 / 337 - 1.
+                        alignment: const Alignment(0, -0.45),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 9),
+              const SizedBox(height: 10),
               Text(
                 widget.item.title,
                 maxLines: 1,
@@ -163,7 +180,7 @@ class _LandscapeCardState extends State<LandscapeCard> {
                   color: LcbColors.text,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 3),
               Text(
                 '${widget.episodeLabel} · 看到 ${widget.positionLabel}',
                 maxLines: 1,

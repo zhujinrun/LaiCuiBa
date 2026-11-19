@@ -33,22 +33,29 @@ class HomePage extends StatelessWidget {
                 final landscapeHeight = landscapeWidth * 9 / 16;
                 final posterWidth = posterWidthFor(contentWidth);
 
+                // The rails bleed all the way to the window edge: only the
+                // section headers sit inside the 40px page gutter, the lists
+                // carry that gutter as their own leading padding so the last
+                // cover stays visible under the right edge.
                 return Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    LcbMetrics.pagePadding,
-                    16,
-                    LcbMetrics.pagePadding,
-                    44,
-                  ),
+                  padding: const EdgeInsets.only(top: 17, bottom: 44),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SectionHeader(title: '继续观看', onMore: () {}),
-                      const SizedBox(height: 15),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: LcbMetrics.pagePadding,
+                        ),
+                        child: SectionHeader(title: '继续观看', onMore: () {}),
+                      ),
+                      const SizedBox(height: 16),
                       SizedBox(
                         height: landscapeHeight + 9 + 20 + 4 + 16,
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.only(
+                            left: LcbMetrics.pagePadding,
+                          ),
                           itemCount: continueWatching.length,
                           separatorBuilder: (_, __) =>
                               const SizedBox(width: 18),
@@ -66,13 +73,24 @@ class HomePage extends StatelessWidget {
                         ),
                       ),
                       for (final section in homeSections) ...[
-                        const SizedBox(height: 33),
-                        SectionHeader(title: section.title, onMore: () {}),
-                        const SizedBox(height: 15),
+                        const SizedBox(height: 35),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: LcbMetrics.pagePadding,
+                          ),
+                          child: SectionHeader(
+                            title: section.title,
+                            onMore: () {},
+                          ),
+                        ),
+                        const SizedBox(height: 17),
                         SizedBox(
                           height: posterWidth * 1.5 + 10 + 20,
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.only(
+                              left: LcbMetrics.pagePadding,
+                            ),
                             itemCount: section.items.length,
                             separatorBuilder: (_, __) => const SizedBox(
                                 width: LcbMetrics.posterGap),
