@@ -308,6 +308,7 @@ class _FavoritesBody extends StatelessWidget {
           ),
           child: _FolderFilterRow(
             folders: folders,
+            favorites: favorites,
             total: total,
             selectedFolderId: selectedFolderId,
             onSelected: onFolderSelected,
@@ -327,12 +328,14 @@ class _FavoritesBody extends StatelessWidget {
 class _FolderFilterRow extends StatelessWidget {
   const _FolderFilterRow({
     required this.folders,
+    required this.favorites,
     required this.total,
     required this.selectedFolderId,
     required this.onSelected,
   });
 
   final List<FavoriteFolder> folders;
+  final List<FavoriteEntry> favorites;
   final int total;
   final String? selectedFolderId;
   final ValueChanged<String?> onSelected;
@@ -354,7 +357,7 @@ class _FolderFilterRow extends StatelessWidget {
               padding: const EdgeInsets.only(left: 24),
               child: _FolderChip(
                 label: folder.name,
-                count: 0, // FIXME: per-folder count once multiple folders seed
+                count: favorites.where((e) => e.folderId == folder.id).length,
                 selected: selectedFolderId == folder.id,
                 onTap: () => onSelected(folder.id),
               ),

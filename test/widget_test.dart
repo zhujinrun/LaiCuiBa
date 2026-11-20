@@ -62,7 +62,7 @@ void main() {
 
     // Folder filter chips: 「全部 1」 + 「好看的电影 1」.
     expect(find.text('全部 1'), findsOneWidget);
-    expect(find.text('好看的电影 0'), findsWidgets);
+    expect(find.text('好看的电影 1'), findsWidgets);
 
     // The seeded favourite title is shown as a poster card.
     expect(find.text('欢迎来龙餐馆'), findsOneWidget);

@@ -393,7 +393,7 @@ class AppStore extends ChangeNotifier {
     key: '1794457036493149|nodejs_jianpian|575252',
     sourceId: '1794457036493149',
     title: '欢迎来龙餐馆',
-    poster: 'assets/demo/cont0.webp',
+    poster: 'assets/demo/b0.jpg',
     siteKey: 'nodejs_jianpian',
     vodId: '575252',
     folderId: folderId,
