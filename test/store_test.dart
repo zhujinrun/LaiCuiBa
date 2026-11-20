@@ -240,6 +240,19 @@ void main() {
       },
     );
 
+    test('seeded demo data survives a relaunch', () async {
+      SharedPreferences.setMockInitialValues({});
+      await AppStore.load(); // first launch seeds + persists
+
+      // A fresh load (same prefs) must restore the seeded rows, not re-seed.
+      final reloaded = await AppStore.load();
+      expect(reloaded.sources, isNotEmpty);
+      expect(reloaded.favorites, isNotEmpty);
+      expect(reloaded.favoriteFolders, isNotEmpty);
+      expect(reloaded.history, isNotEmpty);
+      expect(reloaded.currentSourceId, reloaded.sources.first.id);
+    });
+
     test('visibleFavorites returns all when no folder selected', () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();

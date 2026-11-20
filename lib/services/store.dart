@@ -37,13 +37,16 @@ class AppStore extends ChangeNotifier {
   /// navigation.
   String? favoriteFolderId;
 
-  static const _kHistory = 'flutter.history';
-  static const _kFavorites = 'flutter.favorites';
-  static const _kFavoriteFolders = 'flutter.favoriteFolders';
-  static const _kSources = 'flutter.sources';
-  static const _kCurrent = 'flutter.current';
-  static const _kSettings = 'flutter.settings';
-  static const _kSeeded = 'flutter.seeded';
+  // shared_preferences (Windows/Linux) auto-prefixes every key with "flutter.",
+  // so these bare keys land at `flutter.history`, `flutter.favorites`, etc. —
+  // exactly matching the original's shared_preferences.json layout.
+  static const _kHistory = 'history';
+  static const _kFavorites = 'favorites';
+  static const _kFavoriteFolders = 'favoriteFolders';
+  static const _kSources = 'sources';
+  static const _kCurrent = 'current';
+  static const _kSettings = 'settings';
+  static const _kSeeded = 'seeded';
 
   // -------------------------------------------------------------------------
   // Load
@@ -96,12 +99,33 @@ class AppStore extends ChangeNotifier {
       if (favorites.isEmpty) {
         favorites.add(_demoFavorite(folders.first.id));
       }
+      // Persist the seeded demo rows so a relaunch does not lose them (the
+      // flag alone would skip seeding while the lists were never written).
+      await prefs.setString(
+        _kSources,
+        jsonEncode(sources.map((e) => e.toJson()).toList()),
+      );
+      await prefs.setString(
+        _kHistory,
+        jsonEncode(history.map((e) => e.toJson()).toList()),
+      );
+      await prefs.setString(
+        _kFavoriteFolders,
+        jsonEncode(folders.map((e) => e.toJson()).toList()),
+      );
+      await prefs.setString(
+        _kFavorites,
+        jsonEncode(favorites.map((e) => e.toJson()).toList()),
+      );
       await prefs.setBool(_kSeeded, true);
     }
 
     // Fall back to the first source so the resources page has a card to show.
     if (current == null || current.isEmpty) {
       current = sources.isNotEmpty ? sources.first.id : null;
+      if (current != null) {
+        await prefs.setString(_kCurrent, jsonEncode(current));
+      }
     }
 
     return AppStore._(
