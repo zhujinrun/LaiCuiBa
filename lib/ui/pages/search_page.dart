@@ -36,6 +36,7 @@ class SearchPage extends StatelessWidget {
     if (!search.anySource) return const _NoSourceNote();
 
     final outcome = search.outcome;
+    if (search.loading && outcome.isEmpty) return const _SearchLoading();
     if (outcome.isEmpty) return const _SearchNoResults();
 
     return _Results(search: search, outcome: outcome);
@@ -130,6 +131,24 @@ class _SearchNoResults extends StatelessWidget {
         icon: CupertinoIcons.search,
         title: '没有找到相关影视',
         subtitle: '换个关键词，或关闭「严格」再试一次。',
+      ),
+    );
+  }
+}
+
+/// Shown while the real spider search is in flight and the demo catalogue has
+/// nothing to show yet (a keyword the fixtures do not carry).
+class _SearchLoading extends StatelessWidget {
+  const _SearchLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: _bodyPadding,
+      child: _CenteredNote(
+        icon: CupertinoIcons.search,
+        title: '正在搜索',
+        subtitle: '正在向全部站点发起搜索…',
       ),
     );
   }

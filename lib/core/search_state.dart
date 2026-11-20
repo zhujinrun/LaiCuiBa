@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import '../models/models.dart';
 import '../services/search.dart';
+import '../services/spider_session.dart';
 
 /// State behind the 搜索 mode: whether it is open, what has been typed, whether
 /// the query has been committed, and the 严格 toggle.
@@ -9,8 +10,13 @@ import '../services/search.dart';
 /// The header field and the page body share this one object, which is why it is
 /// exposed through [LcbSearchScope] rather than passed down: the field lives in
 /// the shell's header while the results live in the content column.
+///
+/// Search is async now: a committed query first shows the demo catalogue
+/// instantly, then asks the real spider (when a runtime is wired) and swaps the
+/// results in when they land. A failed or empty real search falls back to the
+/// demo answers, so the page never goes blank.
 class LcbSearch extends ChangeNotifier {
-  LcbSearch({this.sitesProvider});
+  LcbSearch({this.sitesProvider, this.realSearch});
 
   /// Resolves "which sites should this fan out to" from the current selection.
   ///
@@ -20,6 +26,11 @@ class LcbSearch extends ChangeNotifier {
   /// rebuild plumbing in between.
   final List<SiteInfo> Function(Set<String>? selection)? sitesProvider;
 
+  /// Reaches the real spider. Returns null when no runtime is wired, in which
+  /// case the demo catalogue answers. Injected so the store owns the session.
+  final Future<SpiderSearch?> Function(String keyword, {bool strict})?
+      realSearch;
+
   final TextEditingController text = TextEditingController();
   final FocusNode focus = FocusNode();
 
@@ -27,12 +38,19 @@ class LcbSearch extends ChangeNotifier {
   String _query = '';
   bool _strict = false;
   bool _submitted = false;
+  bool _loading = false;
   String? _site;
+  SearchOutcome _outcome = const SearchOutcome(hits: [], sites: []);
+
+  /// Guards against a stale response overwriting a newer query: each submit
+  /// bumps the generation and only the matching response is kept.
+  int _generation = 0;
 
   bool get isOpen => _open;
   String get query => _query;
   bool get strict => _strict;
   bool get submitted => _submitted;
+  bool get loading => _loading;
 
   /// Non-null when one site's chip is selected; null means 全部.
   String? get site => _site;
@@ -48,18 +66,9 @@ class LcbSearch extends ChangeNotifier {
 
   bool get anySource => _sources == null || _sources!.isNotEmpty;
 
-  /// Results for the committed query, recomputed on read. The catalogue is a
-  /// few dozen titles, so caching would cost more than it saves.
-  ///
-  /// With no source selected there is nothing to fan out to, which the page
-  /// reports as 未选择搜索源 rather than as an empty result set.
-  SearchOutcome get outcome => _submitted && anySource
-      ? searchCatalogue(
-          _query,
-          strict: _strict,
-          sites: sitesProvider?.call(_sources) ?? const [],
-        )
-      : const SearchOutcome(hits: [], sites: []);
+  /// Results for the committed query. Replaced in place once the real search
+  /// lands; empty until the first commit.
+  SearchOutcome get outcome => _outcome;
 
   /// Suggestions shown while typing, before the query is committed.
   List<String> get suggestions => _submitted ? const [] : suggestionsFor(_query);
@@ -78,7 +87,9 @@ class LcbSearch extends ChangeNotifier {
     _open = true;
     _query = '';
     _submitted = false;
+    _loading = false;
     _site = null;
+    _outcome = const SearchOutcome(hits: [], sites: []);
     text.clear();
     notifyListeners();
   }
@@ -88,7 +99,9 @@ class LcbSearch extends ChangeNotifier {
     _open = false;
     _query = '';
     _submitted = false;
+    _loading = false;
     _site = null;
+    _outcome = const SearchOutcome(hits: [], sites: []);
     text.clear();
     focus.unfocus();
     notifyListeners();
@@ -98,16 +111,43 @@ class LcbSearch extends ChangeNotifier {
     if (value == _query) return;
     _query = value;
     _submitted = false;
+    _loading = false;
     _site = null;
+    _outcome = const SearchOutcome(hits: [], sites: []);
     notifyListeners();
   }
 
   /// Commits the current query, which is what Enter and a suggestion tap do.
+  ///
+  /// The demo catalogue answers synchronously first (so the results never lag a
+  /// keystroke), then the real spider is queried and its results swap in.
   void submit() {
     if (_query.trim().isEmpty) return;
     _submitted = true;
     focus.unfocus();
+
+    final gen = ++_generation;
+    _outcome = _demoOutcome(_query);
+    _loading = true;
     notifyListeners();
+
+    final real = realSearch;
+    if (real == null) {
+      _loading = false;
+      return;
+    }
+    real(_query, strict: _strict).then((result) {
+      if (gen != _generation || !_submitted) return;
+      _loading = false;
+      if (result != null && !result.isEmpty) {
+        _outcome = _fromSpider(result);
+      }
+      notifyListeners();
+    }).catchError((Object _) {
+      if (gen != _generation || !_submitted) return;
+      _loading = false;
+      notifyListeners();
+    });
   }
 
   void pickSuggestion(String suggestion) {
@@ -117,11 +157,17 @@ class LcbSearch extends ChangeNotifier {
     _submitted = true;
     _site = null;
     focus.unfocus();
-    notifyListeners();
+    submit();
   }
 
   void toggleStrict() {
     _strict = !_strict;
+    // The result set is cached now, so flipping the toggle must re-run the
+    // query (exact-match changes which titles come back).
+    if (_submitted && _query.trim().isNotEmpty) {
+      submit();
+      return;
+    }
     notifyListeners();
   }
 
@@ -156,6 +202,36 @@ class LcbSearch extends ChangeNotifier {
   void clearQuery() {
     text.clear();
     setQuery('');
+  }
+
+  /// The demo-catalogue answer, computed synchronously so results never lag.
+  SearchOutcome _demoOutcome(String query) => _submitted && anySource
+      ? searchCatalogue(
+          query,
+          strict: _strict,
+          sites: sitesProvider?.call(_sources) ?? const [],
+        )
+      : const SearchOutcome(hits: [], sites: []);
+
+  /// Maps a real spider search onto the same shape the page already renders.
+  SearchOutcome _fromSpider(SpiderSearch result) {
+    final hits = <SearchHit>[];
+    final summaries = <SearchSiteSummary>[];
+    for (final group in result.groups) {
+      summaries.add(
+        SearchSiteSummary(site: group.site, count: group.items.length),
+      );
+      for (final item in group.items) {
+        hits.add(
+          SearchHit(
+            item: item,
+            site: group.site,
+            remarks: item.latest?.isNotEmpty == true ? item.latest! : '完结',
+          ),
+        );
+      }
+    }
+    return SearchOutcome(hits: hits, sites: summaries);
   }
 
   @override

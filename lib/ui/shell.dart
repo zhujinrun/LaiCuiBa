@@ -41,6 +41,8 @@ class _ShellState extends State<Shell> {
   /// Owns the 搜索 mode: the field in the header and the results in the column.
   late final _search = LcbSearch(
     sitesProvider: (selection) => _store.sitesForSelection(selection),
+    realSearch: (keyword, {strict = false}) =>
+        _store.searchReal(keyword, strict: strict),
   );
 
   /// Non-null while the detail page is open in the content column.
@@ -110,6 +112,14 @@ class _ShellState extends State<Shell> {
       _detailEpisode = episodeIndex;
     });
     _header.push(resolved.title, _closeDetail, showSearch: false);
+
+    // Swap in the real record when the spider has one; the demo fixture (or the
+    // card's own fields) renders until then.
+    _store.detailReal(item).then((full) {
+      if (full == null || !mounted) return;
+      if (_detail?.id != resolved.id) return; // user navigated away already
+      setState(() => _detail = full);
+    });
   }
 
   void _closeDetail() {
