@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'core/app_info.dart';
@@ -14,6 +15,10 @@ import 'ui/shell.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
+
+  // Initialise the libmpv backend shipped by media_kit_libs_video. No external
+  // libmpv is passed, so the plugin's own stable build is used.
+  MediaKit.ensureInitialized();
 
   // Load persisted state before the first frame so the pages open populated.
   final store = await AppStore.load();
