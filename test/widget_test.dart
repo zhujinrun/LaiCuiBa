@@ -222,6 +222,43 @@ void main() {
     expect(find.text('第40集(全)'), findsNothing);
   });
 
+  testWidgets('tapping a search result opens the detail page and back returns', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('搜索...'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '尚');
+    await tester.pumpAndSettle();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    // The result row is tappable and must push the detail page (regression:
+    // the search overlay used to stay on top, so this tap did nothing).
+    await tester.tap(find.text('尚公主').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('选集'), findsOneWidget);
+    expect(find.text('演员阵容'), findsOneWidget);
+
+    // Back returns to the search results, not the home feed.
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    expect(find.text('选集'), findsNothing);
+    expect(find.text('全部'), findsOneWidget);
+  });
+
   testWidgets('a pasted config becomes a source whose sites feed the fan-out', (
     tester,
   ) async {

@@ -319,9 +319,14 @@ class _ShellState extends State<Shell> {
                           _Sidebar(current: _page, onSelect: _select),
                           Expanded(
                             child: Builder(
-                              builder: (ctx) => LcbSearchScope.of(ctx).isOpen
-                                  ? const SearchPage()
-                                  : _body(),
+                              // Detail wins over search: tapping a result opens
+                              // the detail page while the search stays open, so
+                              // going back returns to the results.
+                              builder: (ctx) => _detail != null
+                                  ? _body()
+                                  : (LcbSearchScope.of(ctx).isOpen
+                                        ? const SearchPage()
+                                        : _body()),
                             ),
                           ),
                         ],
@@ -517,12 +522,8 @@ class _HeaderContent extends StatelessWidget {
     final header = LcbPageHeaderScope.of(context);
     final onBack = header.onBack;
 
-    // 搜索 mode owns the whole bar: an expanded field flush with the content
-    // gutter, the 严格 toggle, the source picker and 取消. No title, no back.
-    if (LcbSearchScope.of(context).isOpen) {
-      return _SearchHeader(onClose: onCloseSearch);
-    }
-
+    // Detail beats search: opening a detail from a search result shows the
+    // back-arrow bar, not the search field.
     if (detail && onBack != null) {
       return Padding(
         padding: const EdgeInsets.only(left: 24),
@@ -542,6 +543,12 @@ class _HeaderContent extends StatelessWidget {
           ],
         ),
       );
+    }
+
+    // 搜索 mode owns the whole bar: an expanded field flush with the content
+    // gutter, the 严格 toggle, the source picker and 取消. No title, no back.
+    if (LcbSearchScope.of(context).isOpen) {
+      return _SearchHeader(onClose: onCloseSearch);
     }
 
     return Padding(
