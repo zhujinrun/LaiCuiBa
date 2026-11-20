@@ -7,6 +7,7 @@ import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../widgets/media_card.dart';
 import '../widgets/poster_art.dart';
+import '../widgets/source_dialogs.dart';
 
 /// 资源页：源订阅与网络挂载的列表。
 ///
@@ -49,6 +50,7 @@ class ResourcesPage extends StatelessWidget {
               source: s,
               selected: s.id == current,
               onTap: () => store.selectSource(s.id),
+              onMenu: () => showSourceMenu(context, s),
             ),
         ],
       ),
@@ -115,16 +117,25 @@ class _SourceCard extends StatelessWidget {
     required this.source,
     required this.selected,
     required this.onTap,
+    required this.onMenu,
   });
 
   final SourceInfo source;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback onMenu;
 
+  /// What the card says under the name.
+  ///
+  /// The original shows a title count ("当前使用 · 58 部") because it has fetched
+  /// the source's catalogue. This rebuild only knows the sites the config
+  /// declared, so it reports those; with no config parsed there is nothing
+  /// honest to show, and a borrowed number would just be wrong.
   String get _status {
-    final count = source.movieCount + source.showCount;
     if (!selected) return '未使用';
-    return '当前使用 · $count 部';
+    final sites = source.searchableSites.length;
+    if (sites > 0) return '当前使用 · $sites 个站点';
+    return '当前使用 · 未解析';
   }
 
   String get _latency {
@@ -213,10 +224,19 @@ class _SourceCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Icon(
-                  CupertinoIcons.ellipsis,
-                  size: 18,
-                  color: LcbColors.textTertiary,
+                // Its own hit target, otherwise the card's onTap swallows the
+                // tap and the menu never opens.
+                GestureDetector(
+                  onTap: onMenu,
+                  behavior: HitTestBehavior.opaque,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                    child: Icon(
+                      CupertinoIcons.ellipsis,
+                      size: 18,
+                      color: LcbColors.textTertiary,
+                    ),
+                  ),
                 ),
               ],
             ),

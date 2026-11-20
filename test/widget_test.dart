@@ -1,5 +1,6 @@
 import 'dart:ui' show Size;
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoSwitch;
 import 'package:flutter/material.dart' show Icons, TextField;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -176,5 +177,81 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('没有找到相关影视'), findsOneWidget);
     expect(find.text('第40集(全)'), findsNothing);
+  });
+
+  testWidgets('a pasted config becomes a source whose sites feed the fan-out', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+    expect(store.sources, hasLength(1));
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    // 资源 page, then the header's + button.
+    await tester.tap(find.text('资源').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(CupertinoIcons.plus));
+    await tester.pumpAndSettle();
+    expect(find.text('添加影视源'), findsOneWidget);
+
+    const config =
+        '{"sites":[{"key":"mine","name":"我的站","api":"csp_Mine"}]}';
+    await tester.enterText(find.byType(TextField).last, config);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('解析到 1 个站点'), findsOneWidget);
+
+    await tester.tap(find.text('添加'));
+    await tester.pumpAndSettle();
+
+    // The source landed in the list and its site reached the fan-out -- the
+    // whole point of parsing locally instead of stubbing the add flow.
+    expect(find.text('粘贴的源'), findsOneWidget);
+    expect(store.sources, hasLength(2));
+    expect(
+      store.sitesForSelection(null).map((site) => site.name),
+      contains('我的站'),
+    );
+  });
+
+  testWidgets('silencing a site from the editor narrows the site list', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('资源').first);
+    await tester.pumpAndSettle();
+
+    // The card's ⋯ opens the menu; 编辑 opens the source sheet.
+    await tester.tap(find.byIcon(CupertinoIcons.ellipsis));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('编辑'));
+    await tester.pumpAndSettle();
+    expect(find.text('站点 12 个'), findsOneWidget);
+
+    await tester.tap(find.text('站点 12 个'));
+    await tester.pumpAndSettle();
+
+    // Flip the first site off; the summary has to say so, otherwise the user
+    // has no way to tell what actually reaches search.
+    await tester.tap(find.byType(CupertinoSwitch).first);
+    await tester.pumpAndSettle();
+    expect(find.text('站点 12 个 · 11 个参与搜索'), findsOneWidget);
+    expect(store.activeSites, hasLength(11));
   });
 }

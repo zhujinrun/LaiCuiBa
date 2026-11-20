@@ -8,6 +8,7 @@ import '../core/store_scope.dart';
 import '../core/theme.dart';
 import '../models/models.dart';
 import '../services/demo_data.dart';
+import '../services/store.dart';
 import 'pages/common_pages.dart';
 import 'pages/detail_page.dart';
 import 'pages/home_page.dart';
@@ -17,6 +18,7 @@ import 'page_header.dart';
 import 'widgets/manage_folders_sheet.dart';
 import 'widgets/search_sources_dialog.dart';
 import 'widgets/shell_header.dart';
+import 'widgets/source_dialogs.dart';
 
 class Shell extends StatefulWidget {
   const Shell({super.key});
@@ -29,8 +31,16 @@ class _ShellState extends State<Shell> {
   LcbPage _page = LcbPage.home;
   final _header = LcbPageHeader('首页');
 
+  /// The store, captured here so the search mode can resolve which sites to fan
+  /// out to. Assigned in didChangeDependencies, which also subscribes the shell
+  /// to store changes -- that is what makes a newly added or deleted source
+  /// reach the chip row without the search page knowing about sources at all.
+  late AppStore _store;
+
   /// Owns the 搜索 mode: the field in the header and the results in the column.
-  final _search = LcbSearch();
+  late final _search = LcbSearch(
+    sitesProvider: (selection) => _store.sitesForSelection(selection),
+  );
 
   /// Non-null while the detail page is open in the content column.
   MediaItem? _detail;
@@ -43,6 +53,12 @@ class _ShellState extends State<Shell> {
     LcbPage.history: '历史',
     LcbPage.settings: '设置',
   };
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _store = StoreScope.of(context);
+  }
 
   @override
   void dispose() {
@@ -87,7 +103,7 @@ class _ShellState extends State<Shell> {
   /// Pushes the detail page into the content column; the sidebar keeps its
   /// selection so the back arrow returns exactly where the user came from.
   void _openDetail(MediaItem item, {int? episodeIndex}) {
-    final resolved = detailFor(item);
+    final resolved = _store.detailOf(item);
     setState(() {
       _detail = resolved;
       _detailEpisode = episodeIndex;
@@ -502,7 +518,10 @@ class _HeaderContent extends StatelessWidget {
             const SizedBox(width: 11),
             const _HeaderToolIcon(icon: CupertinoIcons.search),
             const SizedBox(width: 11),
-            const _HeaderToolIcon(icon: CupertinoIcons.plus),
+            _HeaderToolIcon(
+              icon: CupertinoIcons.plus,
+              onTap: () => showAddSourceDialog(context),
+            ),
             const SizedBox(width: 11),
             const _HeaderToolIcon(icon: CupertinoIcons.checkmark_circle),
             const SizedBox(width: 11),
@@ -861,13 +880,17 @@ class _HeaderIconButtonState extends State<_HeaderIconButton> {
 /// A square tool button used on the resources page header: a #F6F6F8 rounded
 /// tile holding a dark glyph.
 class _HeaderToolIcon extends StatelessWidget {
-  const _HeaderToolIcon({required this.icon});
+  const _HeaderToolIcon({required this.icon, this.onTap});
 
   final IconData icon;
 
+  /// Null keeps the glyph decorative. The resource page wires `+` to the add
+  /// dialog; the rest still have no behaviour behind them.
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final box = Container(
       width: 32,
       height: 32,
       decoration: BoxDecoration(
@@ -875,6 +898,15 @@ class _HeaderToolIcon extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Icon(icon, size: 17, color: LcbColors.text),
+    );
+    if (onTap == null) return box;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: box,
+      ),
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import '../models/models.dart';
 import '../services/search.dart';
 
 /// State behind the 搜索 mode: whether it is open, what has been typed, whether
@@ -9,7 +10,15 @@ import '../services/search.dart';
 /// exposed through [LcbSearchScope] rather than passed down: the field lives in
 /// the shell's header while the results live in the content column.
 class LcbSearch extends ChangeNotifier {
-  LcbSearch();
+  LcbSearch({this.sitesProvider});
+
+  /// Resolves "which sites should this fan out to" from the current selection.
+  ///
+  /// Injected rather than read from a global so the source list stays owned by
+  /// the store: deleting a source, silencing one of its sites, or adding a
+  /// freshly pasted config all change what the next search sees, with no
+  /// rebuild plumbing in between.
+  final List<SiteInfo> Function(Set<String>? selection)? sitesProvider;
 
   final TextEditingController text = TextEditingController();
   final FocusNode focus = FocusNode();
@@ -41,8 +50,15 @@ class LcbSearch extends ChangeNotifier {
 
   /// Results for the committed query, recomputed on read. The catalogue is a
   /// few dozen titles, so caching would cost more than it saves.
+  ///
+  /// With no source selected there is nothing to fan out to, which the page
+  /// reports as 未选择搜索源 rather than as an empty result set.
   SearchOutcome get outcome => _submitted && anySource
-      ? searchCatalogue(_query, strict: _strict)
+      ? searchCatalogue(
+          _query,
+          strict: _strict,
+          sites: sitesProvider?.call(_sources) ?? const [],
+        )
       : const SearchOutcome(hits: [], sites: []);
 
   /// Suggestions shown while typing, before the query is committed.

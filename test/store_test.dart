@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -495,6 +497,142 @@ void main() {
       final entry = HistoryEntry.fromJson(legacy);
       expect(entry.sourceUrl, isNull);
       expect(entry.sourceType, isNull);
+    });
+
+    // -----------------------------------------------------------------------
+    // Sources -> sites: the junction every page reads from
+    // -----------------------------------------------------------------------
+
+    test('the seeded source carries the twelve sites its config declares',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+
+      expect(store.sources.first.sites, hasLength(12));
+      expect(store.activeSites, hasLength(12));
+      expect(store.activeSites.first.name, '玩偶');
+      expect(store.sitesForSelection(null), hasLength(12));
+    });
+
+    test('silencing a site drops it from the fan-out and persists', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      final id = store.sources.first.id;
+
+      await store.toggleSite(id, 'wanou');
+      expect(store.activeSites, hasLength(11));
+      expect(store.activeSites.any((site) => site.name == '玩偶'), isFalse);
+      // What search actually fans out over shrinks with it.
+      expect(store.sitesForSelection(null), hasLength(11));
+
+      final reloaded = await AppStore.load();
+      expect(reloaded.activeSites, hasLength(11));
+
+      await reloaded.toggleSite(id, 'wanou');
+      expect(reloaded.activeSites, hasLength(12));
+    });
+
+    test('a pasted source joins the fan-out and leaves when deleted', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+
+      final id = await store.addSource(
+        const SourceInfo(
+          id: 'pasted-1',
+          type: 'tvbox',
+          name: '粘贴的源',
+          url: '',
+          sites: [SiteInfo(key: 'p1', name: '我自己的站')],
+        ),
+      );
+      expect(id, 'pasted-1');
+      // With every source selected both configs contribute.
+      expect(store.sitesForSelection(null), hasLength(13));
+      expect(store.sitesForSelection({'pasted-1'}).single.name, '我自己的站');
+
+      await store.removeSource('pasted-1');
+      expect(store.sitesForSelection(null), hasLength(12));
+      expect(store.sources.any((source) => source.id == 'pasted-1'), isFalse);
+    });
+
+    test('deleting the active source falls back to the next one', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      await store.addSource(
+        const SourceInfo(id: 'b', type: 'tvbox', name: 'B', url: ''),
+      );
+      await store.selectSource('b');
+      expect(store.currentSourceId, 'b');
+
+      await store.removeSource('b');
+      expect(store.sources.any((source) => source.id == 'b'), isFalse);
+      expect(store.currentSourceId, store.sources.first.id);
+    });
+
+    test('SourceInfo round-trips sites and tolerates sources without any', () {
+      const source = SourceInfo(
+        id: 's',
+        type: 'tvbox',
+        name: '源',
+        url: '',
+        sites: [SiteInfo(key: 'a', name: '甲', type: '3', api: 'x')],
+      );
+      final back = SourceInfo.fromJson(source.toJson());
+      expect(back.sites, hasLength(1));
+      expect(back.sites.single.name, '甲');
+      expect(back.sites.single.api, 'x');
+      expect(back.sites.single.enabled, isTrue);
+
+      // A source written before sites existed has no `sites` key at all.
+      final legacy = SourceInfo.fromJson({
+        'id': 'old',
+        'type': 'tvbox',
+        'name': '老源',
+        'url': 'u',
+      });
+      expect(legacy.sites, isEmpty);
+      expect(legacy.searchableSites, isEmpty);
+    });
+
+    test('replaceSites swaps the list but keeps the other fields', () async {      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      final before = store.sources.first;
+
+      await store.replaceSites(before.id, const [
+        SiteInfo(key: 'x', name: '新站'),
+      ]);
+      final after = store.sources.first;
+      expect(after.sites.single.name, '新站');
+      expect(after.name, before.name);
+      expect(after.url, before.url);
+      expect(after.movieCount, before.movieCount);
+    });
+
+    test('a source written before sites existed is backfilled on upgrade',
+        () async {
+      // Legacy shape: the seeded id, no `sites` key, and the seed flag already
+      // set so the first-launch path does not run. Without the migration the
+      // fan-out would be empty for anyone who had run the previous build.
+      SharedPreferences.setMockInitialValues({
+        'seeded': true,
+        'sources': jsonEncode([
+          {
+            'id': '1794457036493149',
+            'type': 'tvbox',
+            'name': '豆儿猫源',
+            'url': 'https://example.com/douer/index.js.md5',
+          },
+        ]),
+      });
+
+      final store = await AppStore.load();
+      expect(store.sources.first.sites, hasLength(12));
+      expect(store.activeSites, hasLength(12));
+
+      // The backfill is written back rather than recomputed every launch.
+      final reloaded = await AppStore.load();
+      expect(reloaded.sources.first.sites, hasLength(12));
+      expect(reloaded.currentSourceId, '1794457036493149');
     });
   });
 }

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
+import 'demo_data.dart' as demo;
 
 /// Application-wide persistent state: watch history, favourites (in their own
 /// store, matching the original's `flutter.favorites` + `flutter.favoriteFolders`),
@@ -73,6 +74,10 @@ class AppStore extends ChangeNotifier {
       SourceInfo.fromJson,
     );
 
+    // Installs that predate site lists keep a source with no sites at all,
+    // which would leave the whole fan-out empty after the upgrade.
+    final sitesBackfilled = _backfillDemoSites(sources);
+
     var current = prefs.getString(_kCurrent);
     if (current != null && current.length >= 2 && current.startsWith('"')) {
       current = jsonDecode(current) as String;
@@ -118,6 +123,11 @@ class AppStore extends ChangeNotifier {
         jsonEncode(favorites.map((e) => e.toJson()).toList()),
       );
       await prefs.setBool(_kSeeded, true);
+    } else if (sitesBackfilled) {
+      await prefs.setString(
+        _kSources,
+        jsonEncode(sources.map((e) => e.toJson()).toList()),
+      );
     }
 
     // Fall back to the first source so the resources page has a card to show.
@@ -309,6 +319,24 @@ class AppStore extends ChangeNotifier {
   }
 
   // -------------------------------------------------------------------------
+  // Content
+  //
+  // Everything the pages render goes through these three getters instead of
+  // reaching for the fixtures directly. That is the whole point of the
+  // indirection: Phase 2 replaces the bodies with source requests and no page
+  // changes at all.
+  // -------------------------------------------------------------------------
+
+  /// Hero carousel entries.
+  List<MediaItem> get heroItems => demo.heroItems;
+
+  /// Category rows, in display order.
+  List<HomeSection> get homeSections => demo.homeSections;
+
+  /// Card definition -> the full record the detail page needs.
+  MediaItem detailOf(MediaItem item) => demo.detailFor(item);
+
+  // -------------------------------------------------------------------------
   // Sources
   // -------------------------------------------------------------------------
 
@@ -330,6 +358,95 @@ class AppStore extends ChangeNotifier {
     if (id == _current) return;
     _current = id;
     await _prefs.setString(_kCurrent, jsonEncode(id));
+    notifyListeners();
+  }
+
+  /// The sites declared by one source's config, enabled or not.
+  List<SiteInfo> sitesOf(String sourceId) {
+    for (final source in _sources) {
+      if (source.id == sourceId) return source.sites;
+    }
+    return const [];
+  }
+
+  /// Sites the active source contributes to search and to the category rows.
+  List<SiteInfo> get activeSites => currentSource?.searchableSites ?? const [];
+
+  /// Sites behind [selection] (null = every source), de-duplicated by display
+  /// name so two sources that both ship 玩偶 produce one chip, not two.
+  ///
+  /// This is the single junction every page reads from. Search fans out over
+  /// it, and the resource page's counts come from it, so adding or deleting a
+  /// source changes what the whole app sees without any page knowing how.
+  List<SiteInfo> sitesForSelection(Set<String>? selection) {
+    final out = <String, SiteInfo>{};
+    for (final source in _sources) {
+      if (selection != null && !selection.contains(source.id)) continue;
+      for (final site in source.searchableSites) {
+        out.putIfAbsent(site.name, () => site);
+      }
+    }
+    return List.unmodifiable(out.values);
+  }
+
+  /// Silences or re-enables one site inside a source.
+  Future<void> toggleSite(String sourceId, String siteKey) async {
+    final index = _sources.indexWhere((source) => source.id == sourceId);
+    if (index < 0) return;
+    final source = _sources[index];
+    final siteIndex = source.sites.indexWhere((site) => site.key == siteKey);
+    if (siteIndex < 0) return;
+    final updated = source.withSite(
+      source.sites[siteIndex].copyWith(
+        enabled: !source.sites[siteIndex].enabled,
+      ),
+    );
+    _sources[index] = updated;
+    await _persistSources();
+    notifyListeners();
+  }
+
+  /// Replaces a source's site list wholesale -- what a successful config parse
+  /// does. Keeps the source's other fields (name, url, metrics) untouched.
+  Future<void> replaceSites(String sourceId, List<SiteInfo> sites) async {
+    final index = _sources.indexWhere((source) => source.id == sourceId);
+    if (index < 0) return;
+    _sources[index] = _sources[index].copyWith(sites: sites);
+    await _persistSources();
+    notifyListeners();
+  }
+
+  /// Appends a source. Returns its id so the caller can select or edit it.
+  Future<String> addSource(SourceInfo source) async {
+    _sources.add(source);
+    if (_current == null) {
+      _current = source.id;
+      await _prefs.setString(_kCurrent, jsonEncode(source.id));
+    }
+    await _persistSources();
+    notifyListeners();
+    return source.id;
+  }
+
+  Future<void> updateSource(SourceInfo source) async {
+    final index = _sources.indexWhere((existing) => existing.id == source.id);
+    if (index < 0) return;
+    _sources[index] = source;
+    await _persistSources();
+    notifyListeners();
+  }
+
+  /// Removes a source. When it was the active one the next source (or nothing)
+  /// takes over, so [currentSource] never points at a missing id.
+  Future<void> removeSource(String id) async {
+    final index = _sources.indexWhere((source) => source.id == id);
+    if (index < 0) return;
+    _sources.removeAt(index);
+    if (_current == id) {
+      _current = _sources.isNotEmpty ? _sources.first.id : null;
+      await _prefs.setString(_kCurrent, jsonEncode(_current));
+    }
+    await _persistSources();
     notifyListeners();
   }
 
@@ -358,8 +475,36 @@ class AppStore extends ChangeNotifier {
     );
   }
 
+  Future<void> _persistSources() async {
+    await _prefs.setString(
+      _kSources,
+      jsonEncode(_sources.map((e) => e.toJson()).toList()),
+    );
+  }
+
+  /// The seeded source, carrying the twelve sites the original's config for
+  /// 豆儿猫源 declares (read off its result chips for 尚公主). Until a real
+  /// config is parsed these stand in for the document's `sites` array, but they
+  /// travel through exactly the same path: source -> sites -> chips.
+  static const _demoSourceId = '1794457036493149';
+
+  static const List<SiteInfo> _demoSites = [
+    SiteInfo(key: 'wanou', name: '玩偶', type: '3', api: 'csp_WanOu'),
+    SiteInfo(key: 'muou', name: '木偶', type: '3', api: 'csp_MuOu'),
+    SiteInfo(key: 'shandian', name: '闪电', type: '3', api: 'csp_ShanDian'),
+    SiteInfo(key: 'duoduo', name: '多多', type: '3', api: 'csp_DuoDuo'),
+    SiteInfo(key: 'ouge', name: '欧歌', type: '3', api: 'csp_OuGe'),
+    SiteInfo(key: 'huajuan', name: '花卷', type: '3', api: 'csp_HuaJuan'),
+    SiteInfo(key: 'huban', name: '虎斑', type: '3', api: 'csp_HuBan'),
+    SiteInfo(key: 'xiaoban', name: '小斑', type: '3', api: 'csp_XiaoBan'),
+    SiteInfo(key: 'woniu', name: '蜗牛', type: '3', api: 'csp_WoNiu'),
+    SiteInfo(key: 'naixi', name: '奶西', type: '3', api: 'csp_NaiXi'),
+    SiteInfo(key: 'xiaomao', name: '小猫', type: '3', api: 'csp_XiaoMao'),
+    SiteInfo(key: 'paopao', name: '泡泡', type: '3', api: 'csp_PaoPao'),
+  ];
+
   static SourceInfo _demoSource() => const SourceInfo(
-    id: '1794457036493149',
+    id: _demoSourceId,
     type: 'tvbox',
     name: '豆儿猫源',
     url:
@@ -367,7 +512,25 @@ class AppStore extends ChangeNotifier {
     latencyMs: 5000,
     movieCount: 58,
     showCount: 1,
+    sites: _demoSites,
   );
+
+  /// Gives the seeded source its sites on installs that predate them.
+  ///
+  /// Without this, an existing `flutter.sources` keeps a source with no site
+  /// list, `sitesForSelection` returns nothing, and search goes blank after the
+  /// upgrade -- a regression that only shows up for anyone who already ran the
+  /// app. Returns true when something changed so the caller can persist.
+  static bool _backfillDemoSites(List<SourceInfo> sources) {
+    var changed = false;
+    for (var index = 0; index < sources.length; index++) {
+      final source = sources[index];
+      if (source.id != _demoSourceId || source.sites.isNotEmpty) continue;
+      sources[index] = source.copyWith(sites: _demoSites);
+      changed = true;
+    }
+    return changed;
+  }
 
   static HistoryEntry _demoHistoryEntry(String sourceId, String sourceName) =>
       HistoryEntry(

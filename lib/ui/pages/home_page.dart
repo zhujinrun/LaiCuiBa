@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../../core/detail_nav.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
-import '../../services/demo_data.dart';
 import '../widgets/hero_banner.dart';
 import '../widgets/media_card.dart';
 
@@ -21,14 +20,16 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final continueWatching = StoreScope.of(context).continueWatching;
+    final store = StoreScope.of(context);
+    final continueWatching = store.continueWatching;
+    final sections = store.homeSections;
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const HeroBanner(items: heroItems),
+            HeroBanner(items: store.heroItems),
             LayoutBuilder(
               builder: (context, constraints) {
                 final contentWidth = constraints.maxWidth;
@@ -80,7 +81,7 @@ class HomePage extends StatelessWidget {
                           ),
                         ),
                       ],
-                      for (final section in homeSections) ...[
+                      for (final section in sections) ...[
                         const SizedBox(height: 35),
                         Padding(
                           padding: const EdgeInsets.symmetric(

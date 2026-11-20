@@ -237,6 +237,68 @@ class HistoryEntry {
   }
 }
 
+/// One site inside a source.
+///
+/// A TVBox / 猫源 source is not itself a site: it points at a config document
+/// whose `sites` array lists the actual backends, and every search fans out to
+/// those. The original never exposes them in the UI, which is why this rebuild
+/// reads them out of the config instead of asking the user to type them.
+///
+/// [key] is the stable identifier the original also stores on history rows
+/// (`flutter.history[].siteKey`), so it has to survive a config reload.
+class SiteInfo {
+  const SiteInfo({
+    required this.key,
+    required this.name,
+    this.type = '',
+    this.api = '',
+    this.ext = '',
+    this.enabled = true,
+  });
+
+  final String key;
+  final String name;
+
+  /// Raw catvod `type` (0 XML, 1 JSON, 3 spider, 4 …). Kept as text because the
+  /// original writes it both ways.
+  final String type;
+  final String api;
+  final String ext;
+
+  /// Whether the site takes part in search. The original's config uses
+  /// `searchable: 0` to opt out; parsed configs land here already filtered, but
+  /// the user can still silence a noisy site from the editor.
+  final bool enabled;
+
+  SiteInfo copyWith({String? name, String? type, String? api, String? ext, bool? enabled}) =>
+      SiteInfo(
+        key: key,
+        name: name ?? this.name,
+        type: type ?? this.type,
+        api: api ?? this.api,
+        ext: ext ?? this.ext,
+        enabled: enabled ?? this.enabled,
+      );
+
+  Map<String, dynamic> toJson() => {
+    'key': key,
+    'name': name,
+    if (type.isNotEmpty) 'type': type,
+    if (api.isNotEmpty) 'api': api,
+    if (ext.isNotEmpty) 'ext': ext,
+    if (!enabled) 'enabled': false,
+  };
+
+  factory SiteInfo.fromJson(Map<String, dynamic> json) => SiteInfo(
+    key: json['key'] as String? ?? json['name'] as String? ?? '',
+    name: json['name'] as String? ?? json['key'] as String? ?? '',
+    type: '${json['type'] ?? ''}',
+    api: json['api'] as String? ?? '',
+    ext: json['ext'] as String? ?? '',
+    enabled: json['enabled'] as bool? ?? true,
+  );
+}
+
 /// One content source (TVBox / 猫源 / Emby / WebDAV / AList), matching the
 /// original's `flutter.sources` entries and its availability metrics.
 class SourceInfo {
@@ -251,6 +313,7 @@ class SourceInfo {
     this.movieCount = 0,
     this.showCount = 0,
     this.checkedAt = 0,
+    this.sites = const [],
   });
 
   final String id;
@@ -264,6 +327,48 @@ class SourceInfo {
   final int showCount;
   final int checkedAt;
 
+  /// The sites this source's config document declared. Empty until the config
+  /// has been parsed (see `services/site_parser.dart`); every page that fans
+  /// out over sites reads this rather than a hard-coded list.
+  final List<SiteInfo> sites;
+
+  /// Sites that should take part in search and category fetches.
+  List<SiteInfo> get searchableSites =>
+      sites.where((site) => site.enabled).toList(growable: false);
+
+  SourceInfo copyWith({
+    String? name,
+    String? url,
+    String? username,
+    String? password,
+    int? latencyMs,
+    int? movieCount,
+    int? showCount,
+    int? checkedAt,
+    List<SiteInfo>? sites,
+  }) => SourceInfo(
+    id: id,
+    type: type,
+    name: name ?? this.name,
+    url: url ?? this.url,
+    username: username ?? this.username,
+    password: password ?? this.password,
+    latencyMs: latencyMs ?? this.latencyMs,
+    movieCount: movieCount ?? this.movieCount,
+    showCount: showCount ?? this.showCount,
+    checkedAt: checkedAt ?? this.checkedAt,
+    sites: sites ?? this.sites,
+  );
+
+  /// Replaces one site by key, leaving the rest in order. Used by the editor to
+  /// silence or re-enable a single site.
+  SourceInfo withSite(SiteInfo updated) => copyWith(
+    sites: [
+      for (final site in sites)
+        if (site.key == updated.key) updated else site,
+    ],
+  );
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'type': type,
@@ -275,6 +380,9 @@ class SourceInfo {
     'movieCount': movieCount,
     'showCount': showCount,
     'checkedAt': checkedAt,
+    // Omitted while empty so sources written before sites existed keep the
+    // exact shape the original produces.
+    if (sites.isNotEmpty) 'sites': sites.map((e) => e.toJson()).toList(),
   };
 
   factory SourceInfo.fromJson(Map<String, dynamic> json) => SourceInfo(
@@ -288,6 +396,10 @@ class SourceInfo {
     movieCount: json['movieCount'] as int? ?? 0,
     showCount: json['showCount'] as int? ?? 0,
     checkedAt: json['checkedAt'] as int? ?? 0,
+    sites: [
+      for (final raw in (json['sites'] as List?) ?? const [])
+        if (raw is Map) SiteInfo.fromJson(Map<String, dynamic>.from(raw)),
+    ],
   );
 }
 

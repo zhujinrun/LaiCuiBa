@@ -55,22 +55,6 @@ class SearchOutcome {
   int overflow(int shown) => sites.length <= shown ? 0 : sites.length - shown;
 }
 
-/// Site names read off the original's result chips for 尚公主. Fixture only.
-const List<String> demoSites = [
-  '玩偶',
-  '木偶',
-  '闪电',
-  '多多',
-  '欧歌',
-  '花卷',
-  '虎斑',
-  '小斑',
-  '蜗牛',
-  '奶西',
-  '小猫',
-  '泡泡',
-];
-
 /// Chips past this index collapse into the 还有 N 个站点 tail, as in the original
 /// (eight chips, then the tail).
 const int searchSitesShown = 8;
@@ -109,17 +93,30 @@ int _stableHash(String value) {
 
 /// Whether [title] belongs on [site]. Deterministic, so the chip counts do not
 /// shuffle on every rebuild.
+///
+/// Keyed on the display name rather than the site key: the store already
+/// de-duplicates by name, so it is the identity the chip row actually shows,
+/// and hashing it keeps the spread identical to the measurements taken from the
+/// original.
 bool _siteCarries(String title, String site) =>
     _stableHash('$title@$site') % 100 < 70;
 
-/// Runs [query] against the catalogue.
+/// Runs [query] against the catalogue, fanning out over [sites].
+///
+/// [sites] is what the active source(s) declare -- it comes from
+/// `AppStore.sitesForSelection`, never from a constant, so deleting a source or
+/// silencing one of its sites changes the chip row immediately.
 ///
 /// [strict] mirrors the original's 严格 toggle: on, only an exact title matches
 /// (15 hits against 75 for the same keyword in the live app); off, any title
 /// containing the keyword does.
-SearchOutcome searchCatalogue(String query, {bool strict = false}) {
+SearchOutcome searchCatalogue(
+  String query, {
+  required List<SiteInfo> sites,
+  bool strict = false,
+}) {
   final needle = query.trim();
-  if (needle.isEmpty) {
+  if (needle.isEmpty || sites.isEmpty) {
     return const SearchOutcome(hits: [], sites: []);
   }
 
@@ -134,22 +131,24 @@ SearchOutcome searchCatalogue(String query, {bool strict = false}) {
   }
 
   final hits = <SearchHit>[];
-  final sites = <SearchSiteSummary>[];
-  for (final site in demoSites) {
-    final carried = matched.where((item) => _siteCarries(item.title, site));
+  final summaries = <SearchSiteSummary>[];
+  for (final site in sites) {
+    final carried = matched.where(
+      (item) => _siteCarries(item.title, site.name),
+    );
     if (carried.isEmpty) continue;
-    sites.add(SearchSiteSummary(site: site, count: carried.length));
+    summaries.add(SearchSiteSummary(site: site.name, count: carried.length));
     for (final item in carried) {
       hits.add(
         SearchHit(
           item: item,
-          site: site,
+          site: site.name,
           remarks: item.tag?.isNotEmpty == true ? item.tag! : '完结',
         ),
       );
     }
   }
-  return SearchOutcome(hits: hits, sites: sites);
+  return SearchOutcome(hits: hits, sites: summaries);
 }
 
 /// Suggestions for the drop-down. The original asks a web suggest API; until
