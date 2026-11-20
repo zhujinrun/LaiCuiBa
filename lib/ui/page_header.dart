@@ -10,25 +10,31 @@ class LcbPageHeader extends ChangeNotifier {
 
   String _title;
   VoidCallback? _onBack;
+  bool _showSearch = true;
 
   String get title => _title;
 
   /// Non-null when the page is a sub-page and the bar should show a back arrow.
   VoidCallback? get onBack => _onBack;
 
+  /// Whether the bar keeps its search field. The detail page drops it.
+  bool get showSearch => _showSearch;
+
   /// Shows a sub-page title with a back arrow.
-  void push(String title, VoidCallback onBack) {
-    if (_title == title && _onBack != null) return;
+  void push(String title, VoidCallback onBack, {bool showSearch = true}) {
+    if (_title == title && _onBack != null && _showSearch == showSearch) return;
     _title = title;
     _onBack = onBack;
+    _showSearch = showSearch;
     notifyListeners();
   }
 
   /// Returns to a root-level title without a back arrow.
   void reset(String title) {
-    if (_title == title && _onBack == null) return;
+    if (_title == title && _onBack == null && _showSearch) return;
     _title = title;
     _onBack = null;
+    _showSearch = true;
     notifyListeners();
   }
 

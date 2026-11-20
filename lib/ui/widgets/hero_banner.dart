@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../../core/detail_nav.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
 import 'poster_art.dart';
@@ -254,7 +255,7 @@ class _HeroCopy extends StatelessWidget {
               icon: Icons.info_outline_rounded,
               label: '详情',
               filled: false,
-              onTap: () {},
+              onTap: () => LcbDetailScope.openOf(context, item),
             ),
           ],
         ),

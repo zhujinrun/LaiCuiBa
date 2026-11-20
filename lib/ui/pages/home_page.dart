@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/detail_nav.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../services/demo_data.dart';
@@ -72,7 +73,8 @@ class HomePage extends StatelessWidget {
                                 positionLabel: c.positionLabel,
                                 progress: c.progress,
                                 width: landscapeWidth,
-                                onTap: () {},
+                                onTap: () =>
+                                    LcbDetailScope.openOf(context, c.media),
                               );
                             },
                           ),
@@ -103,7 +105,10 @@ class HomePage extends StatelessWidget {
                             itemBuilder: (_, i) => PosterCard(
                               item: section.items[i],
                               width: posterWidth,
-                              onTap: () {},
+                              onTap: () => LcbDetailScope.openOf(
+                                context,
+                                section.items[i],
+                              ),
                             ),
                           ),
                         ),

@@ -98,6 +98,45 @@ const List<HomeSection> homeSections = [
   ),
 ];
 
+/// Full detail payload for 尚公主, transcribed from the original's detail page so
+/// the rebuilt page can be diffed against it. Real sources will supply the same
+/// fields (`vod_content` / `vod_actor` / `vod_area` / `vod_year` / `vod_play_url`)
+/// in Phase 2; this fixture only exists so the page has something to render.
+const MediaItem detailDemo = MediaItem(
+  id: 'tv2',
+  title: '尚公主',
+  image: 'assets/demo/tv2.webp',
+  year: 2026,
+  area: '中国大陆',
+  latest: '第40集',
+  categories: ['剧情', '爱情', '古装'],
+  overview:
+      '不甘命运的天家嫡女暮晚摇与智谋无双的寒门才俊言尚在岭南相逢，于盛安入局，'
+      '携手步步破局，共筑清平天下的故事。一群少年各怀心事，各有所求，'
+      '在乱世惊涛中搅动风云，奔赴理想。　　　该剧改编自伊人睽睽的同名小说。',
+  actors: [
+    '秦榛', '孟子义', '李昀锐', '吴汉坤', '全伊伦', '李孝谦', '沈佳钰', '余皑磊',
+    '胡杏儿', '唐晓天', '徐海乔', '晏紫东', '白冰可', '吴斌', '张月', '王子奇',
+    '李嘉鑫', '刘钧',
+  ],
+  episodes: [
+    '第1集', '第2集', '第3集', '第4集', '第5集', '第6集', '第7集', '第8集',
+    '第9集', '第10集', '第11集', '第12集', '第13集', '第14集', '第15集',
+    '第16集', '第17集', '第18集', '第19集', '第20集', '第21集', '第22集',
+    '第23集', '第24集', '第25集', '第26集', '第27集', '第28集', '第29集',
+    '第30集', '第31集', '第32集', '第33集', '第34集', '第35集', '第36集',
+    '第37集', '第38集', '第39集', '第40集',
+  ],
+);
+
+/// Resolves the payload to render on the detail page.
+///
+/// Until the source layer lands, only 尚公主 has a full fixture (description,
+/// cast, episode list); everything else opens with the fields its card carries,
+/// which is what the page will do with partial source data anyway.
+MediaItem detailFor(MediaItem item) =>
+    item.title == detailDemo.title ? detailDemo : item;
+
 /// Sidebar model: four groups with a label each, matching the original. The
 /// original draws its navigation glyphs from CupertinoIcons, not Material Icons,
 /// so the shapes are kept here rather than swapped for near equivalents.

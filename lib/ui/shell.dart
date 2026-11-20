@@ -1,11 +1,13 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../core/detail_nav.dart';
 import '../core/store_scope.dart';
 import '../core/theme.dart';
 import '../models/models.dart';
 import '../services/demo_data.dart';
 import 'pages/common_pages.dart';
+import 'pages/detail_page.dart';
 import 'pages/home_page.dart';
 import 'pages/settings_page.dart';
 import 'page_header.dart';
@@ -23,6 +25,10 @@ class _ShellState extends State<Shell> {
   LcbPage _page = LcbPage.home;
   final _header = LcbPageHeader('首页');
 
+  /// Non-null while the detail page is open in the content column.
+  MediaItem? _detail;
+  int? _detailEpisode;
+
   static const _titles = {
     LcbPage.home: '首页',
     LcbPage.resources: '资源',
@@ -38,11 +44,43 @@ class _ShellState extends State<Shell> {
   }
 
   void _select(LcbPage page) {
-    setState(() => _page = page);
+    setState(() {
+      _page = page;
+      _detail = null;
+      _detailEpisode = null;
+    });
     _header.reset(_titles[page]!);
   }
 
+  /// Pushes the detail page into the content column; the sidebar keeps its
+  /// selection so the back arrow returns exactly where the user came from.
+  void _openDetail(MediaItem item, {int? episodeIndex}) {
+    final resolved = detailFor(item);
+    setState(() {
+      _detail = resolved;
+      _detailEpisode = episodeIndex;
+    });
+    _header.push(resolved.title, _closeDetail, showSearch: false);
+  }
+
+  void _closeDetail() {
+    if (!mounted) return;
+    setState(() {
+      _detail = null;
+      _detailEpisode = null;
+    });
+    _header.reset(_titles[_page]!);
+  }
+
   Widget _body() {
+    final detail = _detail;
+    if (detail != null) {
+      return DetailPage(
+        key: ValueKey('detail-${detail.id}'),
+        item: detail,
+        episodeIndex: _detailEpisode,
+      );
+    }
     switch (_page) {
       case LcbPage.home:
         return const HomePage();
@@ -61,20 +99,28 @@ class _ShellState extends State<Shell> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: LcbColors.surface,
-      body: LcbPageHeaderScope(
-        controller: _header,
-        child: Column(
-          children: [
-            ShellHeader(content: _HeaderContent(page: _page)),
-            Expanded(
-              child: Row(
-                children: [
-                  _Sidebar(current: _page, onSelect: _select),
-                  Expanded(child: _body()),
-                ],
+      body: LcbDetailScope(
+        open: _openDetail,
+        child: LcbPageHeaderScope(
+          controller: _header,
+          child: Column(
+            children: [
+              ShellHeader(
+                content: _HeaderContent(page: _page, detail: _detail != null),
               ),
-            ),
-          ],
+              Expanded(
+                child: Row(
+                  // Stretch, otherwise a page whose content is shorter than the
+                  // viewport (the detail page) gets centred and floats down.
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _Sidebar(current: _page, onSelect: _select),
+                    Expanded(child: _body()),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -208,14 +254,39 @@ class _NavItemState extends State<_NavItem> {
 }
 
 class _HeaderContent extends StatelessWidget {
-  const _HeaderContent({required this.page});
+  const _HeaderContent({required this.page, this.detail = false});
 
   final LcbPage page;
+
+  /// True while the detail page is pushed: the bar collapses to a back arrow
+  /// plus the title and drops the page controls and the search field.
+  final bool detail;
 
   @override
   Widget build(BuildContext context) {
     final header = LcbPageHeaderScope.of(context);
     final onBack = header.onBack;
+
+    if (detail && onBack != null) {
+      return Padding(
+        padding: const EdgeInsets.only(left: 24),
+        child: Row(
+          children: [
+            _BackButton(onTap: onBack, circle: 36, iconSize: 19),
+            const SizedBox(width: 15),
+            Text(
+              header.title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: LcbColors.text,
+              ),
+            ),
+            const Expanded(child: HeaderDragGap()),
+          ],
+        ),
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(40, 0, 8, 0),
@@ -232,7 +303,7 @@ class _HeaderContent extends StatelessWidget {
             // Each page owns its own left-side header content.
             _buildHeaderLeft(context, page, header),
             const Expanded(child: HeaderDragGap()),
-            const _SearchBox(),
+            if (header.showSearch) const _SearchBox(),
           ],
         ),
       ),
@@ -385,9 +456,14 @@ class _HeaderContent extends StatelessWidget {
 }
 
 class _BackButton extends StatefulWidget {
-  const _BackButton({required this.onTap});
+  const _BackButton({required this.onTap, this.circle = 0, this.iconSize = 18});
 
   final VoidCallback onTap;
+
+  /// Non-zero renders the detail page's filled circle instead of the bordered
+  /// square tile the settings sub-pages use.
+  final double circle;
+  final double iconSize;
 
   @override
   State<_BackButton> createState() => _BackButtonState();
@@ -398,6 +474,7 @@ class _BackButtonState extends State<_BackButton> {
 
   @override
   Widget build(BuildContext context) {
+    final isCircle = widget.circle > 0;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -405,16 +482,19 @@ class _BackButtonState extends State<_BackButton> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: Container(
-          width: 30,
-          height: 30,
+          width: isCircle ? widget.circle : 30,
+          height: isCircle ? widget.circle : 30,
           decoration: BoxDecoration(
-            color: _hover ? LcbColors.hover : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            color: isCircle
+                ? (_hover ? const Color(0xFFE4E4E8) : LcbColors.searchFill)
+                : (_hover ? LcbColors.hover : Colors.transparent),
+            shape: isCircle ? BoxShape.circle : BoxShape.rectangle,
+            borderRadius: isCircle ? null : BorderRadius.circular(8),
           ),
-          child: const Icon(
+          child: Icon(
             Icons.arrow_back,
-            size: 18,
-            color: LcbColors.textSecondary,
+            size: widget.iconSize,
+            color: isCircle ? const Color(0xFF5A5A5D) : LcbColors.textSecondary,
           ),
         ),
       ),

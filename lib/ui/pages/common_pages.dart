@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/detail_nav.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
@@ -444,8 +445,11 @@ class _FavoritesGrid extends StatelessWidget {
             mainAxisExtent: cellWidth * 1.5 + 32,
           ),
           itemCount: items.length,
-          itemBuilder: (_, i) =>
-              PosterCard(item: items[i], width: cellWidth, onTap: () {}),
+          itemBuilder: (_, i) => PosterCard(
+            item: items[i],
+            width: cellWidth,
+            onTap: () => LcbDetailScope.openOf(context, items[i]),
+          ),
         );
       },
     );
@@ -583,69 +587,76 @@ class _HistoryRowState extends State<_HistoryRow> {
           onExit: (_) => setState(() => _hover = false),
           child: Stack(
             children: [
-              Container(
-                width: 395,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: LcbColors.card,
-                  borderRadius: BorderRadius.circular(LcbMetrics.cardRadius),
+              GestureDetector(
+                onTap: () => LcbDetailScope.openOf(
+                  context,
+                  entry.toMediaItem(),
+                  episodeIndex: entry.episodeIndex,
                 ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: SizedBox(
-                        width: 64,
-                        height: 90,
-                        child: PosterArt(
-                          seed: entry.title.hashCode,
-                          image: entry.poster,
+                child: Container(
+                  width: 395,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: LcbColors.card,
+                    borderRadius: BorderRadius.circular(LcbMetrics.cardRadius),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: SizedBox(
+                          width: 64,
+                          height: 90,
+                          child: PosterArt(
+                            seed: entry.title.hashCode,
+                            image: entry.poster,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            entry.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: LcbColors.text,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              entry.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: LcbColors.text,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 14),
-                          Text(
-                            '${entry.episode} · $_progressLabel',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 12.5,
-                              color: LcbColors.textSecondary,
+                            const SizedBox(height: 14),
+                            Text(
+                              '${entry.episode} · $_progressLabel',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                color: LcbColors.textSecondary,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 24),
-                          Text(
-                            _timeSourceLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 12.5,
-                              color: LcbColors.textTertiary,
+                            const SizedBox(height: 24),
+                            Text(
+                              _timeSourceLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                color: LcbColors.textTertiary,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    _PlayButton(onTap: () {}),
-                  ],
+                      const SizedBox(width: 10),
+                      _PlayButton(onTap: () {}),
+                    ],
+                  ),
                 ),
               ),
               if (_hover)
