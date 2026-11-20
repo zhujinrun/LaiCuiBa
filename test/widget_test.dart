@@ -205,8 +205,13 @@ void main() {
     expect(find.text('尚公主'), findsWidgets);
     expect(find.text('选集'), findsNothing);
 
-    // Enter commits it.
+    // Enter commits it. 严格 defaults on, so the inexact 尚 matches nothing.
     await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.text('没有找到相关影视'), findsOneWidget);
+
+    // Turning 严格 off makes 尚 a contains-match, which hits 尚公主.
+    await tester.tap(find.text('严格'));
     await tester.pumpAndSettle();
 
     expect(find.text('全部'), findsOneWidget);
@@ -215,11 +220,48 @@ void main() {
     expect(find.textContaining('「盘」'), findsWidgets);
     expect(find.text('第40集(全)'), findsWidgets);
 
-    // 严格 turns 尚 into an exact-title match, which nothing satisfies.
+    // Re-enabling 严格 drops the inexact match again.
     await tester.tap(find.text('严格'));
     await tester.pumpAndSettle();
     expect(find.text('没有找到相关影视'), findsOneWidget);
     expect(find.text('第40集(全)'), findsNothing);
+  });
+
+  testWidgets('the site expand button reveals the sites folded into 还有 N 个站点', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('搜索...'));
+    await tester.pumpAndSettle();
+
+    // 尚公主 fans out over the 59 seeded sites, so more than 8 answer.
+    await tester.enterText(find.byType(TextField), '尚公主');
+    await tester.pumpAndSettle();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    // Collapsed: the tail reports how many sites are hidden.
+    expect(find.textContaining('还有'), findsOneWidget);
+
+    // Tap the expand chevron to reveal every site.
+    await tester.tap(find.byIcon(CupertinoIcons.chevron_down));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('还有'), findsNothing);
+
+    // And it collapses back.
+    await tester.tap(find.byIcon(CupertinoIcons.chevron_up));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('还有'), findsOneWidget);
   });
 
   testWidgets('tapping a search result opens the detail page and back returns', (
@@ -239,14 +281,16 @@ void main() {
     await tester.tap(find.text('搜索...'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), '尚');
+    // 严格 defaults on, so an exact title is needed to land a result.
+    await tester.enterText(find.byType(TextField), '尚公主');
     await tester.pumpAndSettle();
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
     // The result row is tappable and must push the detail page (regression:
-    // the search overlay used to stay on top, so this tap did nothing).
-    await tester.tap(find.text('尚公主').first);
+    // the search overlay used to stay on top, so this tap did nothing). The
+    // first 尚公主 is the text in the search field; the result row is the next.
+    await tester.tap(find.text('尚公主').at(1));
     await tester.pumpAndSettle();
 
     expect(find.text('选集'), findsOneWidget);

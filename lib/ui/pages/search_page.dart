@@ -348,8 +348,16 @@ class _SiteChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final shown = outcome.sites.take(searchSitesShown).toList(growable: false);
-    final hidden = outcome.overflow(searchSitesShown);
+    final allSites = outcome.sites;
+    // Expanded shows every site; collapsed keeps the first searchSitesShown and
+    // folds the rest into 还有 N 个站点.
+    final shown = search.expanded
+        ? allSites
+        : allSites.take(searchSitesShown).toList(growable: false);
+    final hidden = search.expanded ? 0 : outcome.overflow(searchSitesShown);
+    // The expand toggle is only meaningful when there is more than one row of
+    // sites to reveal; hide it when everything already fits.
+    final canExpand = allSites.length > searchSitesShown;
 
     return SizedBox(
       height: 34,
@@ -384,7 +392,11 @@ class _SiteChips extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          const _ExpandButton(),
+          if (canExpand)
+            _ExpandButton(
+              expanded: search.expanded,
+              onTap: search.toggleExpanded,
+            ),
         ],
       ),
     );
@@ -478,23 +490,34 @@ class _OverflowLabel extends StatelessWidget {
   }
 }
 
-/// The 36px circular chevron on the right of the chip row.
+/// The 36px circular chevron on the right of the chip row. Tapping it toggles
+/// between the collapsed (first 8 sites + 还有 N 个站点) and expanded (all
+/// sites) layout.
 class _ExpandButton extends StatelessWidget {
-  const _ExpandButton();
+  const _ExpandButton({required this.expanded, required this.onTap});
+
+  final bool expanded;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 36,
-      height: 36,
-      decoration: const BoxDecoration(
-        color: LcbColors.card,
-        shape: BoxShape.circle,
-      ),
-      child: const Icon(
-        CupertinoIcons.chevron_down,
-        size: 12,
-        color: LcbColors.text,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: const BoxDecoration(
+            color: LcbColors.card,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            expanded ? CupertinoIcons.chevron_up : CupertinoIcons.chevron_down,
+            size: 12,
+            color: LcbColors.text,
+          ),
+        ),
       ),
     );
   }

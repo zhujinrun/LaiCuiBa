@@ -19,12 +19,32 @@ void main() {
       sitesProvider: (_) => sites,
       realSearchStream: null,
     );
+    // 严格 defaults on.
+    expect(search.strict, isTrue);
+
     search.setQuery('尚公主');
     search.submit();
 
     expect(search.loading, isFalse);
     expect(search.outcome.hits, isNotEmpty);
     expect(search.outcome.hits.first.item.title, '尚公主');
+  });
+
+  test('strict defaults on and toggleExpanded flips the chip row', () {
+    final search = LcbSearch(
+      sitesProvider: (_) => sites,
+      realSearchStream: null,
+    );
+
+    expect(search.strict, isTrue);
+    search.toggleStrict();
+    expect(search.strict, isFalse);
+
+    expect(search.expanded, isFalse);
+    search.toggleExpanded();
+    expect(search.expanded, isTrue);
+    search.toggleExpanded();
+    expect(search.expanded, isFalse);
   });
 
   test('real search emits nothing: fall back to demo when done', () async {

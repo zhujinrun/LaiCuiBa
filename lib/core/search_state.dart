@@ -41,10 +41,11 @@ class LcbSearch extends ChangeNotifier {
 
   bool _open = false;
   String _query = '';
-  bool _strict = false;
+  bool _strict = true;
   bool _submitted = false;
   bool _loading = false;
   String? _site;
+  bool _expanded = false;
   SearchOutcome _outcome = const SearchOutcome(hits: [], sites: []);
 
   /// Guards against a stale response overwriting a newer query: each submit
@@ -60,6 +61,10 @@ class LcbSearch extends ChangeNotifier {
   bool get strict => _strict;
   bool get submitted => _submitted;
   bool get loading => _loading;
+
+  /// Whether the site chip row is expanded to show every site instead of the
+  /// first [searchSitesShown] with the rest collapsed into 还有 N 个站点.
+  bool get expanded => _expanded;
 
   /// Non-null when one site's chip is selected; null means 全部.
   String? get site => _site;
@@ -95,9 +100,11 @@ class LcbSearch extends ChangeNotifier {
     if (_open) return;
     _open = true;
     _query = '';
+    _strict = true;
     _submitted = false;
     _loading = false;
     _site = null;
+    _expanded = false;
     _outcome = const SearchOutcome(hits: [], sites: []);
     text.clear();
     notifyListeners();
@@ -107,9 +114,11 @@ class LcbSearch extends ChangeNotifier {
     if (!_open) return;
     _open = false;
     _query = '';
+    _strict = true;
     _submitted = false;
     _loading = false;
     _site = null;
+    _expanded = false;
     _outcome = const SearchOutcome(hits: [], sites: []);
     _cancelSearch();
     text.clear();
@@ -226,6 +235,13 @@ class LcbSearch extends ChangeNotifier {
   void selectSite(String? site) {
     if (site == _site) return;
     _site = site;
+    notifyListeners();
+  }
+
+  /// Flips the site chip row between collapsed (first [searchSitesShown] chips
+  /// + 还有 N 个站点) and expanded (every site shown).
+  void toggleExpanded() {
+    _expanded = !_expanded;
     notifyListeners();
   }
 
