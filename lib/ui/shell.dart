@@ -1,7 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/detail_nav.dart';
+import '../core/search_state.dart';
 import '../core/store_scope.dart';
 import '../core/theme.dart';
 import '../models/models.dart';
@@ -9,9 +11,11 @@ import '../services/demo_data.dart';
 import 'pages/common_pages.dart';
 import 'pages/detail_page.dart';
 import 'pages/home_page.dart';
+import 'pages/search_page.dart';
 import 'pages/settings_page.dart';
 import 'page_header.dart';
 import 'widgets/manage_folders_sheet.dart';
+import 'widgets/search_sources_dialog.dart';
 import 'widgets/shell_header.dart';
 
 class Shell extends StatefulWidget {
@@ -24,6 +28,9 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   LcbPage _page = LcbPage.home;
   final _header = LcbPageHeader('首页');
+
+  /// Owns the 搜索 mode: the field in the header and the results in the column.
+  final _search = LcbSearch();
 
   /// Non-null while the detail page is open in the content column.
   MediaItem? _detail;
@@ -40,6 +47,7 @@ class _ShellState extends State<Shell> {
   @override
   void dispose() {
     _header.dispose();
+    _search.dispose();
     super.dispose();
   }
 
@@ -49,7 +57,31 @@ class _ShellState extends State<Shell> {
       _detail = null;
       _detailEpisode = null;
     });
+    _search.close();
     _header.reset(_titles[page]!);
+  }
+
+  /// Enters 搜索 mode and puts the caret in the field.
+  void _openSearch() {
+    if (_search.isOpen) {
+      _search.focus.requestFocus();
+      return;
+    }
+    setState(() {
+      _detail = null;
+      _detailEpisode = null;
+    });
+    _search.open();
+    _header.push('', () {}, showSearch: false);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _search.focus.requestFocus(),
+    );
+  }
+
+  void _closeSearch() {
+    if (!_search.isOpen) return;
+    setState(() => _search.close());
+    _header.reset(_titles[_page]!);
   }
 
   /// Pushes the detail page into the content column; the sidebar keeps its
@@ -99,27 +131,54 @@ class _ShellState extends State<Shell> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: LcbColors.surface,
-      body: LcbDetailScope(
-        open: _openDetail,
-        child: LcbPageHeaderScope(
-          controller: _header,
-          child: Column(
-            children: [
-              ShellHeader(
-                content: _HeaderContent(page: _page, detail: _detail != null),
-              ),
-              Expanded(
-                child: Row(
-                  // Stretch, otherwise a page whose content is shorter than the
-                  // viewport (the detail page) gets centred and floats down.
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: LcbSearchScope(
+        search: _search,
+        child: LcbDetailScope(
+          open: _openDetail,
+          child: LcbPageHeaderScope(
+            controller: _header,
+            child: CallbackShortcuts(
+              bindings: {
+                // The field advertises Ctrl+K, so it has to work from anywhere.
+                const SingleActivator(LogicalKeyboardKey.keyK, control: true):
+                    _openSearch,
+                const SingleActivator(LogicalKeyboardKey.escape): _closeSearch,
+              },
+              child: Focus(
+                autofocus: true,
+                child: Column(
                   children: [
-                    _Sidebar(current: _page, onSelect: _select),
-                    Expanded(child: _body()),
+                    ShellHeader(
+                      content: _HeaderContent(
+                        page: _page,
+                        detail: _detail != null,
+                        onOpenSearch: _openSearch,
+                        onCloseSearch: _closeSearch,
+                      ),
+                    ),
+                    Expanded(
+                      child: Row(
+                        // Stretch, otherwise a page whose content is shorter
+                        // than the viewport (the detail page) gets centred and
+                        // floats down.
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _Sidebar(current: _page, onSelect: _select),
+                          Expanded(
+                            child: Builder(
+                              builder: (ctx) =>
+                                  LcbSearchScope.of(ctx).isOpen
+                                  ? const SearchPage()
+                                  : _body(),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -254,7 +313,12 @@ class _NavItemState extends State<_NavItem> {
 }
 
 class _HeaderContent extends StatelessWidget {
-  const _HeaderContent({required this.page, this.detail = false});
+  const _HeaderContent({
+    required this.page,
+    this.detail = false,
+    required this.onOpenSearch,
+    required this.onCloseSearch,
+  });
 
   final LcbPage page;
 
@@ -262,10 +326,19 @@ class _HeaderContent extends StatelessWidget {
   /// plus the title and drops the page controls and the search field.
   final bool detail;
 
+  final VoidCallback onOpenSearch;
+  final VoidCallback onCloseSearch;
+
   @override
   Widget build(BuildContext context) {
     final header = LcbPageHeaderScope.of(context);
     final onBack = header.onBack;
+
+    // 搜索 mode owns the whole bar: an expanded field flush with the content
+    // gutter, the 严格 toggle, the source picker and 取消. No title, no back.
+    if (LcbSearchScope.of(context).isOpen) {
+      return _SearchHeader(onClose: onCloseSearch);
+    }
 
     if (detail && onBack != null) {
       return Padding(
@@ -303,7 +376,7 @@ class _HeaderContent extends StatelessWidget {
             // Each page owns its own left-side header content.
             _buildHeaderLeft(context, page, header),
             const Expanded(child: HeaderDragGap()),
-            if (header.showSearch) const _SearchBox(),
+            if (header.showSearch) _SearchBox(onTap: onOpenSearch),
           ],
         ),
       ),
@@ -807,7 +880,9 @@ class _HeaderToolIcon extends StatelessWidget {
 }
 
 class _SearchBox extends StatefulWidget {
-  const _SearchBox();
+  const _SearchBox({required this.onTap});
+
+  final VoidCallback onTap;
 
   @override
   State<_SearchBox> createState() => _SearchBoxState();
@@ -819,34 +894,228 @@ class _SearchBoxState extends State<_SearchBox> {
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
-      cursor: SystemMouseCursors.text,
+      cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      child: Container(
-        width: 232,
-        height: 36,
-        padding: const EdgeInsets.only(left: 12, right: 12),
-        decoration: BoxDecoration(
-          color: _hover ? const Color(0xFFE8E8EC) : LcbColors.searchFill,
-          borderRadius: BorderRadius.circular(9),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          width: 232,
+          height: 36,
+          padding: const EdgeInsets.only(left: 12, right: 12),
+          decoration: BoxDecoration(
+            color: _hover ? const Color(0xFFE8E8EC) : LcbColors.searchFill,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: const Row(
+            children: [
+              Icon(
+                CupertinoIcons.search,
+                size: 16,
+                color: LcbColors.textSecondary,
+              ),
+              SizedBox(width: 8),
+              Text(
+                '搜索...',
+                style: TextStyle(fontSize: 12.5, color: LcbColors.textSecondary),
+              ),
+              Spacer(),
+              _KeyCap('Ctrl'),
+              SizedBox(width: 4),
+              _KeyCap('K'),
+            ],
+          ),
         ),
-        child: const Row(
-          children: [
-            Icon(
-              CupertinoIcons.search,
-              size: 16,
-              color: LcbColors.textSecondary,
+      ),
+    );
+  }
+}
+
+/// The header strip while 搜索 mode is open.
+///
+/// Measured at 1920x1040: the field runs 240..1625 (48 tall, 13px corners), 12px
+/// to the 42x26 严格 pill, 21px to the 16px source glyph, then 取消 in the brand
+/// violet ending at 1769.
+class _SearchHeader extends StatelessWidget {
+  const _SearchHeader({required this.onClose});
+
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final search = LcbSearchScope.of(context);
+    return Padding(
+      // 16 = the content gutter; the trailing 8 matches the page headers.
+      padding: const EdgeInsets.only(left: 16, right: 8, top: 2),
+      child: Row(
+        children: [
+          Expanded(child: _SearchField(search: search)),
+          const SizedBox(width: 12),
+          _StrictPill(search: search),
+          const SizedBox(width: 21),
+          const _SourcePickerButton(),
+          const SizedBox(width: 20),
+          _CancelButton(onTap: onClose),
+        ],
+      ),
+    );
+  }
+}
+
+class _SearchField extends StatelessWidget {
+  const _SearchField({required this.search});
+
+  final LcbSearch search;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.only(left: 14, right: 6),
+      decoration: BoxDecoration(
+        color: LcbColors.searchFill,
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            CupertinoIcons.search,
+            size: 15,
+            color: LcbColors.textSecondary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: search.text,
+              focusNode: search.focus,
+              onChanged: search.setQuery,
+              onSubmitted: (_) => search.submit(),
+              cursorColor: LcbColors.primary,
+              cursorWidth: 1.5,
+              style: const TextStyle(
+                fontSize: 15,
+                height: 1.2,
+                color: LcbColors.text,
+              ),
+              decoration: const InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                hintText: '全网搜索影视',
+                hintStyle: TextStyle(
+                  fontSize: 15,
+                  height: 1.2,
+                  color: LcbColors.textSecondary,
+                ),
+              ),
             ),
-            SizedBox(width: 8),
-            Text(
-              '搜索...',
-              style: TextStyle(fontSize: 12.5, color: LcbColors.textSecondary),
+          ),
+          if (search.query.isNotEmpty)
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: search.clearQuery,
+                child: Container(
+                  width: 18,
+                  height: 18,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFBFBFC2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    CupertinoIcons.xmark,
+                    size: 10,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
             ),
-            Spacer(),
-            _KeyCap('Ctrl'),
-            SizedBox(width: 4),
-            _KeyCap('K'),
-          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// The 严格 toggle: grey when off, brand violet with white text when on, which
+/// turns the query from a contains-match into an exact-title match.
+class _StrictPill extends StatelessWidget {
+  const _StrictPill({required this.search});
+
+  final LcbSearch search;
+
+  @override
+  Widget build(BuildContext context) {
+    final on = search.strict;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: search.toggleStrict,
+        child: Container(
+          width: 42,
+          height: 26,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: on ? LcbColors.primaryDim : LcbColors.searchFill,
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Text(
+            '严格',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              height: 1.0,
+              color: on ? Colors.white : LcbColors.text,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 搜索哪些资源 -- the same picker the bottom-right corner button opens.
+class _SourcePickerButton extends StatelessWidget {
+  const _SourcePickerButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => showSearchSourcesSheet(context),
+        child: const Padding(
+          padding: EdgeInsets.all(4),
+          child: Icon(
+            CupertinoIcons.square_grid_2x2,
+            size: 16,
+            color: LcbColors.text,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CancelButton extends StatelessWidget {
+  const _CancelButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Text(
+            '取消',
+            style: TextStyle(
+              fontSize: 15,
+              height: 1.0,
+              color: LcbColors.primaryDim,
+            ),
+          ),
         ),
       ),
     );

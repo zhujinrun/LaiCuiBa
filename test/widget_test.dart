@@ -1,6 +1,6 @@
 import 'dart:ui' show Size;
 
-import 'package:flutter/material.dart' show Icons;
+import 'package:flutter/material.dart' show Icons, TextField;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -105,5 +105,76 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('清空'), findsOneWidget);
     expect(find.text('选集'), findsNothing);
+  });
+
+  testWidgets('search opens from the header and 取消 returns to the page', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    // The collapsed field in the header opens the mode.
+    await tester.tap(find.text('搜索...'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('全网搜索影视'), findsOneWidget);
+    expect(find.text('搜索影视'), findsOneWidget);
+    expect(
+      find.text('会同时搜索影视源里的全部站点，结果按平台分组。'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+
+    // Back on the home feed: the explainer is gone and the hero is back.
+    expect(find.text('搜索影视'), findsNothing);
+    expect(find.text('继续观看'), findsOneWidget);
+  });
+
+  testWidgets('a committed query groups results by site and 严格 filters them', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('搜索...'));
+    await tester.pumpAndSettle();
+
+    // Typing shows the drop-down, not results.
+    await tester.enterText(find.byType(TextField), '尚');
+    await tester.pumpAndSettle();
+    expect(find.text('尚公主'), findsWidgets);
+    expect(find.text('选集'), findsNothing);
+
+    // Enter commits it.
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(find.text('全部'), findsOneWidget);
+    expect(find.text('「盘」 玩偶'), findsWidgets);
+    expect(find.text('第40集(全)'), findsWidgets);
+
+    // 严格 turns 尚 into an exact-title match, which nothing satisfies.
+    await tester.tap(find.text('严格'));
+    await tester.pumpAndSettle();
+    expect(find.text('没有找到相关影视'), findsOneWidget);
+    expect(find.text('第40集(全)'), findsNothing);
   });
 }
