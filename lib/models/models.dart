@@ -10,6 +10,11 @@ class MediaItem {
     this.overview,
     this.posterSeed = 0,
     this.image,
+    this.latest,
+    this.area,
+    this.categories = const [],
+    this.actors = const [],
+    this.episodes = const [],
   });
 
   final String id;
@@ -29,6 +34,21 @@ class MediaItem {
 
   /// Bundled cover artwork, mirroring the poster the original caches locally.
   final String? image;
+
+  /// Latest episode label as the source reports it, e.g. 第40集 / 全30集.
+  final String? latest;
+
+  /// Production region, e.g. 中国大陆.
+  final String? area;
+
+  /// Genre tags shown as chips, e.g. 剧情 / 爱情 / 古装.
+  final List<String> categories;
+
+  /// Cast names, shown in the detail page's 演员阵容 rail.
+  final List<String> actors;
+
+  /// Episode labels for series; empty for films.
+  final List<String> episodes;
 }
 
 class Episode {
@@ -100,6 +120,8 @@ class HistoryEntry {
     this.vodId,
     this.flag,
     this.sourceName,
+    this.sourceUrl,
+    this.sourceType,
     this.isFavorite = false,
     this.isFollowing = false,
   });
@@ -120,6 +142,11 @@ class HistoryEntry {
   final String? vodId;
   final String? flag;
   final String? sourceName;
+
+  /// Cross-source locators the original stores alongside each history row so an
+  /// entry can be resumed even after the active source changes.
+  final String? sourceUrl;
+  final String? sourceType;
 
   /// Favourites flags (the original folds favourites into history).
   final bool isFavorite;
@@ -157,6 +184,8 @@ class HistoryEntry {
       vodId: vodId,
       flag: flag,
       sourceName: sourceName,
+      sourceUrl: sourceUrl,
+      sourceType: sourceType,
       isFavorite: isFavorite ?? this.isFavorite,
       isFollowing: isFollowing ?? this.isFollowing,
     );
@@ -178,6 +207,8 @@ class HistoryEntry {
       if (flag != null) 'flag': flag,
     },
     'sourceName': sourceName,
+    if (sourceUrl != null) 'sourceUrl': sourceUrl,
+    if (sourceType != null) 'sourceType': sourceType,
     if (isFavorite) 'favorite': true,
     if (isFollowing) 'following': true,
   };
@@ -198,6 +229,8 @@ class HistoryEntry {
       vodId: payload['vodId'] as String?,
       flag: payload['flag'] as String?,
       sourceName: json['sourceName'] as String?,
+      sourceUrl: json['sourceUrl'] as String?,
+      sourceType: json['sourceType'] as String?,
       isFavorite: json['favorite'] as bool? ?? false,
       isFollowing: json['following'] as bool? ?? false,
     );

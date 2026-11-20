@@ -449,5 +449,52 @@ void main() {
       final reloaded = await AppStore.load();
       expect(reloaded.history, isEmpty);
     });
+
+    test('HistoryEntry round-trips the cross-source locators', () {
+      // The original stores sourceUrl/sourceType/sourceName next to each row so
+      // a title can be resumed after the active source changes.
+      const entry = HistoryEntry(
+        key: 'src|nodejs_jianpian|575857',
+        sourceId: 'src',
+        title: '尚公主',
+        poster: '',
+        episode: '第39集',
+        episodeIndex: 38,
+        positionMs: 31840,
+        durationMs: 2905400,
+        updatedAt: 1794472323204,
+        siteKey: 'nodejs_jianpian',
+        vodId: '575857',
+        flag: 'LZ线路',
+        sourceName: '豆儿猫源',
+        sourceUrl: 'https://example.com/douer/index.js.md5',
+        sourceType: 'tvbox',
+      );
+
+      final back = HistoryEntry.fromJson(entry.toJson());
+      expect(back.sourceUrl, 'https://example.com/douer/index.js.md5');
+      expect(back.sourceType, 'tvbox');
+      expect(back.sourceName, '豆儿猫源');
+      expect(back.flag, 'LZ线路');
+    });
+
+    test('HistoryEntry survives rows written before the locators existed', () {
+      // Older writes have no sourceUrl/sourceType: they must not throw.
+      final legacy = {
+        'key': 'src|site|1',
+        'sourceId': 'src',
+        'title': '尚公主',
+        'poster': '',
+        'episode': '第1集',
+        'episodeIndex': 0,
+        'positionMs': 0,
+        'durationMs': 0,
+        'updatedAt': 0,
+        'payload': <String, dynamic>{},
+      };
+      final entry = HistoryEntry.fromJson(legacy);
+      expect(entry.sourceUrl, isNull);
+      expect(entry.sourceType, isNull);
+    });
   });
 }
