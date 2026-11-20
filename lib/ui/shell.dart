@@ -202,6 +202,33 @@ class _ShellState extends State<Shell> {
     setState(() => _player = null);
   }
 
+  /// Persists the final playback position when the player tears down. Only a
+  /// position with a known duration is worth recording; a zero-length session
+  /// (opened and closed instantly) is dropped rather than polluting history.
+  void _recordProgress(
+    _PlayerSession session, {
+    required Duration position,
+    required Duration duration,
+  }) {
+    final detail = _detail;
+    if (detail == null) return;
+    if (duration <= Duration.zero) return;
+
+    final lines = detail.playLines;
+    String lineName = '';
+    if (session.lineIndex >= 0 && session.lineIndex < lines.length) {
+      lineName = lines[session.lineIndex].name;
+    }
+
+    _store.recordPlayback(
+      detail,
+      episodeIndex: session.episodeIndex,
+      positionMs: position.inMilliseconds,
+      durationMs: duration.inMilliseconds,
+      lineName: lineName,
+    );
+  }
+
   Widget _body() {
     final detail = _detail;
     if (detail != null) {
@@ -243,6 +270,11 @@ class _ShellState extends State<Shell> {
             startAt: player.startAt,
             onEpisode: (i) => _openPlayer(_detail!, i, player.lineIndex),
             onClose: _closePlayer,
+            onProgress: (pos, dur) => _recordProgress(
+              player,
+              position: pos,
+              duration: dur,
+            ),
           ),
       ],
     );

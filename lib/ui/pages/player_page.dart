@@ -29,6 +29,7 @@ class PlayerPage extends StatefulWidget {
     this.startAt,
     this.onEpisode,
     this.onClose,
+    this.onProgress,
   });
 
   /// Title shown in the top bar.
@@ -55,6 +56,10 @@ class PlayerPage extends StatefulWidget {
   final ValueChanged<int>? onEpisode;
 
   final VoidCallback? onClose;
+
+  /// Reports the final playback position and total duration when the player is
+  /// torn down, so the shell can persist it for 续播.
+  final void Function(Duration position, Duration duration)? onProgress;
 
   @override
   State<PlayerPage> createState() => _PlayerPageState();
@@ -179,6 +184,9 @@ class _PlayerPageState extends State<PlayerPage> {
     _playingSub?.cancel();
     _volumeSub?.cancel();
     _rateSub?.cancel();
+    // Report the final position before tearing the player down; this is the
+    // single reliable moment to capture where the user left off.
+    widget.onProgress?.call(_position, _duration);
     _player.dispose();
     super.dispose();
   }

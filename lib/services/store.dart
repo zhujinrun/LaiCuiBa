@@ -468,6 +468,55 @@ class AppStore extends ChangeNotifier {
     return null;
   }
 
+  /// Records (or updates) the watch history when the player closes, so 续播
+  /// resumes from here next time. [episodeIndex] is null for a film; [lineName]
+  /// is the play line's name (may be empty). A film's episode label is the title
+  /// itself; a series uses its episode label from [item.episodes].
+  Future<void> recordPlayback(
+    MediaItem item, {
+    required int? episodeIndex,
+    required int positionMs,
+    required int durationMs,
+    required String lineName,
+  }) async {
+    final source = currentSource;
+    if (source == null) return;
+    final siteKey = item.siteKey;
+    final vodId = item.id;
+
+    // The history key needs a stable vod id; the demo catalogue's card id is
+    // the fixture id, which is fine for demo continuity but won't match a real
+    // source lookup. Real records carry the source's own vod_id in `id`.
+    final key = '$source.id|${siteKey ?? ''}|$vodId';
+
+    String episodeLabel;
+    if (episodeIndex == null) {
+      episodeLabel = item.title; // film
+    } else if (episodeIndex >= 0 && episodeIndex < item.episodes.length) {
+      episodeLabel = item.episodes[episodeIndex];
+    } else {
+      episodeLabel = '第${episodeIndex + 1}集';
+    }
+
+    await putHistory(
+      HistoryEntry(
+        key: key,
+        sourceId: source.id,
+        title: item.title,
+        poster: item.image ?? '',
+        episode: episodeLabel,
+        episodeIndex: episodeIndex ?? 0,
+        positionMs: positionMs,
+        durationMs: durationMs,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+        siteKey: siteKey,
+        vodId: vodId,
+        flag: lineName.isEmpty ? null : lineName,
+        sourceName: source.name,
+      ),
+    );
+  }
+
   /// Home categories for the active home site, e.g. 电影 / 电视剧.
   Future<List<SpiderClass>> homeCategoriesReal() async {
     final session = spider;

@@ -499,6 +499,62 @@ void main() {
       );
     });
 
+    test('recordPlayback upserts a history row with the saved position',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+
+      // A series episode, on a real record carrying a site key.
+      await store.recordPlayback(
+        const MediaItem(
+          id: '575857',
+          title: '尚公主',
+          siteKey: 'nodejs_jianpian',
+          episodes: ['第1集', '第2集', '第3集'],
+        ),
+        episodeIndex: 1,
+        positionMs: 45000,
+        durationMs: 2700000,
+        lineName: 'LZ线路',
+      );
+
+      final row = store.history.firstWhere((e) => e.vodId == '575857');
+      expect(row.title, '尚公主');
+      expect(row.episodeIndex, 1);
+      expect(row.episode, '第2集');
+      expect(row.positionMs, 45000);
+      expect(row.durationMs, 2700000);
+      expect(row.flag, 'LZ线路');
+      expect(row.siteKey, 'nodejs_jianpian');
+
+      // 续播 now resolves from the recorded row.
+      expect(
+        store.resumePositionFor(
+          const MediaItem(id: '575857', title: '尚公主'),
+          episodeIndex: 1,
+        ),
+        45000,
+      );
+    });
+
+    test('recordPlayback labels a film with its own title', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+
+      await store.recordPlayback(
+        const MediaItem(id: '575252', title: '欢迎来龙餐馆'),
+        episodeIndex: null, // film
+        positionMs: 120000,
+        durationMs: 5400000,
+        lineName: '',
+      );
+
+      final row = store.history.firstWhere((e) => e.vodId == '575252');
+      expect(row.episode, '欢迎来龙餐馆');
+      expect(row.episodeIndex, 0);
+      expect(row.flag, isNull);
+    });
+
     test('HistoryEntry round-trips the cross-source locators', () {
       // The original stores sourceUrl/sourceType/sourceName next to each row so
       // a title can be resumed after the active source changes.
