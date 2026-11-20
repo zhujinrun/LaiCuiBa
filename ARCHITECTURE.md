@@ -42,12 +42,15 @@ BieCuiLe 1.0.6 (Windows) 的 Flutter 重建版。目标不是"抄一份源码"�
 ```
 lib/
   main.dart              无边框窗口初始化 + 应用入口
-  core/theme.dart        颜色 / 字号 / 间距 token
-  models/models.dart     MediaItem / Episode / ContinueWatching / HomeSection
-  services/demo_data.dart 演示片单（截图里的真实内容，便于对照）
+  core/
+    theme.dart           颜色 / 字号 / 间距 token
+    detail_nav.dart      LcbDetailScope：任何页面把详情页推给 shell
+  models/models.dart     MediaItem / HistoryEntry / FavoriteEntry / AppSettings …
+  services/demo_data.dart 演示片单 + detailDemo 详情夹具
   ui/
-    shell.dart           侧栏 + 顶栏 + 页面切换
-    pages/               各功能页
+    shell.dart           侧栏 + 顶栏 + 页面切换（含详情页路由）
+    pages/detail_page.dart 详情页（hero / 选集 / 演员阵容 / 分类）
+    pages/               其它功能页
     widgets/             title_bar / hero_banner / media_card / poster_art
 ```
 
@@ -58,6 +61,35 @@ lib/
 ### Phase 1 — 数据层与页面闭环
 本地存储（收藏/历史/设置）、`MediaItem` 从源适配器返回、详情页、搜索结果页、
 收藏与历史页接真实数据。这一阶段结束时不联网也能把界面点通。
+
+**已完成**：数据层闭环、设置持久化、收藏夹 CRUD、详情页（见下节）。
+**未做**：搜索结果页；详情页的换平台/下载/追更/评论与选集筛选需要源数据。
+
+#### 详情页（tvbox_detail_page 的等价物）
+
+结构：整幅模糊海报背景带（高 386）+ 204×306 海报 + 标题块，往下依次是
+选集（页签 + 集号网格）、演员阵容（72 圆头像横滑）、分类（灰胶囊）。
+从历史、收藏、首页卡片、hero「详情」都能进入；顶栏换成「返回圆钮 + 片名」，
+搜索框隐藏，侧栏选中态保持，返回时回到原页面。
+
+| 项 | 实测（measure.py 截图坐标） |
+| --- | --- |
+| 背景带 | y 53–439，高 386；底部 120px 白色渐变 |
+| 海报 | x 264–467（204 宽）× y 88–394（306 高），圆角 14 |
+| 文案列 | x 500 起 |
+| 标题 | 34px w700 白，墨迹 y 150–180 |
+| 属性标签 | 高 26，圆角 6，白 10% 填充 + 白 20% 描边，文字 12.5 |
+| 简介 | 13px，行高 1.62，**最大宽 845**（不是整幅宽），最多 2 行 |
+| 按钮行 | 高 42，圆角 21，间距 13；主按钮 primaryDim 实色 |
+| 选集标题 | 20px w700，墨迹 y 473–490；右侧筛选胶囊高 32 |
+| 集号页签 | 高 36，圆角 12；选中 primaryDim + 白字 |
+| 集号 chip | 高 44，圆角 12，#EFEFEF；选中 #EDEBF5 + primaryDim 字 |
+| 每行集数 | 按可用宽算：`(W + 9) ~/ (92 + 9)`，1920 下 16 个，间距 9/10 |
+| 演员头像 | 直径 72，间距 18，名字 12.5 w600 居中 |
+| 分类 chip | 高 34，圆角 9，#F2F2F2，14px |
+
+`选集` 分页每 20 集一页（1-20 / 21-40），进页面时定位到上次观看的那一页，
+该集 chip 高亮。无集数（电影）时整段隐藏，主按钮文案退回「播放」。
 
 ### Phase 2 — 源接入（灵魂）
 - 猫源宿主：Node.js + fastify，需要实现宿主注入的 `catServerFactory`、
@@ -282,3 +314,24 @@ hero 单看宽度比例（0.368 / 0.332）或高度比例（0.478 / 0.539）都�
 除了开关本身（bbox 1266,472–1314,500）**没有任何像素变化** —— 首页本来就没有玻璃层。
 所以不要在首页/侧栏上叠加玻璃，等实现底栏与悬浮按钮时再接入
 `liquid_glass_widgets 1.18.0`。
+
+### G. measure.py 的坐标偏移（务必记住）
+
+`.probe/measure.py` 把窗口摆到 `(-8, -8, w+16, h+16)`。Windows 无边框窗口的
+不可见边框是 **左/右/下各 8、上 0**，所以：
+
+- 客户区实际顶部落在**屏幕 y = -8**，横向落在 x = 0。
+- 截图裁掉四周 8 后，图上的 y 比 Flutter 逻辑 y **小 8**，x 与逻辑坐标一致。
+- `measure.py click` 用的是屏幕坐标，因此 **screen y = 逻辑 y − 8**。
+
+也就是说：截图上量到分隔线在 52，对应逻辑 60（顶栏 60 高）；要点逻辑 y=318 的
+侧栏项，就点屏幕 310。表 E/F 与本文件里的实测值都是**截图坐标**，可直接和
+`measure.py shot` 的新图对齐。
+
+### H. 两个反复踩到的布局坑
+
+- **Row 默认 crossAxisAlignment.center**：内容比视口矮的页面（详情页只有 ~930 高）
+  会被居中、整体下移，看起来像"顶部多了 25px"。shell 里内容列的 Row 必须
+  `CrossAxisAlignment.stretch`。
+- **`Container(alignment: …)` 会吃满父级宽度**：放进 `Wrap` 做 chip 时，每个
+  chip 会变成整行宽。chip 一律用 `padding` 撑高度、不要用 `alignment`。
