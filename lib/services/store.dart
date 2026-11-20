@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
+import 'catalog_sites.dart';
 import 'demo_data.dart' as demo;
 
 /// Application-wide persistent state: watch history, favourites (in their own
@@ -76,7 +77,7 @@ class AppStore extends ChangeNotifier {
 
     // Installs that predate site lists keep a source with no sites at all,
     // which would leave the whole fan-out empty after the upgrade.
-    final sitesBackfilled = _backfillDemoSites(sources);
+    final sitesBackfilled = _migrateDemoSource(sources);
 
     var current = prefs.getString(_kCurrent);
     if (current != null && current.length >= 2 && current.startsWith('"')) {
@@ -327,14 +328,31 @@ class AppStore extends ChangeNotifier {
   // changes at all.
   // -------------------------------------------------------------------------
 
-  /// Hero carousel entries.
-  List<MediaItem> get heroItems => demo.heroItems;
+  /// Hero carousel entries, tagged with the site they came from.
+  List<MediaItem> get heroItems => _attribute(demo.heroItems);
 
   /// Category rows, in display order.
-  List<HomeSection> get homeSections => demo.homeSections;
+  List<HomeSection> get homeSections => [
+    for (final section in demo.homeSections)
+      HomeSection(title: section.title, items: _attribute(section.items)),
+  ];
 
   /// Card definition -> the full record the detail page needs.
-  MediaItem detailOf(MediaItem item) => demo.detailFor(item);
+  MediaItem detailOf(MediaItem item) =>
+      demo.detailFor(item).withSiteKey(item.siteKey);
+
+  /// Pins a fixture to the site the home feed is supposed to come from.
+  ///
+  /// The bundled cards were transcribed from one live session on the source's
+  /// home site, so that is what they claim -- not a per-title hash, which would
+  /// have 尚公主 arrive from 「盘」夸克 in the detail page while history says it
+  /// was watched on 「直」荐片. Real source responses will carry their own key
+  /// and this becomes a no-op.
+  List<MediaItem> _attribute(List<MediaItem> items) {
+    final site = homeSite;
+    if (site == null) return items;
+    return [for (final item in items) item.withSiteKey(site.key)];
+  }
 
   // -------------------------------------------------------------------------
   // Sources
@@ -371,6 +389,64 @@ class AppStore extends ChangeNotifier {
 
   /// Sites the active source contributes to search and to the category rows.
   List<SiteInfo> get activeSites => currentSource?.searchableSites ?? const [];
+
+  /// The site the home feed claims to come from.
+  ///
+  /// The original stores this as `homeSite` on the source (`nodejs_jianpian`);
+  /// when the config has not named one -- or the user disabled it -- the first
+  /// enabled site stands in, which is also what the original does. Null means
+  /// there is nothing to show a name for.
+  SiteInfo? get homeSite {
+    final source = currentSource;
+    if (source == null) return null;
+    for (final site in source.sites) {
+      if (site.key == source.homeSite && site.enabled) return site;
+    }
+    final enabled = source.searchableSites;
+    return enabled.isEmpty ? null : enabled.first;
+  }
+
+  /// One site of one source by key, enabled or not.
+  SiteInfo? siteOf(String sourceId, String? siteKey) {
+    if (siteKey == null || siteKey.isEmpty) return null;
+    for (final source in _sources) {
+      if (source.id != sourceId) continue;
+      for (final site in source.sites) {
+        if (site.key == siteKey) return site;
+      }
+    }
+    return null;
+  }
+
+  /// Display name for a `siteKey` that history / favourites / cards carry.
+  /// Returns [fallback] when the key is unknown (its source was deleted, or the
+  /// record predates sites) so callers never have to print a raw key.
+  String siteNameOf(String sourceId, String? siteKey, {String fallback = ''}) {
+    return siteOf(sourceId, siteKey)?.name ?? fallback;
+  }
+
+  /// Display name for a site key when the caller does not know the source --
+  /// cards and favourites carry only `siteKey`. Falls back when the key is
+  /// unknown (the source was deleted, or the record predates sites).
+  String siteNameOfKey(String? siteKey, {String fallback = ''}) {
+    if (siteKey == null || siteKey.isEmpty) return fallback;
+    for (final source in _sources) {
+      for (final site in source.sites) {
+        if (site.key == siteKey) return site.name;
+      }
+    }
+    return fallback;
+  }
+
+  /// Points the home feed at another site, mirroring the original's `homeSite`.
+  Future<void> selectHomeSite(String siteKey) async {
+    final index = _sources.indexWhere((source) => source.id == _current);
+    if (index < 0) return;
+    if (_sources[index].homeSite == siteKey) return;
+    _sources[index] = _sources[index].copyWith(homeSite: siteKey);
+    await _persistSources();
+    notifyListeners();
+  }
 
   /// Sites behind [selection] (null = every source), de-duplicated by display
   /// name so two sources that both ship 玩偶 produce one chip, not two.
@@ -493,68 +569,6 @@ class AppStore extends ChangeNotifier {
   /// stores in its own preferences.
   static const _demoSourceId = '1794457036493149';
 
-  static const List<SiteInfo> _demoSites = [
-    SiteInfo(key: 'nodejs_duoduo', name: '「盘」多多', type: '3', api: 'nodejs_duoduo'),
-    SiteInfo(key: 'nodejs_muou', name: '「盘」木偶', type: '3', api: 'nodejs_muou'),
-    SiteInfo(key: 'nodejs_huajuan', name: '「盘」花卷', type: '3', api: 'nodejs_huajuan'),
-    SiteInfo(key: 'nodejs_labi', name: '「盘」蜡笔', type: '3', api: 'nodejs_labi'),
-    SiteInfo(key: 'nodejs_shandian', name: '「盘」闪电', type: '3', api: 'nodejs_shandian'),
-    SiteInfo(key: 'nodejs_ouge', name: '「盘」欧歌', type: '3', api: 'nodejs_ouge'),
-    SiteInfo(key: 'nodejs_myquark', name: '「盘」夸克', type: '3', api: 'nodejs_myquark'),
-    SiteInfo(key: 'nodejs_mycloud', name: '「盘」我的', type: '3', api: 'nodejs_mycloud'),
-    SiteInfo(key: 'nodejs_myali', name: '「盘」阿里', type: '3', api: 'nodejs_myali'),
-    SiteInfo(key: 'nodejs_mytianyi', name: '「盘」天翼', type: '3', api: 'nodejs_mytianyi'),
-    SiteInfo(key: 'nodejs_mybaidu', name: '「盘」百度', type: '3', api: 'nodejs_mybaidu'),
-    SiteInfo(key: 'nodejs_my115', name: '「盘」115', type: '3', api: 'nodejs_my115'),
-    SiteInfo(key: 'nodejs_my123', name: '「盘」123', type: '3', api: 'nodejs_my123'),
-    SiteInfo(key: 'nodejs_123ypzysq', name: '「盘」123社区', type: '3', api: 'nodejs_123ypzysq'),
-    SiteInfo(key: 'nodejs_guanying', name: '「盘」观影', type: '3', api: 'nodejs_guanying'),
-    SiteInfo(key: 'nodejs_cloudseekr', name: '「盘」CLOUDSEEK', type: '3', api: 'nodejs_cloudseekr'),
-    SiteInfo(key: 'nodejs_myguangyapan', name: '「盘」光鸭', type: '3', api: 'nodejs_myguangyapan'),
-    SiteInfo(key: 'nodejs_huban', name: '「盘」虎斑', type: '3', api: 'nodejs_huban'),
-    SiteInfo(key: 'nodejs_xiaoban', name: '「盘」小斑', type: '3', api: 'nodejs_xiaoban'),
-    SiteInfo(key: 'nodejs_woniu', name: '「盘」蜗牛', type: '3', api: 'nodejs_woniu'),
-    SiteInfo(key: 'nodejs_libvio', name: '「盘」立播', type: '3', api: 'nodejs_libvio'),
-    SiteInfo(key: 'nodejs_wanou', name: '「盘」玩偶', type: '3', api: 'nodejs_wanou'),
-    SiteInfo(key: 'nodejs_tgchannel', name: '「盘」TG搜', type: '3', api: 'nodejs_tgchannel'),
-    SiteInfo(key: 'nodejs_tgsou', name: '「盘」TG搜²', type: '3', api: 'nodejs_tgsou'),
-    SiteInfo(key: 'nodejs_tgfilebot', name: '「直」TGFileBot', type: '3', api: 'nodejs_tgfilebot'),
-    SiteInfo(key: 'nodejs_tgvideo', name: '「直」TG视频', type: '3', api: 'nodejs_tgvideo'),
-    SiteInfo(key: 'nodejs_douban', name: '「荐」豆瓣', type: '3', api: 'nodejs_douban'),
-    SiteInfo(key: 'nodejs_doubi', name: '「直」豆哔', type: '3', api: 'nodejs_doubi'),
-    SiteInfo(key: 'nodejs_push', name: '「推」推送', type: '4', api: 'nodejs_push'),
-    SiteInfo(key: 'nodejs_pansou', name: '「盘」PanSou', type: '3', api: 'nodejs_pansou'),
-    SiteInfo(key: 'nodejs_miniyingshi', name: '「盘」迷你影视', type: '3', api: 'nodejs_miniyingshi'),
-    SiteInfo(key: 'nodejs_quanpansou', name: '「盘」全盘搜', type: '3', api: 'nodejs_quanpansou'),
-    SiteInfo(key: 'nodejs_jjsou', name: '「盘」JJ搜', type: '3', api: 'nodejs_jjsou'),
-    SiteInfo(key: 'nodejs_jutoushe', name: '「盘」剧透社', type: '3', api: 'nodejs_jutoushe'),
-    SiteInfo(key: 'nodejs_rrdyw', name: '「盘」人人', type: '3', api: 'nodejs_rrdyw'),
-    SiteInfo(key: 'nodejs_pomo', name: '「盘」Pomo', type: '3', api: 'nodejs_pomo'),
-    SiteInfo(key: 'nodejs_xingya', name: '「直」星芽', type: '3', api: 'nodejs_xingya'),
-    SiteInfo(key: 'nodejs_hongguo', name: '「直」红果', type: '3', api: 'nodejs_hongguo'),
-    SiteInfo(key: 'nodejs_live2vod', name: '「直」直播', type: '3', api: 'nodejs_live2vod'),
-    SiteInfo(key: 'nodejs_jinpai', name: '「直」金牌', type: '3', api: 'nodejs_jinpai'),
-    SiteInfo(key: 'nodejs_jianpian', name: '「直」荐片', type: '3', api: 'nodejs_jianpian'),
-    SiteInfo(key: 'nodejs_guazi', name: '「直」瓜子', type: '3', api: 'nodejs_guazi'),
-    SiteInfo(key: 'nodejs_juzhi', name: '「直」橘汁', type: '3', api: 'nodejs_juzhi'),
-    SiteInfo(key: 'nodejs_gulu', name: '「直」咕噜', type: '3', api: 'nodejs_gulu'),
-    SiteInfo(key: 'nodejs_juxiafan', name: '「直」剧下饭', type: '3', api: 'nodejs_juxiafan'),
-    SiteInfo(key: 'nodejs_dbku', name: '「直」独播库', type: '3', api: 'nodejs_dbku'),
-    SiteInfo(key: 'nodejs_dashixiong', name: '「直」大师兄', type: '3', api: 'nodejs_dashixiong'),
-    SiteInfo(key: 'nodejs_hanxiaoquan', name: '「直」韩小圈', type: '3', api: 'nodejs_hanxiaoquan'),
-    SiteInfo(key: 'nodejs_ciyuancheng', name: '「直」次元城', type: '3', api: 'nodejs_ciyuancheng'),
-    SiteInfo(key: 'nodejs_dmghg', name: '「直」动漫共和国', type: '3', api: 'nodejs_dmghg'),
-    SiteInfo(key: 'nodejs_anich', name: '「直」AniCh', type: '3', api: 'nodejs_anich'),
-    SiteInfo(key: 'nodejs_dmbus', name: '「直」动漫巴士', type: '3', api: 'nodejs_dmbus'),
-    SiteInfo(key: 'nodejs_akianime', name: '「直」AkiAnime', type: '3', api: 'nodejs_akianime'),
-    SiteInfo(key: 'nodejs_jiong', name: '「直」囧次元', type: '3', api: 'nodejs_jiong'),
-    SiteInfo(key: 'nodejs_4kzn', name: '「盘」指南', type: '3', api: 'nodejs_4kzn'),
-    SiteInfo(key: 'nodejs_kafei', name: '「直」咖啡', type: '3', api: 'nodejs_kafei'),
-    SiteInfo(key: 'nodejs_emby', name: 'Emby', type: '3', api: 'nodejs_emby'),
-    SiteInfo(key: 'nodejs_alist-video', name: 'Alist', type: '3', api: 'nodejs_alist-video'),
-    SiteInfo(key: 'nodejs_fenxiang', name: '「盘」分享', type: '3', api: 'nodejs_fenxiang'),
-  ];
-
   static SourceInfo _demoSource() => const SourceInfo(
     id: _demoSourceId,
     type: 'tvbox',
@@ -564,7 +578,8 @@ class AppStore extends ChangeNotifier {
     latencyMs: 5000,
     movieCount: 58,
     showCount: 1,
-    sites: _demoSites,
+    sites: catalogSites,
+    homeSite: _demoHomeSite,
   );
 
   /// Keys of the dozen made-up names that shipped before the real list above
@@ -584,50 +599,63 @@ class AppStore extends ChangeNotifier {
     'paopao',
   };
 
-  /// Gives the seeded source its sites on installs that predate them, and
-  /// upgrades the twelve placeholder names to the real 59.
+  /// The site the original keeps in `homeSite` for 豆儿猫源: its cached home
+  /// feed (banners, 电影/电视剧 rows) was drawn from 荐片.
+  static const _demoHomeSite = 'nodejs_jianpian';
+
+  /// Brings the seeded source up to date on installs that already ran.
   ///
-  /// Without this, an existing `flutter.sources` keeps a source with no site
-  /// list, `sitesForSelection` returns nothing, and search goes blank after the
-  /// upgrade -- a regression that only shows up for anyone who already ran the
-  /// app. The placeholder pass keeps whatever the user switched off, and leaves
-  /// sites they added themselves in place. Returns true when something changed
-  /// so the caller can persist.
-  static bool _backfillDemoSites(List<SourceInfo> sources) {
+  /// Three shapes have shipped, and none of them may lose user intent:
+  ///   * no `sites` at all -- seed the real list, or search goes blank;
+  ///   * the twelve placeholder names -- swap in the real 59, keeping whichever
+  ///     switches were flipped and any site the user added himself;
+  ///   * no `homeSite` -- point it at 荐片, the site the fixture feed came from.
+  ///
+  /// Returns true when something changed so the caller can persist.
+  static bool _migrateDemoSource(List<SourceInfo> sources) {
     var changed = false;
     for (var index = 0; index < sources.length; index++) {
-      final source = sources[index];
-      if (source.id != _demoSourceId) continue;
+      final before = sources[index];
+      if (before.id != _demoSourceId) continue;
+      var source = before;
 
       if (source.sites.isEmpty) {
-        sources[index] = source.copyWith(sites: _demoSites);
-        changed = true;
-        continue;
+        source = source.copyWith(sites: catalogSites);
+      } else {
+        final legacy = source.sites
+            .where((site) => _legacyPlaceholderKeys.contains(site.key))
+            .toList();
+        final alreadyReal = source.sites.any(
+          (site) => site.key.startsWith('nodejs_'),
+        );
+        if (legacy.isNotEmpty && !alreadyReal) {
+          final off = {
+            for (final site in legacy)
+              if (!site.enabled) site.key,
+          };
+          final extras = source.sites
+              .where((site) => !_legacyPlaceholderKeys.contains(site.key))
+              .toList();
+          source = source.copyWith(
+            sites: [
+              for (final site in catalogSites)
+                off.contains(site.key.substring('nodejs_'.length))
+                    ? site.copyWith(enabled: false)
+                    : site,
+              ...extras,
+            ],
+          );
+        }
       }
 
-      final legacy = source.sites
-          .where((site) => _legacyPlaceholderKeys.contains(site.key))
-          .toList();
-      if (legacy.isEmpty) continue;
-      if (source.sites.any((site) => site.key.startsWith('nodejs_'))) continue;
+      if (source.homeSite.isEmpty && source.sites.isNotEmpty) {
+        source = source.copyWith(homeSite: _demoHomeSite);
+      }
 
-      final off = {
-        for (final site in legacy)
-          if (!site.enabled) site.key,
-      };
-      final extras = source.sites
-          .where((site) => !_legacyPlaceholderKeys.contains(site.key))
-          .toList();
-      sources[index] = source.copyWith(
-        sites: [
-          for (final site in _demoSites)
-            off.contains(site.key.substring('nodejs_'.length))
-                ? site.copyWith(enabled: false)
-                : site,
-          ...extras,
-        ],
-      );
-      changed = true;
+      if (!identical(source, before)) {
+        sources[index] = source;
+        changed = true;
+      }
     }
     return changed;
   }

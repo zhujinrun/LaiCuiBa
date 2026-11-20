@@ -414,30 +414,32 @@ void main() {
       },
     );
 
-    test('removeHistory drops one entry and persists; absent key is a no-op',
-        () async {
-      SharedPreferences.setMockInitialValues({});
-      final store = await AppStore.load();
-      // Add an extra entry so removing one leaves the list non-empty (and the
-      // first-launch seed does not kick back in on reload).
-      await store.putHistory(
-        _entry(key: 'src|nodejs_jianpian|7', title: 'Extra'),
-      );
-      final before = store.history.length;
-      const targetKey = 'src|nodejs_jianpian|7';
+    test(
+      'removeHistory drops one entry and persists; absent key is a no-op',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final store = await AppStore.load();
+        // Add an extra entry so removing one leaves the list non-empty (and the
+        // first-launch seed does not kick back in on reload).
+        await store.putHistory(
+          _entry(key: 'src|nodejs_jianpian|7', title: 'Extra'),
+        );
+        final before = store.history.length;
+        const targetKey = 'src|nodejs_jianpian|7';
 
-      await store.removeHistory(targetKey);
-      expect(store.history, hasLength(before - 1));
-      expect(store.history.any((e) => e.key == targetKey), isFalse);
+        await store.removeHistory(targetKey);
+        expect(store.history, hasLength(before - 1));
+        expect(store.history.any((e) => e.key == targetKey), isFalse);
 
-      // Reload restores the deletion.
-      final reloaded = await AppStore.load();
-      expect(reloaded.history.any((e) => e.key == targetKey), isFalse);
+        // Reload restores the deletion.
+        final reloaded = await AppStore.load();
+        expect(reloaded.history.any((e) => e.key == targetKey), isFalse);
 
-      // Removing an unknown key leaves the list unchanged.
-      await store.removeHistory('no-such-key');
-      expect(store.history, hasLength(before - 1));
-    });
+        // Removing an unknown key leaves the list unchanged.
+        await store.removeHistory('no-such-key');
+        expect(store.history, hasLength(before - 1));
+      },
+    );
 
     test('clearing history does not re-seed demo data on reload', () async {
       SharedPreferences.setMockInitialValues({});
@@ -503,23 +505,95 @@ void main() {
     // Sources -> sites: the junction every page reads from
     // -----------------------------------------------------------------------
 
-    test('the seeded source carries the 59 sites its config declares',
-        () async {
+    test('the home feed names the site it was drawn from', () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();
 
-      expect(store.sources.first.sites, hasLength(59));
-      expect(store.activeSites, hasLength(59));
-      // The bundle's first meta block, not a made-up name.
-      expect(store.activeSites.first.name, '「盘」多多');
-      expect(store.activeSites.first.key, 'nodejs_duoduo');
-      // The site the original's history rows point at has to be in there.
+      // `homeSite` mirrors the original's field, and the name comes from the
+      // config rather than a literal in the header.
+      expect(store.sources.first.homeSite, 'nodejs_jianpian');
+      expect(store.homeSite?.key, 'nodejs_jianpian');
+      expect(store.homeSite?.name, '「直」荐片');
+
+      // Every card and the detail payload carry that key, so the detail page's
+      // 选集 chip and the history row can name the same site.
+      expect(store.heroItems.first.siteKey, 'nodejs_jianpian');
+      final section = store.homeSections.first;
       expect(
-        store.activeSites.any((site) => site.key == 'nodejs_jianpian'),
+        section.items.every((item) => item.siteKey == 'nodejs_jianpian'),
         isTrue,
       );
-      expect(store.sitesForSelection(null), hasLength(59));
+      final detail = store.detailOf(store.heroItems.first);
+      expect(detail.siteKey, 'nodejs_jianpian');
+
+      expect(store.siteNameOfKey('nodejs_jianpian'), '「直」荐片');
+      expect(store.siteNameOfKey('gone', fallback: '某站'), '某站');
     });
+
+    test('a disabled home site falls back to the first enabled one', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      final id = store.sources.first.id;
+
+      await store.toggleSite(id, 'nodejs_jianpian');
+      expect(store.homeSite?.key, 'nodejs_duoduo');
+
+      // Picking another site persists and reaches the cards.
+      await store.selectHomeSite('nodejs_jianpian');
+      expect(
+        store.homeSite?.key,
+        'nodejs_duoduo',
+        reason: 'homeSite still points at a silenced site',
+      );
+
+      await store.toggleSite(id, 'nodejs_jianpian');
+      await store.selectHomeSite('nodejs_guazi');
+      final reloaded = await AppStore.load();
+      expect(reloaded.sources.first.homeSite, 'nodejs_guazi');
+      expect(reloaded.homeSite?.name, '「直」瓜子');
+      expect(reloaded.heroItems.first.siteKey, 'nodejs_guazi');
+    });
+
+    test('history resolves its site key to a display name', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+
+      final name = store.siteNameOf(
+        '1794457036493149',
+        'nodejs_jianpian',
+        fallback: '豆儿猫源',
+      );
+      expect(name, '「直」荐片');
+      // Unknown key / unknown source keep the fallback instead of a raw key.
+      expect(
+        store.siteNameOf('1794457036493149', 'gone', fallback: '豆儿猫源'),
+        '豆儿猫源',
+      );
+      expect(
+        store.siteNameOf('no-such-source', 'nodejs_jianpian', fallback: '源'),
+        '源',
+      );
+    });
+
+    test(
+      'the seeded source carries the 59 sites its config declares',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final store = await AppStore.load();
+
+        expect(store.sources.first.sites, hasLength(59));
+        expect(store.activeSites, hasLength(59));
+        // The bundle's first meta block, not a made-up name.
+        expect(store.activeSites.first.name, '「盘」多多');
+        expect(store.activeSites.first.key, 'nodejs_duoduo');
+        // The site the original's history rows point at has to be in there.
+        expect(
+          store.activeSites.any((site) => site.key == 'nodejs_jianpian'),
+          isTrue,
+        );
+        expect(store.sitesForSelection(null), hasLength(59));
+      },
+    );
 
     test('silencing a site drops it from the fan-out and persists', () async {
       SharedPreferences.setMockInitialValues({});
@@ -604,7 +678,8 @@ void main() {
       expect(legacy.searchableSites, isEmpty);
     });
 
-    test('replaceSites swaps the list but keeps the other fields', () async {      SharedPreferences.setMockInitialValues({});
+    test('replaceSites swaps the list but keeps the other fields', () async {
+      SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();
       final before = store.sources.first;
 
@@ -618,11 +693,39 @@ void main() {
       expect(after.movieCount, before.movieCount);
     });
 
-    test('a source written before sites existed is backfilled on upgrade',
-        () async {
-      // Legacy shape: the seeded id, no `sites` key, and the seed flag already
-      // set so the first-launch path does not run. Without the migration the
-      // fan-out would be empty for anyone who had run the previous build.
+    test(
+      'a source written before sites existed is backfilled on upgrade',
+      () async {
+        // Legacy shape: the seeded id, no `sites` key, and the seed flag already
+        // set so the first-launch path does not run. Without the migration the
+        // fan-out would be empty for anyone who had run the previous build.
+        SharedPreferences.setMockInitialValues({
+          'seeded': true,
+          'sources': jsonEncode([
+            {
+              'id': '1794457036493149',
+              'type': 'tvbox',
+              'name': '豆儿猫源',
+              'url': 'https://example.com/douer/index.js.md5',
+            },
+          ]),
+        });
+
+        final store = await AppStore.load();
+        expect(store.sources.first.sites, hasLength(59));
+        expect(store.activeSites, hasLength(59));
+
+        // The backfill is written back rather than recomputed every launch.
+        final reloaded = await AppStore.load();
+        expect(reloaded.sources.first.sites, hasLength(59));
+        expect(reloaded.currentSourceId, '1794457036493149');
+      },
+    );
+
+    test('a source stored before homeSite existed gets one', () async {
+      // Install that already has the real 59 sites but no `homeSite`: without
+      // the backfill the home chip falls back to 「盘」多多 instead of the site
+      // the fixture feed actually came from.
       SharedPreferences.setMockInitialValues({
         'seeded': true,
         'sources': jsonEncode([
@@ -631,18 +734,20 @@ void main() {
             'type': 'tvbox',
             'name': '豆儿猫源',
             'url': 'https://example.com/douer/index.js.md5',
+            'sites': [
+              {'key': 'nodejs_duoduo', 'name': '「盘」多多', 'type': '3'},
+              {'key': 'nodejs_jianpian', 'name': '「直」荐片', 'type': '3'},
+            ],
           },
         ]),
       });
 
       final store = await AppStore.load();
-      expect(store.sources.first.sites, hasLength(59));
-      expect(store.activeSites, hasLength(59));
-
-      // The backfill is written back rather than recomputed every launch.
+      expect(store.sources.first.homeSite, 'nodejs_jianpian');
+      expect(store.homeSite?.name, '「直」荐片');
+      // Written back, so the chip does not flip again on the next launch.
       final reloaded = await AppStore.load();
-      expect(reloaded.sources.first.sites, hasLength(59));
-      expect(reloaded.currentSourceId, '1794457036493149');
+      expect(reloaded.sources.first.homeSite, 'nodejs_jianpian');
     });
 
     test('the twelve placeholder sites are upgraded, switches intact', () async {

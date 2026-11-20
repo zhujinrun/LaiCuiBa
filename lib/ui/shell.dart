@@ -18,6 +18,7 @@ import 'page_header.dart';
 import 'widgets/manage_folders_sheet.dart';
 import 'widgets/search_sources_dialog.dart';
 import 'widgets/shell_header.dart';
+import 'widgets/site_picker_dialog.dart';
 import 'widgets/source_dialogs.dart';
 
 class Shell extends StatefulWidget {
@@ -170,6 +171,7 @@ class _ShellState extends State<Shell> {
                         detail: _detail != null,
                         onOpenSearch: _openSearch,
                         onCloseSearch: _closeSearch,
+                        onSelectPage: _select,
                       ),
                     ),
                     Expanded(
@@ -182,8 +184,7 @@ class _ShellState extends State<Shell> {
                           _Sidebar(current: _page, onSelect: _select),
                           Expanded(
                             child: Builder(
-                              builder: (ctx) =>
-                                  LcbSearchScope.of(ctx).isOpen
+                              builder: (ctx) => LcbSearchScope.of(ctx).isOpen
                                   ? const SearchPage()
                                   : _body(),
                             ),
@@ -334,6 +335,7 @@ class _HeaderContent extends StatelessWidget {
     this.detail = false,
     required this.onOpenSearch,
     required this.onCloseSearch,
+    required this.onSelectPage,
   });
 
   final LcbPage page;
@@ -344,6 +346,9 @@ class _HeaderContent extends StatelessWidget {
 
   final VoidCallback onOpenSearch;
   final VoidCallback onCloseSearch;
+
+  /// The home header's source chip jumps to 资源, the way the original's does.
+  final ValueChanged<LcbPage> onSelectPage;
 
   @override
   Widget build(BuildContext context) {
@@ -407,9 +412,7 @@ class _HeaderContent extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: const Text(
           '清空观看历史',
           style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
@@ -428,10 +431,7 @@ class _HeaderContent extends StatelessWidget {
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text(
-              '清空',
-              style: TextStyle(color: LcbColors.sysRed),
-            ),
+            child: const Text('清空', style: TextStyle(color: LcbColors.sysRed)),
           ),
         ],
       ),
@@ -459,13 +459,20 @@ class _HeaderContent extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 16),
-            const _SourceChip(label: '豆儿猫源', glyph: _SourceGlyph()),
+            _SourceChip(
+              label: StoreScope.of(context).currentSource?.name ?? '未选择源',
+              glyph: const _SourceGlyph(),
+              onTap: () => onSelectPage(LcbPage.resources),
+            ),
             const SizedBox(width: 8),
-            const _SourceChip(
+            _SourceChip(
               icon: CupertinoIcons.layers,
               iconSize: 15,
-              label: '「直」荐片',
+              // The site the cards and the detail page claim to come from --
+              // real name from the config (`「直」荐片`), not a literal.
+              label: StoreScope.of(context).homeSite?.name ?? '全部站点',
               labelGap: 5,
+              onTap: () => showSitePicker(context),
             ),
             const SizedBox(width: 8),
             _IconGhost(icon: CupertinoIcons.square_grid_2x2, onTap: () {}),
@@ -494,10 +501,7 @@ class _HeaderContent extends StatelessWidget {
               ),
               child: const Text(
                 '清空',
-                style: TextStyle(
-                  fontSize: 15,
-                  color: LcbColors.primaryDim,
-                ),
+                style: TextStyle(fontSize: 15, color: LcbColors.primaryDim),
               ),
             ),
           ],
@@ -640,11 +644,15 @@ class _SourceChip extends StatefulWidget {
     this.iconSize = 16,
     this.glyph,
     this.labelGap = 8,
+    this.onTap,
   });
 
   final IconData? icon;
   final String label;
   final double iconSize;
+
+  /// Opens the source page (first chip) or the site picker (second chip).
+  final VoidCallback? onTap;
 
   /// Replaces [icon] when the mark is not in any bundled icon font.
   final Widget? glyph;
@@ -665,45 +673,49 @@ class _SourceChipState extends State<_SourceChip> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      child: Container(
-        height: 32,
-        padding: const EdgeInsets.only(left: 10, right: 9),
-        decoration: BoxDecoration(
-          color: _hover ? const Color(0xFFE8E8EC) : LcbColors.searchFill,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            // Both chips reserve a 20 wide slot for their glyph so the labels
-            // line up even though one mark is drawn much smaller than the other.
-            SizedBox(
-              width: 20,
-              child: Center(
-                child:
-                    widget.glyph ??
-                    Icon(
-                      widget.icon,
-                      size: widget.iconSize,
-                      color: LcbColors.text,
-                    ),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          height: 32,
+          padding: const EdgeInsets.only(left: 10, right: 9),
+          decoration: BoxDecoration(
+            color: _hover ? const Color(0xFFE8E8EC) : LcbColors.searchFill,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              // Both chips reserve a 20 wide slot for their glyph so the labels
+              // line up even though one mark is drawn much smaller than the other.
+              SizedBox(
+                width: 20,
+                child: Center(
+                  child:
+                      widget.glyph ??
+                      Icon(
+                        widget.icon,
+                        size: widget.iconSize,
+                        color: LcbColors.text,
+                      ),
+                ),
               ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              widget.label,
-              style: const TextStyle(
-                fontSize: 12.5,
-                letterSpacing: -0.5,
-                color: LcbColors.text,
+              const SizedBox(width: 6),
+              Text(
+                widget.label,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  letterSpacing: -0.5,
+                  color: LcbColors.text,
+                ),
               ),
-            ),
-            SizedBox(width: widget.labelGap),
-            const Icon(
-              CupertinoIcons.chevron_compact_down,
-              size: 12,
-              color: LcbColors.textSecondary,
-            ),
-          ],
+              SizedBox(width: widget.labelGap),
+              const Icon(
+                CupertinoIcons.chevron_compact_down,
+                size: 12,
+                color: LcbColors.textSecondary,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -822,14 +834,22 @@ class _FavoritesHeaderTabs extends StatelessWidget {
         const SizedBox(width: 19),
         tab('追剧', 1),
         const SizedBox(width: 36),
-        const Icon(CupertinoIcons.search, size: 17, color: LcbColors.settingsQuiet),
+        const Icon(
+          CupertinoIcons.search,
+          size: 17,
+          color: LcbColors.settingsQuiet,
+        ),
         const SizedBox(width: 26),
         _HeaderIconButton(
           icon: CupertinoIcons.folder,
           onTap: () => showManageFoldersSheet(context),
         ),
         const SizedBox(width: 26),
-        const Icon(CupertinoIcons.line_horizontal_3, size: 17, color: LcbColors.settingsQuiet),
+        const Icon(
+          CupertinoIcons.line_horizontal_3,
+          size: 17,
+          color: LcbColors.settingsQuiet,
+        ),
       ],
     );
   }
@@ -949,7 +969,10 @@ class _SearchBoxState extends State<_SearchBox> {
               SizedBox(width: 8),
               Text(
                 '搜索...',
-                style: TextStyle(fontSize: 12.5, color: LcbColors.textSecondary),
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: LcbColors.textSecondary,
+                ),
               ),
               Spacer(),
               _KeyCap('Ctrl'),

@@ -19,7 +19,8 @@ Future<void> showSearchSourcesSheet(BuildContext context) {
   return showDialog<void>(
     context: context,
     barrierColor: const Color(0x78000000),
-    builder: (_) => _SearchSourcesDialog(search: search, sources: store.sources),
+    builder: (_) =>
+        _SearchSourcesDialog(search: search, sources: store.sources),
   );
 }
 
@@ -201,6 +202,13 @@ class _ClearAllPill extends StatelessWidget {
   }
 }
 
+/// `TVBox 影视源 · 59 个站点`, or just the kind when no config was parsed.
+String _subtitleFor(SourceInfo source) {
+  final kind = source.type == 'tvbox' ? 'TVBox 影视源' : source.type;
+  final sites = source.searchableSites.length;
+  return sites == 0 ? kind : '$kind · $sites 个站点';
+}
+
 class _SourceRow extends StatelessWidget {
   const _SourceRow({
     required this.source,
@@ -261,7 +269,9 @@ class _SourceRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      source.type == 'tvbox' ? 'TVBox 影视源' : source.type,
+                      // Naming the site count tells the user what ticking this
+                      // source actually widens the search to.
+                      _subtitleFor(source),
                       style: const TextStyle(
                         fontSize: 12.5,
                         height: 1.0,

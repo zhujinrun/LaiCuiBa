@@ -1,3 +1,4 @@
+import '../core/stable_hash.dart';
 import '../models/models.dart';
 import 'demo_data.dart';
 
@@ -78,19 +79,6 @@ List<MediaItem> get catalogueItems {
   return out;
 }
 
-/// FNV-1a over the UTF-16 code units.
-///
-/// `String.hashCode` is only stable within a single run, and the site spread has
-/// to look the same in tests as it does in the app, so the hash is spelled out.
-int _stableHash(String value) {
-  var hash = 0x811c9dc5;
-  for (final unit in value.codeUnits) {
-    hash ^= unit;
-    hash = (hash * 0x01000193) & 0xFFFFFFFF;
-  }
-  return hash;
-}
-
 /// Whether [title] belongs on [site]. Deterministic, so the chip counts do not
 /// shuffle on every rebuild.
 ///
@@ -99,7 +87,7 @@ int _stableHash(String value) {
 /// and hashing it keeps the spread identical to the measurements taken from the
 /// original.
 bool _siteCarries(String title, String site) =>
-    _stableHash('$title@$site') % 100 < 70;
+    stableHash('$title@$site') % 100 < 70;
 
 /// Runs [query] against the catalogue, fanning out over [sites].
 ///
@@ -122,8 +110,7 @@ SearchOutcome searchCatalogue(
 
   final matched = catalogueItems
       .where(
-        (item) =>
-            strict ? item.title == needle : item.title.contains(needle),
+        (item) => strict ? item.title == needle : item.title.contains(needle),
       )
       .toList(growable: false);
   if (matched.isEmpty) {

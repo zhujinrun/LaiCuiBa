@@ -15,6 +15,7 @@ class MediaItem {
     this.categories = const [],
     this.actors = const [],
     this.episodes = const [],
+    this.siteKey,
   });
 
   final String id;
@@ -49,6 +50,32 @@ class MediaItem {
 
   /// Episode labels for series; empty for films.
   final List<String> episodes;
+
+  /// Which site this record came from (`nodejs_jianpian`, …). Every card the
+  /// pages render carries it, so the detail page can name the site in its
+  /// 选集 filter row and history can say where a title was watched. Null only
+  /// for fixtures that predate the source layer.
+  final String? siteKey;
+
+  /// Same record, re-tagged with [siteKey]. Used when the store attributes
+  /// fixture cards to the sites the config declared.
+  MediaItem withSiteKey(String? siteKey) => MediaItem(
+    id: id,
+    title: title,
+    subtitle: subtitle,
+    score: score,
+    tag: tag,
+    year: year,
+    overview: overview,
+    posterSeed: posterSeed,
+    image: image,
+    latest: latest,
+    area: area,
+    categories: categories,
+    actors: actors,
+    episodes: episodes,
+    siteKey: siteKey ?? this.siteKey,
+  );
 }
 
 class Episode {
@@ -162,6 +189,7 @@ class HistoryEntry {
     tag: episode,
     image: poster.isEmpty ? null : poster,
     posterSeed: key.hashCode,
+    siteKey: siteKey,
   );
 
   HistoryEntry copyWith({
@@ -270,15 +298,20 @@ class SiteInfo {
   /// the user can still silence a noisy site from the editor.
   final bool enabled;
 
-  SiteInfo copyWith({String? name, String? type, String? api, String? ext, bool? enabled}) =>
-      SiteInfo(
-        key: key,
-        name: name ?? this.name,
-        type: type ?? this.type,
-        api: api ?? this.api,
-        ext: ext ?? this.ext,
-        enabled: enabled ?? this.enabled,
-      );
+  SiteInfo copyWith({
+    String? name,
+    String? type,
+    String? api,
+    String? ext,
+    bool? enabled,
+  }) => SiteInfo(
+    key: key,
+    name: name ?? this.name,
+    type: type ?? this.type,
+    api: api ?? this.api,
+    ext: ext ?? this.ext,
+    enabled: enabled ?? this.enabled,
+  );
 
   Map<String, dynamic> toJson() => {
     'key': key,
@@ -314,6 +347,7 @@ class SourceInfo {
     this.showCount = 0,
     this.checkedAt = 0,
     this.sites = const [],
+    this.homeSite = '',
   });
 
   final String id;
@@ -332,6 +366,11 @@ class SourceInfo {
   /// out over sites reads this rather than a hard-coded list.
   final List<SiteInfo> sites;
 
+  /// The site the home feed is drawn from, matching the original's
+  /// `homeSite` (`nodejs_jianpian`). Empty when the config has not named one;
+  /// the store then falls back to the first active site.
+  final String homeSite;
+
   /// Sites that should take part in search and category fetches.
   List<SiteInfo> get searchableSites =>
       sites.where((site) => site.enabled).toList(growable: false);
@@ -346,6 +385,7 @@ class SourceInfo {
     int? showCount,
     int? checkedAt,
     List<SiteInfo>? sites,
+    String? homeSite,
   }) => SourceInfo(
     id: id,
     type: type,
@@ -358,6 +398,7 @@ class SourceInfo {
     showCount: showCount ?? this.showCount,
     checkedAt: checkedAt ?? this.checkedAt,
     sites: sites ?? this.sites,
+    homeSite: homeSite ?? this.homeSite,
   );
 
   /// Replaces one site by key, leaving the rest in order. Used by the editor to
@@ -383,6 +424,7 @@ class SourceInfo {
     // Omitted while empty so sources written before sites existed keep the
     // exact shape the original produces.
     if (sites.isNotEmpty) 'sites': sites.map((e) => e.toJson()).toList(),
+    if (homeSite.isNotEmpty) 'homeSite': homeSite,
   };
 
   factory SourceInfo.fromJson(Map<String, dynamic> json) => SourceInfo(
@@ -400,6 +442,7 @@ class SourceInfo {
       for (final raw in (json['sites'] as List?) ?? const [])
         if (raw is Map) SiteInfo.fromJson(Map<String, dynamic>.from(raw)),
     ],
+    homeSite: json['homeSite'] as String? ?? '',
   );
 }
 
@@ -442,6 +485,7 @@ class FavoriteEntry {
     tag: latest.isEmpty ? null : latest,
     image: poster.isEmpty ? null : poster,
     posterSeed: key.hashCode,
+    siteKey: siteKey,
   );
 
   /// Returns a copy moved to a different folder (null = uncategorised).

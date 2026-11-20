@@ -65,8 +65,13 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
   `meta:{key,name,type}` 里；`tool/extract_config_sites.py` 抽出 61 条、去掉
   `baseset`/`webpage` 两条非影视站点得 59 条，接进 `_demoSites`。老安装里的
   12 个占位名字会由 `_backfillDemoSites` 就地换掉（保留静音开关与用户自己加的源）
-- **67 个测试全绿**（`store_test` 38 + `site_parser_test` 11 + `search_test` 8 +
-  `assets_test` 3 + `widget_test` 7）、`flutter analyze` 零问题
+- **站点真的联动了**：`SourceInfo.homeSite`（原版同名字段，值 `nodejs_jianpian`）+
+  `MediaItem.siteKey`；顶栏两枚 chip 改读 store（源名 / 首页站点名，后者点开是带
+  过滤框的站点选择器），详情页「选集」第一个 chip、历史行副标题（"今天 · 「直」荐片"）
+  都显示真实站点；搜索源选择弹窗的副标题带上"N 个站点"；源编辑面板 59 行加了
+  搜索过滤（`1/59`）。老数据缺 `homeSite` 时在 load 里补，否则 chip 会掉成「盘」多多
+- **72 个测试全绿**（`store_test` 43 + `site_parser_test` 11 + `search_test` 8 +
+  `assets_test` 3 + `widget_test` 8）、`flutter analyze` 零问题
 
 ---
 

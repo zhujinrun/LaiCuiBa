@@ -5,6 +5,7 @@ import '../../core/detail_nav.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
+import '../../services/store.dart';
 import '../widgets/media_card.dart';
 import '../widgets/poster_art.dart';
 import '../widgets/source_dialogs.dart';
@@ -156,7 +157,9 @@ class _SourceCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
               color: LcbColors.card,
-              borderRadius: BorderRadius.circular(LcbMetrics.settingsCardRadius),
+              borderRadius: BorderRadius.circular(
+                LcbMetrics.settingsCardRadius,
+              ),
               border: Border.all(
                 color: selected
                     ? const Color(0xFF6FB2FC)
@@ -583,7 +586,9 @@ class _HistoryRowState extends State<_HistoryRow> {
     return '看到 $pct%';
   }
 
-  String get _timeSourceLabel {
+  /// "今天 · 「直」荐片" -- the row says where it was watched by site, the way
+  /// the original does, and falls back to the source name when the site is gone.
+  String _timeSourceLabel(AppStore store) {
     final days = DateTime.now()
         .difference(DateTime.fromMillisecondsSinceEpoch(entry.updatedAt))
         .inDays;
@@ -592,7 +597,11 @@ class _HistoryRowState extends State<_HistoryRow> {
         : days == 1
         ? '昨天'
         : '$days 天前';
-    final src = entry.sourceName ?? '猫源';
+    final src = store.siteNameOf(
+      entry.sourceId,
+      entry.siteKey,
+      fallback: entry.sourceName ?? '猫源',
+    );
     return '$time · $src';
   }
 
@@ -662,7 +671,7 @@ class _HistoryRowState extends State<_HistoryRow> {
                             ),
                             const SizedBox(height: 24),
                             Text(
-                              _timeSourceLabel,
+                              _timeSourceLabel(StoreScope.of(context)),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
@@ -683,9 +692,11 @@ class _HistoryRowState extends State<_HistoryRow> {
                 Positioned(
                   top: 6,
                   right: 6,
-                  child: _DeleteButton(onTap: () {
-                    StoreScope.of(context).removeHistory(entry.key);
-                  }),
+                  child: _DeleteButton(
+                    onTap: () {
+                      StoreScope.of(context).removeHistory(entry.key);
+                    },
+                  ),
                 ),
             ],
           ),

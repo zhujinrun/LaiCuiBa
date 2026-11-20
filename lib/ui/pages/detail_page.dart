@@ -112,6 +112,12 @@ class _DetailPageState extends State<DetailPage> {
                       selectedRange: _range,
                       onRange: (r) => setState(() => _range = r),
                       total: episodes.length,
+                      // The real site the record came from; the original shows
+                      // the same chip, only there it is `「直」荐片` because its
+                      // home feed was drawn from that site.
+                      siteLabel: StoreScope.of(
+                        context,
+                      ).siteNameOfKey(item.siteKey, fallback: '全部站点'),
                     ),
                     const SizedBox(height: 10),
                     _EpisodeGrid(
@@ -476,12 +482,16 @@ class _EpisodeHeader extends StatelessWidget {
     required this.selectedRange,
     required this.onRange,
     required this.total,
+    required this.siteLabel,
   });
 
   final List<int> ranges;
   final int selectedRange;
   final ValueChanged<int> onRange;
   final int total;
+
+  /// Name of the site this record came from, shown on the first filter chip.
+  final String siteLabel;
 
   static const _pageSize = 20;
 
@@ -496,8 +506,8 @@ class _EpisodeHeader extends StatelessWidget {
             children: [
               const _SectionTitle('选集'),
               const Spacer(),
-              const _FilterChip(
-                label: '「直」荐片',
+              _FilterChip(
+                label: siteLabel,
                 icon: CupertinoIcons.layers,
                 caret: true,
               ),

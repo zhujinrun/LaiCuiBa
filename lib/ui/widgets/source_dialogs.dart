@@ -159,11 +159,7 @@ class _Field extends StatelessWidget {
       autofocus: autofocus,
       onChanged: onChanged,
       cursorColor: LcbColors.primary,
-      style: const TextStyle(
-        fontSize: 14,
-        height: 1.3,
-        color: LcbColors.text,
-      ),
+      style: const TextStyle(fontSize: 14, height: 1.3, color: LcbColors.text),
       decoration: InputDecoration(
         isDense: true,
         filled: true,
@@ -173,10 +169,7 @@ class _Field extends StatelessWidget {
         prefixIcon: icon == null
             ? null
             : Icon(icon, size: 16, color: LcbColors.textTertiary),
-        prefixIconConstraints: const BoxConstraints(
-          minWidth: 40,
-          minHeight: 0,
-        ),
+        prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 0),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide.none,
@@ -329,7 +322,11 @@ class _ParsePreview extends StatelessWidget {
     if (!result.ok) {
       return Row(
         children: [
-          const Icon(CupertinoIcons.exclamationmark_circle, size: 14, color: LcbColors.sysRed),
+          const Icon(
+            CupertinoIcons.exclamationmark_circle,
+            size: 14,
+            color: LcbColors.sysRed,
+          ),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
@@ -348,12 +345,19 @@ class _ParsePreview extends StatelessWidget {
         : '';
     return Row(
       children: [
-        const Icon(CupertinoIcons.check_mark_circled, size: 14, color: LcbColors.scoreGreen),
+        const Icon(
+          CupertinoIcons.check_mark_circled,
+          size: 14,
+          color: LcbColors.scoreGreen,
+        ),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
             '解析到 ${result.count} 个站点：$names$more$silenced',
-            style: const TextStyle(fontSize: 12, color: LcbColors.settingsQuiet),
+            style: const TextStyle(
+              fontSize: 12,
+              color: LcbColors.settingsQuiet,
+            ),
           ),
         ),
       ],
@@ -377,12 +381,15 @@ class _EditSourceDialog extends StatefulWidget {
 class _EditSourceDialogState extends State<_EditSourceDialog> {
   late final _name = TextEditingController(text: widget.source.name);
   late final _url = TextEditingController(text: widget.source.url);
+  final _siteFilter = TextEditingController();
   bool _showSites = false;
+  String _siteQuery = '';
 
   @override
   void dispose() {
     _name.dispose();
     _url.dispose();
+    _siteFilter.dispose();
     super.dispose();
   }
 
@@ -411,6 +418,12 @@ class _EditSourceDialogState extends State<_EditSourceDialog> {
     );
     final sites = source.sites;
     final searching = source.searchableSites.length;
+    final needle = _siteQuery.trim();
+    // A source can declare dozens of sites (the seeded one declares 59), so the
+    // expanded list gets a filter instead of a long scroll.
+    final listed = needle.isEmpty
+        ? sites
+        : sites.where((site) => site.name.contains(needle)).toList();
     final summary = sites.isEmpty
         ? '还没有站点'
         : searching == sites.length
@@ -468,55 +481,105 @@ class _EditSourceDialogState extends State<_EditSourceDialog> {
           if (_showSites && sites.isNotEmpty) ...[
             const SizedBox(height: 10),
             Container(
+              height: 32,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: LcbColors.searchFill,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    CupertinoIcons.search,
+                    size: 14,
+                    color: LcbColors.textTertiary,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: TextField(
+                      controller: _siteFilter,
+                      onChanged: (value) => setState(() => _siteQuery = value),
+                      style: const TextStyle(fontSize: 13),
+                      cursorHeight: 16,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        border: InputBorder.none,
+                        hintText: '搜索站点',
+                        hintStyle: TextStyle(
+                          fontSize: 13,
+                          color: LcbColors.textTertiary,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${listed.length}/${sites.length}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: LcbColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
               height: 232,
               decoration: BoxDecoration(
                 color: LcbColors.card,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                itemCount: sites.length,
-                itemBuilder: (_, index) {
-                  final site = sites[index];
-                  return SizedBox(
-                    height: 44,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              site.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: site.enabled
-                                    ? LcbColors.text
-                                    : LcbColors.textTertiary,
-                              ),
-                            ),
-                          ),
-                          Transform.scale(
-                            scale: 0.8,
-                            child: CupertinoSwitch(
-                              value: site.enabled,
-                              onChanged: (_) =>
-                                  store.toggleSite(source.id, site.key),
-                            ),
-                          ),
-                        ],
+              child: listed.isEmpty
+                  ? const Center(
+                      child: Text(
+                        '没有匹配的站点',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: LcbColors.textTertiary,
+                        ),
                       ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      itemCount: listed.length,
+                      itemBuilder: (_, index) {
+                        final site = listed[index];
+                        return SizedBox(
+                          height: 44,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    site.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: site.enabled
+                                          ? LcbColors.text
+                                          : LcbColors.textTertiary,
+                                    ),
+                                  ),
+                                ),
+                                Transform.scale(
+                                  scale: 0.8,
+                                  child: CupertinoSwitch(
+                                    value: site.enabled,
+                                    onChanged: (_) =>
+                                        store.toggleSite(source.id, site.key),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              '关掉的站点不会参与搜索，也不会出现在结果的站点标签里。',
-              style: _hintStyle,
-            ),
+            const Text('关掉的站点不会参与搜索，也不会出现在结果的站点标签里。', style: _hintStyle),
           ],
           const SizedBox(height: 14),
           _PrimaryButton(label: '保存', onTap: _save),

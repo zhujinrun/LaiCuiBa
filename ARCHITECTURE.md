@@ -132,8 +132,9 @@ lib/
 下面那行提示紧跟最后一个源，弹窗剩余高度留空（原版就是这样，不是我们少画了）。
 
 数据来源：`lib/services/search.dart` 的 `searchCatalogue()` 从本地片单出结果，
-站点名取自 `_demoSites`（即配置 bundle 里的 59 个真实站点），每个标题按稳定哈希
-分摊到约 70% 的站点。Phase 2 只需把 `searchCatalogue` 换成真实站点搜索，UI 与状态机不动。
+站点名取自 `catalogSites`（`services/catalog_sites.dart`，配置 bundle 里的 59 个真实
+站点），每个标题按稳定哈希分摊到约 70% 的站点。Phase 2 只需把 `searchCatalogue`
+换成真实站点搜索，UI 与状态机不动。
 
 #### 站点清单是真的，不是编的
 
@@ -142,7 +143,8 @@ lib/
 开头，宿主再加 `nodejs_` 前缀（所以原版 preferences 里是 `homeSite: nodejs_jianpian`）。
 `tool/extract_config_sites.py` 把 61 条 `meta` 抽出来，去掉两条非影视站点
 （`baseset` =「设」配置面板、`webpage` = type 7 网页入口），正好剩 **59 个** ——
-与用户在资源页看到的数字一致。名字自带 `「盘」/「直」/「荐」` 前缀，所以
+与用户在资源页看到的数字一致。`--write` 直接重写 `lib/services/catalog_sites.dart`
+（清单单独一个文件，刷清单不动 store 的逻辑）。名字自带 `「盘」/「直」/「荐」` 前缀，所以
 chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死 `'「盘」 $site'`，
 真实名字一来就变成"「盘」 「盘」多多"）。
 
@@ -171,6 +173,13 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
   都会立刻改变下一次搜索，中间不需要任何 rebuild 额外逻辑。
 - **`_siteCarries` 用显示名做 hash**，不用 key。store 已经按显示名去重，显示名就是
   chip 的真实身份；用 key 会让之前从原版量到的分布全部变掉。
+- **站点要有去处，不能只在搜索页出现**：`SourceInfo.homeSite` 存"首页从哪个站点取数"
+  （原版同一个字段，值为 `nodejs_jianpian`），顶栏第二枚 chip 显示它的真实名字、
+  点开是带搜索框的站点选择器（59 行不靠滚动找）；`MediaItem.siteKey` 让卡片记住出处，
+  详情页「选集」第一个 chip、历史行的时间副标题都读它。缺 `homeSite` 的老数据在
+  load 时补一次，否则 chip 会掉到"第一个启用站点"（曾显示成「盘」多多）。
+- **44px 的列表不要拿去放 59 行**：源编辑面板与站点选择器都加了过滤框 + `1/59` 计数。
+  `dart format` 会把 59 条 `SiteInfo` 摊成 300 行，所以清单搬进了 `catalog_sites.dart`。
 - **默认站点种子要迁移**：上一版写进 `flutter.sources` 的源没有 `sites` 字段，
   不补种的话升级后 fan-out 是空的（搜索一片空白）。`_backfillDemoSites` 在 load 时
   补一次并写回，有专门的回归测试。

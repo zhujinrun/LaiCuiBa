@@ -43,6 +43,46 @@ void main() {
       );
     }
     expect(find.text('继续观看'), findsOneWidget);
+    // The header's two chips name the real source and the site the feed was
+    // drawn from; both come from the store, not from string literals.
+    expect(find.text('豆儿猫源'), findsOneWidget);
+    expect(find.text('「直」荐片'), findsOneWidget);
+  });
+
+  testWidgets('the site chip picks which site the feed speaks for', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('「直」荐片'));
+    await tester.pumpAndSettle();
+    expect(find.text('选择站点'), findsOneWidget);
+    expect(find.textContaining('59 个可选'), findsOneWidget);
+
+    // 59 names need a filter, not a scroll.
+    await tester.enterText(find.byType(TextField).last, '夸克');
+    await tester.pumpAndSettle();
+    expect(find.text('「盘」夸克'), findsOneWidget);
+    expect(find.text('「盘」多多'), findsNothing);
+
+    await tester.tap(find.text('「盘」夸克'));
+    await tester.pumpAndSettle();
+
+    expect(store.sources.first.homeSite, 'nodejs_myquark');
+    expect(find.text('选择站点'), findsNothing);
+    // The chip and every card follow the choice.
+    expect(find.text('「盘」夸克'), findsOneWidget);
+    expect(find.text('「直」荐片'), findsNothing);
+    expect(store.heroItems.first.siteKey, 'nodejs_myquark');
   });
 
   testWidgets('favorites page shows folder chips and poster grid', (
@@ -100,6 +140,8 @@ void main() {
     // The 21-40 range is selected because episode 39 lives there.
     expect(find.text('21-40'), findsOneWidget);
     expect(find.text('共 40 集'), findsOneWidget);
+    // The 选集 filter row names the site the record came from.
+    expect(find.text('「直」荐片'), findsOneWidget);
 
     // Back returns to the history page, not to the home page.
     await tester.tap(find.byIcon(Icons.arrow_back));
@@ -128,10 +170,7 @@ void main() {
 
     expect(find.text('全网搜索影视'), findsOneWidget);
     expect(find.text('搜索影视'), findsOneWidget);
-    expect(
-      find.text('会同时搜索影视源里的全部站点，结果按平台分组。'),
-      findsOneWidget,
-    );
+    expect(find.text('会同时搜索影视源里的全部站点，结果按平台分组。'), findsOneWidget);
 
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
@@ -203,8 +242,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('添加影视源'), findsOneWidget);
 
-    const config =
-        '{"sites":[{"key":"mine","name":"我的站","api":"csp_Mine"}]}';
+    const config = '{"sites":[{"key":"mine","name":"我的站","api":"csp_Mine"}]}';
     await tester.enterText(find.byType(TextField).last, config);
     await tester.pumpAndSettle();
     expect(find.textContaining('解析到 1 个站点'), findsOneWidget);
@@ -255,5 +293,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('站点 59 个 · 58 个参与搜索'), findsOneWidget);
     expect(store.activeSites, hasLength(58));
+
+    // 59 rows is a scroll without a filter; the box narrows the list and shows
+    // how much of it is left.
+    await tester.enterText(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.decoration?.hintText == '搜索站点',
+      ),
+      '夸克',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('1/59'), findsOneWidget);
+    expect(find.text('「盘」夸克'), findsOneWidget);
+    expect(find.text('「盘」多多'), findsNothing);
   });
 }
