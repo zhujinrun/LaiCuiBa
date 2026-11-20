@@ -29,7 +29,7 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
 | --- | --- |
 | Phase 0 — 界面骨架 | ✅ 完成 |
 | Phase 1 — 数据层与页面闭环 | ✅ 完成（详情页 + 搜索页都已落地） |
-| Phase 2 — 源接入（灵魂） | 🔶 部分（源→站点数据流已通；spider/联网抓取未做） |
+| Phase 2 — 源接入（灵魂） | 🔶 部分（源→站点→联网拉取已通；spider 宿主未做） |
 | Phase 3 — 播放链路 | ⬜ 未开始 |
 | Phase 4 — 外设模块 | ⬜ 未开始 |
 | Phase 5 — 多端 | ⬜ 未开始 |
@@ -72,6 +72,19 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
   搜索过滤（`1/59`）。老数据缺 `homeSite` 时在 load 里补，否则 chip 会掉成「盘」多多
 - **72 个测试全绿**（`store_test` 43 + `site_parser_test` 11 + `search_test` 8 +
   `assets_test` 3 + `widget_test` 8）、`flutter analyze` 零问题
+- **添加资源九个入口 + 本地导入**：`add_source_menu.dart` 三组九项（Emby / 飞牛 Jellyfin /
+  TVBox 影视源 / 直播频道 / 粘贴配置 / 导入文件 / 导入直播列表 / 导入文件夹 / 从 ZIP 导入）；
+  `source_import.dart` 处理 JSON/每行 txt（tvbox）、m3u/url txt（live，`channelCount`）、
+  py/php/js（file 源）、ZIP 解压到 `imported/<name>`（防 `..` 穿越）。Emby/Jellyfin 表单
+  密码不持久化。
+- **设置页「数据与存储」**：`_dataRows(store)` 八行（本机数据/备份与恢复/下载管理/下载设置/
+  源图标包/清除图片缓存/清理 TMDB 缓存/清空观看历史）；`services/backup.dart` 备份导出/恢复/
+  删除（`backups/lcb-<stamp>.json`），清空历史带确认。
+- **重新检测联网拉取（C1）**：`services/config_fetcher.dart` `fetchConfig(url)` 拉源地址
+  （.js→.json 去 md5 后缀容错）→ 复用 `site_parser` 解析 → 回写 sites/homeSite/latencyMs/
+  checkedAt，toast「拉到 N 个站点，用时 X ms」；无地址源诚实提示。真机验证（本地 http.server
+  3 个假站点）toast「找到 3 个站点，用时 48 ms」。
+- **104 个测试全绿**、`flutter analyze` 零问题
 
 ---
 
@@ -145,6 +158,10 @@ lib/
   services/
     store.dart              AppStore（数据读写 + seed + 源/站点取数口 + 各 getter）
     site_parser.dart        TVBox/catvod 配置 -> SiteInfo（纯本地 JSON，不联网）
+    catalog_sites.dart      豆儿猫源 59 个站点清单（tool/extract_config_sites.py --write 生成）
+    config_fetcher.dart     联网拉源配置 -> FetchResult(ok,sites,latencyMs,error,note)
+    source_import.dart      本地导入：JSON/txt/m3u/py/php/js/ZIP -> 源
+    backup.dart             备份导出/恢复/删除（backups/lcb-<stamp>.json）
     demo_data.dart          演示片单（截图里的真实内容）+ detailDemo
     search.dart             搜索结果模型 + searchCatalogue()（按传入的站点 fan-out）
   ui/
@@ -162,7 +179,10 @@ lib/
       poster_art.dart       PosterArt（有 image 显示真实封面，否则渐变占位）
       manage_folders_sheet.dart
       search_sources_dialog.dart 「搜索哪些资源」源选择弹窗
-      source_dialogs.dart   添加 / 编辑 / 删除源（粘贴配置、站点开关）
+      source_dialogs.dart   添加 / 编辑 / 删除源 + 重新检测（联网拉取）
+      add_source_menu.dart  添加资源三组九项菜单
+      backup_dialog.dart    备份与恢复弹窗
+      site_picker_dialog.dart 首页站点选择器（带过滤框）
       shell_header.dart
 ```
 
@@ -210,15 +230,14 @@ lib/
 - 老数据迁移：`flutter.sources` 里无 `sites` 的演示源在 load 时补种（有回归测试）
 
 **未完成**
-- 原版「添加资源」的其余 8 个入口：Emby / 飞牛 Jellyfin / TVBox 影视源（填地址）/
-  直播频道 / 导入文件 / 导入直播列表 / 导入文件夹 / 从 ZIP 导入
-- 从配置地址联网拉取（现在只能粘贴或导入本地内容）
 - 猫源宿主：Node.js + fastify，实现 `catServerFactory`/`catDartServerPort`/`messageToDart`/
   `js2p://_WEB_` 协议
 - TVBox：CPython + JS spider（参考原版 `py_host`/`spider_channel`）
 - 挂载：Emby/WebDAV/AList/网盘
 - 可用性度量：不只判 `supported`，补 `latencyMs`/`movieCount`/`checkedAt`
 - ⚠️ 以上都依赖原版包 `node/`、`python/` 二进制 + 联网，**不适合无人值守推进**
+
+（原「添加资源其余 8 入口」「从配置地址联网拉取」两项已完成，见上。）
 
 ### 🟡 Phase 3 — 播放链路（未开始）
 - `media_kit` + 原版 `libmpv-2.dll`
@@ -241,7 +260,7 @@ TV 焦点导航（原版 `ui/tv/*` 9 个文件）、Android 适配、AI 辅助�
 cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
-flutter test                    # 冒烟测试（当前 44 个全绿）
+flutter test                    # 冒烟测试（当前 104 个全绿）
 flutter analyze                 # 静态检查（当前零问题）
 dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 ```
@@ -269,18 +288,17 @@ dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 
 ## 九、下一步建议
 
-1. **让用户验收这一轮**（源 → 站点数据流）：
-   - 资源页顶栏 `+` → 粘贴一段配置（例如 `我的站$https://a.example/api.php`，或整份
-     `{"sites":[…]}`）→ 看「解析到 N 个站点」→ 添加后列表多一张卡；
-   - 卡片 `⋯` → 编辑 → 「站点 N 个 · M 个参与搜索」展开，关掉一个站点；
-   - 打开搜索 → 右下圆钮，弹出的源列表里应能看到新加的源；
-   - 删掉那个源后，搜索的站点 chip 随之减少。
+1. **让用户验收这一轮**（源 → 站点 → 联网拉取，以及添加资源九项 + 设置页数据统计）：
+   - 资源页顶栏 `+` → 九个入口任选（粘贴配置 / 填 TVBox 地址 / 导入文件 / 导入文件夹 /
+     ZIP 导入 / Emby / Jellyfin / 直播频道 / 导入直播列表）；
+   - 卡片 `⋯` → **重新检测**：对有地址的源会联网拉配置、回写站点数与延迟并 toast；
+   - 设置页 → 数据与存储 → 本机数据 / 备份与恢复 / 清空观看历史 都已是真实功能；
+   - 搜索右下圆钮的源列表副标题带「N 个站点」。
 2. 验收无误后由**用户自己**推送（AI 不 push）：`git push -u origin master`。
-3. 下一步的自然顺序是补「添加资源」的其余 8 个入口（尤其 Emby / 导入文件 / 导入文件夹，
-   都只需本地文件与表单，不联网），再做从配置地址联网拉取。
-4. spider 执行（Node / Python / drpy）、真实片单与播放地址必须用户在场 + 原版二进制，
-   不适合无人值守推进。
-5. Phase 1 只剩「设置页媒体徽章子页」一个纯本地小项。
+3. 下一步自然顺序是 **spider 宿主（C2）**：Node+fastify 猫源宿主 + CPython+JS spider，
+   需要原版 `node/`/`python/` 二进制 + 联网 + 用户在场，不适合无人值守推进。
+4. 若暂时不做 C2，可先做**纯本地收尾**：设置页「媒体徽章」子页（Phase 1 唯一剩项）、
+   HistoryEntry 字段保真等。
 
 ---
 
