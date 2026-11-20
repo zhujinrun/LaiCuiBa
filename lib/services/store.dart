@@ -407,13 +407,20 @@ class AppStore extends ChangeNotifier {
   Future<MediaItem?> detailReal(MediaItem item) async {
     final session = spider;
     final js = _jsSource();
-    if (session == null || js == null) return null;
+    if (session == null || js == null) {
+      debugPrint('LcbDetail: detailReal bail (session=${session == null}, js=${js == null})');
+      return null;
+    }
     final siteKey = item.siteKey;
     final site = siteKey == null ? null : siteOf(js.$1, siteKey);
-    if (site == null) return null;
+    if (site == null) {
+      debugPrint('LcbDetail: detailReal bail (site not found for key=$siteKey)');
+      return null;
+    }
     // The search list's vod_id is the id the source uses for a detail lookup.
     final vodId = item.id;
     if (vodId.isEmpty) return null;
+    debugPrint('LcbDetail: detailReal -> id=$vodId site=${site.key}/${site.type}');
     return session.detail(
       sourceId: js.$1,
       md5Url: js.$2,

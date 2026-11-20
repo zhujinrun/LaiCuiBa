@@ -159,6 +159,19 @@ class SpiderClient {
     final remarks = vod['vod_remarks'] as String? ?? '';
     final typeName = vod['type_name'] as String? ?? '';
     final actor = vod['vod_actor'] as String? ?? '';
+    final lines = parsePlayLines(vod['vod_play_from'], vod['vod_play_url']);
+    // The episode labels are the same across every line (a line only changes
+    // the URL), so the first non-empty line supplies the canonical episode list.
+    final firstLineEpisodes = lines.isEmpty
+        ? const <String>[]
+        : lines
+              .firstWhere(
+                (l) => l.episodes.isNotEmpty,
+                orElse: () => const PlayLine(name: ''),
+              )
+              .episodes
+              .map((e) => e.label)
+              .toList(growable: false);
     return MediaItem(
       id: '${vod['vod_id'] ?? ''}',
       title: vod['vod_name'] as String? ?? '',
@@ -180,8 +193,8 @@ class SpiderClient {
       actors: actor.isEmpty
           ? const []
           : actor.split('/').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
-      episodes: const [],
-      playLines: parsePlayLines(vod['vod_play_from'], vod['vod_play_url']),
+      episodes: firstLineEpisodes,
+      playLines: lines,
       siteKey: siteKey,
     );
   }

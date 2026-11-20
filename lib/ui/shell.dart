@@ -120,7 +120,13 @@ class _ShellState extends State<Shell> {
     // Swap in the real record when the spider has one; the demo fixture (or the
     // card's own fields) renders until then.
     _store.detailReal(item).then((full) {
-      if (full == null || !mounted) return;
+      if (!mounted) return;
+      debugPrint(
+        'LcbDetail: detailReal -> '
+        '${full == null ? "null" : "${full.title} lines=${full.playLines.length} eps=${full.playLines.isEmpty ? 0 : full.playLines[0].episodes.length}"} '
+        '(item.id=${item.id}, siteKey=${item.siteKey})',
+      );
+      if (full == null) return;
       if (_detail?.id != resolved.id) return; // user navigated away already
       setState(() => _detail = full);
     });
