@@ -119,33 +119,41 @@ class LcbSearch extends ChangeNotifier {
 
   /// Commits the current query, which is what Enter and a suggestion tap do.
   ///
-  /// The demo catalogue answers synchronously first (so the results never lag a
-  /// keystroke), then the real spider is queried and its results swap in.
+  /// With a real spider wired, the demo catalogue must not flash first: its
+  /// rows (except 尚公主) carry no episode data, so a user tapping one before
+  /// the real results land would land on an empty detail page. Show the loading
+  /// state until the spider answers, and only fall back to the demo catalogue
+  /// when no runtime is present (or the spider came back empty).
   void submit() {
     if (_query.trim().isEmpty) return;
     _submitted = true;
     focus.unfocus();
 
     final gen = ++_generation;
-    _outcome = _demoOutcome(_query);
+    final real = realSearch;
+    if (real == null) {
+      _outcome = _demoOutcome(_query);
+      _loading = false;
+      notifyListeners();
+      return;
+    }
+    // Real source available: hold the demo catalogue back so it cannot win the
+    // race against a slow fan-out and hand the user an episode-less row.
+    _outcome = const SearchOutcome(hits: [], sites: []);
     _loading = true;
     notifyListeners();
 
-    final real = realSearch;
-    if (real == null) {
-      _loading = false;
-      return;
-    }
     real(_query, strict: _strict).then((result) {
       if (gen != _generation || !_submitted) return;
       _loading = false;
-      if (result != null && !result.isEmpty) {
-        _outcome = _fromSpider(result);
-      }
+      _outcome = result != null && !result.isEmpty
+          ? _fromSpider(result)
+          : _demoOutcome(_query);
       notifyListeners();
     }).catchError((Object _) {
       if (gen != _generation || !_submitted) return;
       _loading = false;
+      _outcome = _demoOutcome(_query);
       notifyListeners();
     });
   }

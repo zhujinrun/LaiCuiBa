@@ -119,25 +119,38 @@ class SpiderSession {
       return SpiderSearch.failure(lastError ?? '源未就绪');
     }
     final client = _client!;
+    // Fan out in parallel: the demo source declares ~59 sites and a serial
+    // round-trip per site (~1.5s each) kept the real results from landing for
+    // nearly two minutes, so the UI showed the demo catalogue (whose non-尚公主
+    // rows carry no episodes) long after the user expected answers.
+    final results = await Future.wait<({SiteInfo site, SpiderList? list})>([
+      for (final site in sites)
+        () async {
+          try {
+            final list = await client.search(
+              site.key,
+              site.type,
+              keyword,
+              strict: strict,
+            );
+            return (site: site, list: list);
+          } on Object {
+            // A dead site must not sink the whole query; it contributes nothing.
+            return (site: site, list: null);
+          }
+        }(),
+    ]);
+
     final groups = <SpiderSearchSite>[];
-    for (final site in sites) {
-      try {
-        final list = await client.search(
-          site.key,
-          site.type,
-          keyword,
-          strict: strict,
-        );
-        if (list.items.isEmpty) continue;
-        final tagged = [
-          for (final item in list.items) item.withSiteKey(site.key),
-        ];
-        groups.add(
-          SpiderSearchSite(site: site.name, items: tagged),
-        );
-      } on Object {
-        // A dead site must not sink the whole query; it just contributes nothing.
-      }
+    for (final r in results) {
+      final list = r.list;
+      if (list == null || list.items.isEmpty) continue;
+      groups.add(
+        SpiderSearchSite(
+          site: r.site.name,
+          items: [for (final item in list.items) item.withSiteKey(r.site.key)],
+        ),
+      );
     }
     return SpiderSearch(groups: groups);
   }

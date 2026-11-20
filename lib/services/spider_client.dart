@@ -130,8 +130,12 @@ class SpiderClient {
       'application/json; charset=utf-8',
     );
     request.add(utf8.encode(jsonEncode(body ?? const {})));
-    final response = await request.close();
-    final text = await utf8.decodeStream(response);
+    // A site whose upstream is slow must not stall the whole fan-out: bound the
+    // full round-trip so a single dead backend cannot hold every other site up.
+    final response = await request.close().timeout(const Duration(seconds: 12));
+    final text = await utf8.decodeStream(response).timeout(
+      const Duration(seconds: 12),
+    );
     if (text.trim().isEmpty) return const {};
     final decoded = jsonDecode(text);
     return decoded is Map<String, dynamic> ? decoded : const {};
