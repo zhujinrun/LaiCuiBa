@@ -59,7 +59,7 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
 
 ## 三、Git 状态（重要）
 
-- 本地 `master` 分支，**37 个 commit 全部未推送**。
+- 本地 `master` 分支，**38 个 commit 全部未推送**。
 - remote 已配置：`origin = https://github.com/zhujinrun/LaiCuiBa.git`，但**从未 fetch/push**，
   本地 master 还没有 upstream tracking。
 - 最近 3 个 commit 是本次详情页工作（`45756cb` 模型字段 → `9084e8d` 详情页 → 本 docs 提交），
