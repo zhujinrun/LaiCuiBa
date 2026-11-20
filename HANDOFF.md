@@ -29,7 +29,7 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
 | --- | --- |
 | Phase 0 — 界面骨架 | ✅ 完成 |
 | Phase 1 — 数据层与页面闭环 | ✅ 完成（详情页 + 搜索页都已落地） |
-| Phase 2 — 源接入（灵魂） | 🔶 部分（源→站点→联网拉取已通；spider 宿主未做） |
+| Phase 2 — 源接入（灵魂） | 🔶 大部分（源→站点→联网拉取→spider 宿主→搜索/详情真实数据已通；播放/首页分类未做） |
 | Phase 3 — 播放链路 | ⬜ 未开始 |
 | Phase 4 — 外设模块 | ⬜ 未开始 |
 | Phase 5 — 多端 | ⬜ 未开始 |
@@ -85,6 +85,8 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
   checkedAt，toast「拉到 N 个站点，用时 X ms」；无地址源诚实提示。真机验证（本地 http.server
   3 个假站点）toast「找到 3 个站点，用时 48 ms」。
 - **104 个测试全绿**、`flutter analyze` 零问题
+- **114 个测试全绿**（C2 真实数据接入后，含 `spider_session` 5 例 + `spider_client` 5 例）、
+  `flutter analyze` 零问题
 
 ---
 
@@ -230,12 +232,23 @@ lib/
 - 老数据迁移：`flutter.sources` 里无 `sites` 的演示源在 load 时补种（有回归测试）
 
 **未完成**
-- 猫源宿主：Node.js + fastify，实现 `catServerFactory`/`catDartServerPort`/`messageToDart`/
-  `js2p://_WEB_` 协议
 - TVBox：CPython + JS spider（参考原版 `py_host`/`spider_channel`）
 - 挂载：Emby/WebDAV/AList/网盘
 - 可用性度量：不只判 `supported`，补 `latencyMs`/`movieCount`/`checkedAt`
+- 首页 hero/分区的真实片单（`category` 接口实测返回空，源站分类数据不稳定）
 - ⚠️ 以上都依赖原版包 `node/`、`python/` 二进制 + 联网，**不适合无人值守推进**
+
+**已完成（spider 宿主 + 真实搜索/详情，2026-11-20）**
+- `assets/runtime/node/cat_host.js`：协议重写版宿主（每源一个 Worker，`catServerFactory`/
+  `catDartServerPort` 注入，`/ping /load /unload` 带 x-token）；node.exe 由 `tool/sync_runtime.sh`
+  从原版包同步（67MB 不进 git）
+- `services/cat_host.dart`（起 node 子进程 + 控制协议）、`spider_client.dart`（`POST
+  /spider/<key>/<type>/<action>` → MediaItem）、`cat_bundle.dart`（订阅式下载 bundle 到
+  `%APPDATA%/cat/<hash>/`，MD5 校验）、`spider_session.dart`（组合三者，懒加载 + 惰性不抛）
+- store：`spider` 字段 + `searchReal`/`detailReal`/`homeCategoriesReal`/`categoryReal`
+- UI：搜索异步化（demo 秒出 + 真实结果替换，失败回退 demo）、详情打开后异步拉真实记录、
+  海报支持网络 URL
+- 实测：jianpian `search`/`detail` 返回真实片单；`home` 只有分类名、`category` 空
 
 （原「添加资源其余 8 入口」「从配置地址联网拉取」两项已完成，见上。）
 
@@ -288,17 +301,21 @@ dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 
 ## 九、下一步建议
 
-1. **让用户验收这一轮**（源 → 站点 → 联网拉取，以及添加资源九项 + 设置页数据统计）：
-   - 资源页顶栏 `+` → 九个入口任选（粘贴配置 / 填 TVBox 地址 / 导入文件 / 导入文件夹 /
-     ZIP 导入 / Emby / Jellyfin / 直播频道 / 导入直播列表）；
-   - 卡片 `⋯` → **重新检测**：对有地址的源会联网拉配置、回写站点数与延迟并 toast；
-   - 设置页 → 数据与存储 → 本机数据 / 备份与恢复 / 清空观看历史 都已是真实功能；
-   - 搜索右下圆钮的源列表副标题带「N 个站点」。
+1. **让用户验收这一轮**（C2 真实搜索/详情已落地）：
+   - 先跑 `bash tool/sync_runtime.sh` 同步 node.exe 到 assets 与 build 产物，再
+     `flutter run -d windows`（或 `flutter build windows --debug` 后运行 exe）；
+   - 启动日志应出现 `LcbSpider: runtime ready (...)`；
+   - 首页右上搜索框输入关键词（如「尚公主」）回车，结果应先秒出 demo、随后替换成
+     真实片单（来自 荐片，带「荐片」站点 chip + 真实海报网络图）；点卡片进详情能看到
+     真实简介/演员/地区；
+   - 断网/无 node.exe 时回退 demo 片单，页面不白屏。
 2. 验收无误后由**用户自己**推送（AI 不 push）：`git push -u origin master`。
-3. 下一步自然顺序是 **spider 宿主（C2）**：Node+fastify 猫源宿主 + CPython+JS spider，
-   需要原版 `node/`/`python/` 二进制 + 联网 + 用户在场，不适合无人值守推进。
-4. 若暂时不做 C2，可先做**纯本地收尾**：设置页「媒体徽章」子页（Phase 1 唯一剩项）、
-   HistoryEntry 字段保真等。
+3. 下一步自然顺序：
+   - **播放链路（Phase 3）**：真实片单已能搜到，但点「播放」还无反应，需 media_kit +
+     原版 `libmpv-2.dll` + spider 的 `play` 接口；
+   - 或 **TVBox/CPython 源宿主**（饭太硬等 json 源），需要原版 `python/` 二进制；
+   - 或 **首页真实片单**（等源站 `category` 接口稳定）；
+   - 或纯本地收尾：设置页「媒体徽章」子页、HistoryEntry 字段保真。
 
 ---
 
