@@ -45,13 +45,17 @@ lib/
   core/
     theme.dart           颜色 / 字号 / 间距 token
     detail_nav.dart      LcbDetailScope：任何页面把详情页推给 shell
+    search_state.dart    LcbSearch：搜索模式的开关 / 输入 / 严格 / 选源 + scope
   models/models.dart     MediaItem / HistoryEntry / FavoriteEntry / AppSettings …
   services/demo_data.dart 演示片单 + detailDemo 详情夹具
+  services/search.dart   搜索结果模型 + searchCatalogue()（Phase 2 换成真实站点搜索）
   ui/
-    shell.dart           侧栏 + 顶栏 + 页面切换（含详情页路由）
+    shell.dart           侧栏 + 顶栏 + 页面切换（含详情页 / 搜索态顶栏）
     pages/detail_page.dart 详情页（hero / 选集 / 演员阵容 / 分类）
+    pages/search_page.dart 搜索页（空态 / 联想 / 结果）
     pages/               其它功能页
-    widgets/             title_bar / hero_banner / media_card / poster_art
+    widgets/search_sources_dialog.dart 「搜索哪些资源」源选择弹窗
+    widgets/             hero_banner / media_card / poster_art / manage_folders_sheet
 ```
 
 `PosterArt` 是占位海报（渐变 + 纹理 + 片名），接口上预留了换成真实封面的位置。
@@ -90,6 +94,42 @@ lib/
 
 `选集` 分页每 20 集一页（1-20 / 21-40），进页面时定位到上次观看的那一页，
 该集 chip 高亮。无集数（电影）时整段隐藏，主按钮文案退回「播放」。
+
+#### 搜索页（顶栏展开 + 空态 + 联想 + 结果）
+
+四种状态，由 `LcbSearch`（`lib/core/search_state.dart`）一个对象驱动：顶栏输入框和
+内容列结果共用它，所以走 InheritedNotifier 而不是层层传参。
+
+1. **未输入**：居中的放大镜 + 「搜索影视」+ 「会同时搜索影视源里的全部站点，结果按平台分组。」
+2. **输入未提交**：输入框下方浮出联想列表（原版是联网 suggest，这里先用本地片单 + 后缀词兜底）
+3. **已提交**：分组 chip 行 + 结果行列表
+4. **一个都没选源**：「未选择搜索源」提示（原版没有这个态，是我们加的边界）
+
+| 项 | 实测（measure.py 截图坐标） |
+| --- | --- |
+| 输入框 | x 240–1625（1385 宽）× 高 48，圆角 13，`searchFill` |
+| 输入框内 | 左内距 14，搜索图标 15，占位文字 15px；有文字时右侧 18 圆清除钮 #BFBFC2 |
+| 严格胶囊 | 42×26，圆角 13；关 `searchFill` + 深字，开 `primaryDim` + 白字 |
+| 源选择图标 | 16px，x 1699–1715 |
+| 取消 | 15px，`primaryDim`，墨迹 x 1739–1769 |
+| 空态 | 图标墨迹 42×43、标题 20px w600（墨迹 y 562–581）、副标题 14px（y 596–608） |
+| 联想浮层 | x 240–1903，顶在 header 下 6px；行高 42，图标 13 + 16 间距，文字 13 |
+| 分组 chip | 高 34，圆角 17，内距 16，间距 9；选中 `primaryDim` + 白字 |
+| 还有 N 个站点 | 星形图标 13 + 文字 13 #6E6E73 |
+| 展开圆钮 | 直径 36，#F6F6F8 |
+| 结果行 | 整行 1664×108，间距 10，圆角 12；海报 60×90 内距 10；文字列从 +90 起 |
+| 结果行三行 | 标题 16 w600（距顶 19）、备注 12.5（47）、站点胶囊 高 22 圆角 6（71） |
+| 右下圆钮 | 直径 56，#F6F6F8，距右 24 距底 12 |
+
+**严格** 语义实测：同一关键词 关=75 条（包含匹配）、开=15 条（标题全等）。
+
+「搜索哪些资源」弹窗：558×561，**中心落在内容列 1072 而不是窗口 960**（靠
+`insetPadding` 左边保留 sidebar 宽度实现）；标题墨迹距顶 25，源行高 58，
+下面那行提示紧跟最后一个源，弹窗剩余高度留空（原版就是这样，不是我们少画了）。
+
+数据来源：`lib/services/search.dart` 的 `searchCatalogue()` 从本地片单出结果，
+站点名取原版同一次搜索里的真实站点名（`demoSites`），每个标题按稳定哈希分摊到
+约 70% 的站点。Phase 2 只需把 `searchCatalogue` 换成真实站点搜索，UI 与状态机不动。
 
 ### Phase 2 — 源接入（灵魂）
 - 猫源宿主：Node.js + fastify，需要实现宿主注入的 `catServerFactory`、
@@ -328,10 +368,25 @@ hero 单看宽度比例（0.368 / 0.332）或高度比例（0.478 / 0.539）都�
 侧栏项，就点屏幕 310。表 E/F 与本文件里的实测值都是**截图坐标**，可直接和
 `measure.py shot` 的新图对齐。
 
-### H. 两个反复踩到的布局坑
+**点击不可靠时改用 `.probe/click_client.py`**：复刻版从后台 shell 启动时，
+`SetForegroundWindow` 会被 Windows 拒绝，`measure.py click` 的真实鼠标事件会被
+别的窗口截走（表现为"点了没反应"）。`click_client.py` 先把窗口摆到同一位置，
+再把 `WM_LBUTTONDOWN/UP` 直接 PostMessage 给 embedder 的 `FLUTTERVIEW` 子窗口，
+不依赖前台，坐标口径与 `measure.py` 完全一致。
+
+同理，**文字输入**不能用 `SendKeys`（CJK 会丢），也别往顶层 HWND 发 `WM_CHAR`；
+要么 `SendInput + KEYEVENTF_UNICODE`（需前台），要么向 `FLUTTERVIEW` 子窗口
+PostMessage `WM_CHAR(ord(ch))`（不需要前台，`.probe/type.py` 有实现）。
+
+### H. 三个反复踩到的布局坑
 
 - **Row 默认 crossAxisAlignment.center**：内容比视口矮的页面（详情页只有 ~930 高）
   会被居中、整体下移，看起来像"顶部多了 25px"。shell 里内容列的 Row 必须
   `CrossAxisAlignment.stretch`。
 - **`Container(alignment: …)` 会吃满父级宽度**：放进 `Wrap` 做 chip 时，每个
-  chip 会变成整行宽。chip 一律用 `padding` 撑高度、不要用 `alignment`。
+  chip 会变成整行宽。chip 一律用 `padding` 撑高度、不要用 `alignment`；
+  确实需要居中又要贴合内容时用 `Center(widthFactor: 1, child: …)`（搜索结果的
+  站点胶囊就是这么修的，`alignment:` 一行导致整行被染成淡紫）。
+- **CJK 的墨迹位置和字号不是 1:1**：`height: 1.0` 配 YaHei 时墨迹基本等于字号，
+  但原版很多地方用默认行高，墨迹会低 4–6px（联想词行、卡片三行）。对照时先量
+  墨迹框，再决定是加 `Transform.translate` 还是换行高。

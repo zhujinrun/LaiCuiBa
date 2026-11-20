@@ -28,7 +28,7 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
 | 阶段 | 状态 |
 | --- | --- |
 | Phase 0 — 界面骨架 | ✅ 完成 |
-| Phase 1 — 数据层与页面闭环 | ✅ 完成（详情页已落地；搜索页未做） |
+| Phase 1 — 数据层与页面闭环 | ✅ 完成（详情页 + 搜索页都已落地） |
 | Phase 2 — 源接入（灵魂） | ⬜ 未开始（需联网 + 原版二进制） |
 | Phase 3 — 播放链路 | ⬜ 未开始 |
 | Phase 4 — 外设模块 | ⬜ 未开始 |
@@ -53,7 +53,11 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
   从历史、收藏、首页卡片、hero「详情」进入，顶栏换成「返回 + 片名」；
   「收藏」按钮真实写 `flutter.favorites`
 - `HistoryEntry` 补 `sourceUrl` / `sourceType`（原版跨源定位字段）
-- **36 个测试全绿**（`store_test` 30 + `assets_test` 3 + `widget_test` 3）、`flutter analyze` 零问题
+- **搜索页**：顶栏展开成输入框（+ 严格 / 源选择 / 取消），空态 → 联想 → 结果三态；
+  结果按站点分组（`全部 N` + 站点 chip + `还有 N 个站点`）、结果行点进详情；
+  「搜索哪些资源」弹窗（多选源、取消选择全部）；`Ctrl+K` 打开、`Esc` 关闭
+- **44 个测试全绿**（`store_test` 30 + `search_test` 6 + `assets_test` 3 +
+  `widget_test` 5）、`flutter analyze` 零问题
 
 ---
 
@@ -120,32 +124,30 @@ lib/
     assets.dart             资源键名（原版提取的 71 个资产）
     store_scope.dart        InheritedWidget 提供 AppStore
     app_info.dart
+    detail_nav.dart         详情页跳转通道（LcbDetailScope + openOf）
+    search_state.dart       搜索模式状态（LcbSearch + LcbSearchScope）
   models/models.dart        MediaItem/Episode/ContinueWatching/HomeSection/
                             HistoryEntry/FavoriteEntry/FavoriteFolder/AppSettings
   services/
     store.dart              AppStore（数据读写 + seed + 各 getter）
-    demo_data.dart          演示片单（截图里的真实内容）
-  core/
-    detail_nav.dart         详情页跳转通道（LcbDetailScope + openOf）
+    demo_data.dart          演示片单（截图里的真实内容）+ detailDemo
+    search.dart             搜索结果模型 + searchCatalogue()（Phase 2 换真实站点搜索）
   ui/
-    shell.dart              侧栏 + 顶栏 + 页面切换（详情页挂在内容列，不走路由）
+    shell.dart              侧栏 + 顶栏 + 页面切换（详情页/搜索态都挂在内容列）
     page_header.dart
     pages/
       home_page.dart        首页（hero/续播/分区）
       common_pages.dart     资源/收藏/历史页
       detail_page.dart      详情页（hero + 选集 + 演员 + 分类）
+      search_page.dart      搜索页（空态 / 联想 / 分组结果）
       settings_page.dart    设置 + 5 个子页
     widgets/
       hero_banner.dart
       media_card.dart
       poster_art.dart       PosterArt（有 image 显示真实封面，否则渐变占位）
       manage_folders_sheet.dart
+      search_sources_dialog.dart 「搜索哪些资源」源选择弹窗
       shell_header.dart
-
-test/
-  assets_test.dart          校验资源确实进包
-  store_test.dart           数据层单测（含 HistoryEntry 新字段序列化）
-  widget_test.dart          渲染 + 交互断言（详情页打开/返回）
 ```
 
 ---
@@ -158,8 +160,16 @@ test/
 2. ~~**详情页骨架**（tvbox_detail_page/emby_detail_page）~~ — 已完成并做过像素对照
    （尺寸表见 `ARCHITECTURE.md` Phase 1「详情页」节）。演示数据在 `demo_data.dart` 的
    `detailDemo`（尚公主）与 `detailFor()`，接真实源后替换为按 id 查详情。
-3. **设置页「媒体徽章」子页** — 原版无独立 badge settings 字段，暂占位（**仍待做**）。
-4. **搜索结果页** — 原版有，当前顶栏搜索框只是占位（**仍待做**，需原版截图对照）。
+3. ~~**搜索结果页**~~ — 已完成：空态 / 联想 / 分组结果 / 源选择弹窗四块都做了，
+   像素对照见 `ARCHITECTURE.md` Phase 1「搜索页」节。
+4. **设置页「媒体徽章」子页** — 原版无独立 badge settings 字段，暂占位（**唯一剩下的一项**）。
+
+### 🟡 搜索页遗留（可选，不阻塞）
+- 联想词现在是本地片单 + 后缀词的兜底；原版是联网 suggest（如「尚公主 历史背景解读」），
+  Phase 2 换成真实接口即可，UI 不动。
+- 结果来自 `searchCatalogue()` 的 demo 分发（站点名取自原版实测），真实站点搜索在 Phase 2。
+- 「严格」开关语义已对齐原版（关=包含匹配 75 条 / 开=标题全等 15 条），但 demo 目录小，
+  数量不会一样。
 
 ### 🟡 详情页遗留（可选，不阻塞）
 - 原版「换平台」按钮是跨源搜索同名片源，需 Phase 2 的源能力；当前仅占位不可用。
@@ -195,7 +205,7 @@ TV 焦点导航（原版 `ui/tv/*` 9 个文件）、Android 适配、AI 辅助�
 cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
-flutter test                    # 冒烟测试（当前 36 个全绿）
+flutter test                    # 冒烟测试（当前 44 个全绿）
 flutter analyze                 # 静态检查（当前零问题）
 dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 ```
@@ -223,13 +233,15 @@ dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 
 ## 九、下一步建议
 
-1. **让用户跑一遍 `flutter build windows --debug` 验收详情页**：从首页续播卡 / 分区海报 /
-   hero「详情」/ 收藏网格 / 历史行五个入口进去，重点看 hero 区尺寸是否与原版一致、
-   「继续 第N集」和分页高亮是否正确、电影（无集数）是否隐藏选集、收藏按钮是否真的
-   让收藏页计数 +1、返回后是否停原页面（不跳首页）。
+1. **让用户验收这一轮**（详情页 + 搜索页）：
+   - 详情页：五个入口（首页续播卡 / 分区海报 / hero「详情」/ 收藏网格 / 历史行）进去，
+     看 hero 尺寸、`继续 第N集`、分页高亮、电影隐藏选集、收藏写库、返回停原页。
+   - 搜索页：点顶栏搜索框或按 `Ctrl+K`，看空态文案；输入「尚」看联想；
+     回车看分组 chip 与结果行；点 `严格` 看是否只剩精确匹配；点右下圆钮 / 顶栏网格图标
+     看「搜索哪些资源」弹窗；`取消` 或 `Esc` 回到原来的页面。
 2. 验收无误后由**用户自己**推送（AI 不 push）：`git push -u origin master`。
-3. 之后可选的纯本地项：设置页「媒体徽章」子页占位调整；搜索结果页（**需原版截图**）。
-4. Phase 2 起必须用户在场 + 联网 + 原版二进制，不适合无人值守推进。
+3. Phase 1 只剩「设置页媒体徽章子页」一个纯本地小项，其余都要 Phase 2 之后。
+4. Phase 2 起必须用户在场 + 联网 + 原版二进制（Node/Python/mpv），不适合无人值守推进。
 
 ---
 
