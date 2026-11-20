@@ -583,25 +583,38 @@ class _Poster extends StatelessWidget {
   Widget build(BuildContext context) {
     final image = item.image;
     if (image == null) {
-      return DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              LcbColors.primaryContainer,
-              LcbColors.primaryContainer.withValues(alpha: 0.4),
-            ],
-          ),
-        ),
+      return _fallback();
+    }
+    final isNetwork = image.startsWith('http://') || image.startsWith('https://');
+    if (isNetwork) {
+      return Image.network(
+        image,
+        fit: BoxFit.cover,
+        filterQuality: FilterQuality.medium,
+        loadingBuilder: (context, child, progress) =>
+            progress == null ? child : _fallback(),
+        errorBuilder: (_, __, ___) => _fallback(),
       );
     }
     return Image.asset(
       image,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => const ColoredBox(color: LcbColors.card),
+      errorBuilder: (_, __, ___) => _fallback(),
     );
   }
+
+  Widget _fallback() => DecoratedBox(
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          LcbColors.primaryContainer,
+          LcbColors.primaryContainer.withValues(alpha: 0.4),
+        ],
+      ),
+    ),
+  );
 }
 
 /// The site pill under a result's remarks. Names arrive already prefixed

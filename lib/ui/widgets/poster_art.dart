@@ -50,10 +50,25 @@ class PosterArt extends StatelessWidget {
   final bool showTitle;
   final double? titleSize;
 
+  /// A network cover (real sources hand back an `http(s)` `vod_pic`) rather than
+  /// a bundled `assets/` path.
+  bool get _isNetwork => image != null && (image!.startsWith('http://') || image!.startsWith('https://'));
+
   @override
   Widget build(BuildContext context) {
     final path = image;
     if (path != null) {
+      if (_isNetwork) {
+        return Image.network(
+          path,
+          fit: fit,
+          alignment: alignment,
+          filterQuality: FilterQuality.medium,
+          loadingBuilder: (context, child, progress) =>
+              progress == null ? child : _placeholder(),
+          errorBuilder: (_, _, _) => _placeholder(),
+        );
+      }
       return Image.asset(
         path,
         fit: fit,
