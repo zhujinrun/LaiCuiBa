@@ -97,8 +97,23 @@ class CatBundle {
     return hash.toRadixString(16).padLeft(8, '0');
   }
 
-  static String _stripMd5(String url) =>
-      url.toLowerCase().endsWith('.md5') ? url.substring(0, url.length - 4) : url;
+  /// The bundle's directory URL, derived from a subscription address.
+  ///
+  /// A catvod subscription points at `.../index.js.md5` (the checksum of the
+  /// real `index.js`) or, failing that, at `.../index.js` directly. Both name a
+  /// file inside the bundle directory, so this strips the `.md5` suffix and the
+  /// trailing `/index.js` segment to leave `.../douer`, which [ensure] then
+  /// joins with `/index.js` and `/index.config.js`.
+  static String _stripMd5(String url) {
+    var base = url.toLowerCase().endsWith('.md5')
+        ? url.substring(0, url.length - 4)
+        : url;
+    const marker = '/index.js';
+    if (base.toLowerCase().endsWith(marker)) {
+      base = base.substring(0, base.length - marker.length);
+    }
+    return base;
+  }
 
   Future<_Bytes> _fetchBytes(String url) async {
     try {
