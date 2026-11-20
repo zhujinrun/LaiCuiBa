@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
+import '../../services/config_fetcher.dart';
+import '../../services/store.dart';
 import '../../services/site_parser.dart';
 
 /// Source management dialogs.
@@ -41,12 +43,7 @@ Future<void> showSourceMenu(BuildContext context, SourceInfo source) async {
       await store.selectSource(source.id);
     case _SourceAction.recheck:
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('重新检测需要联网，将在源接入阶段提供'),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      await _recheckSource(context, store, source);
     case _SourceAction.edit:
       if (!context.mounted) return;
       await showEditSourceDialog(context, source);
@@ -54,6 +51,67 @@ Future<void> showSourceMenu(BuildContext context, SourceInfo source) async {
       if (!context.mounted) return;
       await showDeleteSourceDialog(context, source);
   }
+}
+
+/// Pulls the source's config address and writes what it found back onto the
+/// source. Pasted sources have no address, so they say so instead of guessing.
+Future<void> _recheckSource(
+  BuildContext context,
+  AppStore store,
+  SourceInfo source,
+) async {
+  final messenger = ScaffoldMessenger.of(context);
+  if (source.url.trim().isEmpty) {
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('这个源没有配置地址，拉不了；可以粘贴配置或改地址'),
+        duration: Duration(seconds: 3),
+      ),
+    );
+    return;
+  }
+
+  messenger.showSnackBar(
+    const SnackBar(
+      content: Text('正在拉取配置…'),
+      duration: Duration(seconds: 1),
+    ),
+  );
+  final result = await fetchConfig(source.url);
+  if (!context.mounted) return;
+
+  if (result.ok) {
+    await store.updateSource(
+      source.copyWith(
+        sites: result.sites,
+        homeSite: source.homeSite.isEmpty
+            ? result.sites.first.key
+            : source.homeSite,
+        latencyMs: result.latencyMs,
+        checkedAt: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+    if (!context.mounted) return;
+    final extra = result.note == null ? '' : '（${result.note}）';
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          '拉到 ${result.sites.length} 个站点，用时 ${result.latencyMs} ms$extra',
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+    return;
+  }
+
+  final reason = result.error ?? result.note ?? '没有拉到站点';
+  await store.updateSource(
+    source.copyWith(latencyMs: result.latencyMs),
+  );
+  if (!context.mounted) return;
+  messenger.showSnackBar(
+    SnackBar(content: Text(reason), duration: const Duration(seconds: 4)),
+  );
 }
 
 Future<void> showEditSourceDialog(BuildContext context, SourceInfo source) {
