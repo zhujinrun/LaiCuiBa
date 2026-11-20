@@ -482,25 +482,77 @@ class AppStore extends ChangeNotifier {
     );
   }
 
-  /// The seeded source, carrying the twelve sites the original's config for
-  /// 豆儿猫源 declares (read off its result chips for 尚公主). Until a real
-  /// config is parsed these stand in for the document's `sites` array, but they
-  /// travel through exactly the same path: source -> sites -> chips.
+  /// The seeded source, carrying the site list its config bundle declares.
+  ///
+  /// 豆儿猫源 ships no JSON: its `index.js` is the catvod spider bundle itself,
+  /// and every site is a `meta:{key,name,type}` block inside it. `tool/
+  /// extract_config_sites.py` pulls those 61 blocks out and drops the two that
+  /// are not content sites (`baseset` = the 「设」配置 panel, `webpage` = type 7
+  /// 网页入口), leaving the 59 the original lists. Keys get the host's
+  /// `nodejs_` prefix, exactly like the `homeSite: nodejs_jianpian` the original
+  /// stores in its own preferences.
   static const _demoSourceId = '1794457036493149';
 
   static const List<SiteInfo> _demoSites = [
-    SiteInfo(key: 'wanou', name: '玩偶', type: '3', api: 'csp_WanOu'),
-    SiteInfo(key: 'muou', name: '木偶', type: '3', api: 'csp_MuOu'),
-    SiteInfo(key: 'shandian', name: '闪电', type: '3', api: 'csp_ShanDian'),
-    SiteInfo(key: 'duoduo', name: '多多', type: '3', api: 'csp_DuoDuo'),
-    SiteInfo(key: 'ouge', name: '欧歌', type: '3', api: 'csp_OuGe'),
-    SiteInfo(key: 'huajuan', name: '花卷', type: '3', api: 'csp_HuaJuan'),
-    SiteInfo(key: 'huban', name: '虎斑', type: '3', api: 'csp_HuBan'),
-    SiteInfo(key: 'xiaoban', name: '小斑', type: '3', api: 'csp_XiaoBan'),
-    SiteInfo(key: 'woniu', name: '蜗牛', type: '3', api: 'csp_WoNiu'),
-    SiteInfo(key: 'naixi', name: '奶西', type: '3', api: 'csp_NaiXi'),
-    SiteInfo(key: 'xiaomao', name: '小猫', type: '3', api: 'csp_XiaoMao'),
-    SiteInfo(key: 'paopao', name: '泡泡', type: '3', api: 'csp_PaoPao'),
+    SiteInfo(key: 'nodejs_duoduo', name: '「盘」多多', type: '3', api: 'nodejs_duoduo'),
+    SiteInfo(key: 'nodejs_muou', name: '「盘」木偶', type: '3', api: 'nodejs_muou'),
+    SiteInfo(key: 'nodejs_huajuan', name: '「盘」花卷', type: '3', api: 'nodejs_huajuan'),
+    SiteInfo(key: 'nodejs_labi', name: '「盘」蜡笔', type: '3', api: 'nodejs_labi'),
+    SiteInfo(key: 'nodejs_shandian', name: '「盘」闪电', type: '3', api: 'nodejs_shandian'),
+    SiteInfo(key: 'nodejs_ouge', name: '「盘」欧歌', type: '3', api: 'nodejs_ouge'),
+    SiteInfo(key: 'nodejs_myquark', name: '「盘」夸克', type: '3', api: 'nodejs_myquark'),
+    SiteInfo(key: 'nodejs_mycloud', name: '「盘」我的', type: '3', api: 'nodejs_mycloud'),
+    SiteInfo(key: 'nodejs_myali', name: '「盘」阿里', type: '3', api: 'nodejs_myali'),
+    SiteInfo(key: 'nodejs_mytianyi', name: '「盘」天翼', type: '3', api: 'nodejs_mytianyi'),
+    SiteInfo(key: 'nodejs_mybaidu', name: '「盘」百度', type: '3', api: 'nodejs_mybaidu'),
+    SiteInfo(key: 'nodejs_my115', name: '「盘」115', type: '3', api: 'nodejs_my115'),
+    SiteInfo(key: 'nodejs_my123', name: '「盘」123', type: '3', api: 'nodejs_my123'),
+    SiteInfo(key: 'nodejs_123ypzysq', name: '「盘」123社区', type: '3', api: 'nodejs_123ypzysq'),
+    SiteInfo(key: 'nodejs_guanying', name: '「盘」观影', type: '3', api: 'nodejs_guanying'),
+    SiteInfo(key: 'nodejs_cloudseekr', name: '「盘」CLOUDSEEK', type: '3', api: 'nodejs_cloudseekr'),
+    SiteInfo(key: 'nodejs_myguangyapan', name: '「盘」光鸭', type: '3', api: 'nodejs_myguangyapan'),
+    SiteInfo(key: 'nodejs_huban', name: '「盘」虎斑', type: '3', api: 'nodejs_huban'),
+    SiteInfo(key: 'nodejs_xiaoban', name: '「盘」小斑', type: '3', api: 'nodejs_xiaoban'),
+    SiteInfo(key: 'nodejs_woniu', name: '「盘」蜗牛', type: '3', api: 'nodejs_woniu'),
+    SiteInfo(key: 'nodejs_libvio', name: '「盘」立播', type: '3', api: 'nodejs_libvio'),
+    SiteInfo(key: 'nodejs_wanou', name: '「盘」玩偶', type: '3', api: 'nodejs_wanou'),
+    SiteInfo(key: 'nodejs_tgchannel', name: '「盘」TG搜', type: '3', api: 'nodejs_tgchannel'),
+    SiteInfo(key: 'nodejs_tgsou', name: '「盘」TG搜²', type: '3', api: 'nodejs_tgsou'),
+    SiteInfo(key: 'nodejs_tgfilebot', name: '「直」TGFileBot', type: '3', api: 'nodejs_tgfilebot'),
+    SiteInfo(key: 'nodejs_tgvideo', name: '「直」TG视频', type: '3', api: 'nodejs_tgvideo'),
+    SiteInfo(key: 'nodejs_douban', name: '「荐」豆瓣', type: '3', api: 'nodejs_douban'),
+    SiteInfo(key: 'nodejs_doubi', name: '「直」豆哔', type: '3', api: 'nodejs_doubi'),
+    SiteInfo(key: 'nodejs_push', name: '「推」推送', type: '4', api: 'nodejs_push'),
+    SiteInfo(key: 'nodejs_pansou', name: '「盘」PanSou', type: '3', api: 'nodejs_pansou'),
+    SiteInfo(key: 'nodejs_miniyingshi', name: '「盘」迷你影视', type: '3', api: 'nodejs_miniyingshi'),
+    SiteInfo(key: 'nodejs_quanpansou', name: '「盘」全盘搜', type: '3', api: 'nodejs_quanpansou'),
+    SiteInfo(key: 'nodejs_jjsou', name: '「盘」JJ搜', type: '3', api: 'nodejs_jjsou'),
+    SiteInfo(key: 'nodejs_jutoushe', name: '「盘」剧透社', type: '3', api: 'nodejs_jutoushe'),
+    SiteInfo(key: 'nodejs_rrdyw', name: '「盘」人人', type: '3', api: 'nodejs_rrdyw'),
+    SiteInfo(key: 'nodejs_pomo', name: '「盘」Pomo', type: '3', api: 'nodejs_pomo'),
+    SiteInfo(key: 'nodejs_xingya', name: '「直」星芽', type: '3', api: 'nodejs_xingya'),
+    SiteInfo(key: 'nodejs_hongguo', name: '「直」红果', type: '3', api: 'nodejs_hongguo'),
+    SiteInfo(key: 'nodejs_live2vod', name: '「直」直播', type: '3', api: 'nodejs_live2vod'),
+    SiteInfo(key: 'nodejs_jinpai', name: '「直」金牌', type: '3', api: 'nodejs_jinpai'),
+    SiteInfo(key: 'nodejs_jianpian', name: '「直」荐片', type: '3', api: 'nodejs_jianpian'),
+    SiteInfo(key: 'nodejs_guazi', name: '「直」瓜子', type: '3', api: 'nodejs_guazi'),
+    SiteInfo(key: 'nodejs_juzhi', name: '「直」橘汁', type: '3', api: 'nodejs_juzhi'),
+    SiteInfo(key: 'nodejs_gulu', name: '「直」咕噜', type: '3', api: 'nodejs_gulu'),
+    SiteInfo(key: 'nodejs_juxiafan', name: '「直」剧下饭', type: '3', api: 'nodejs_juxiafan'),
+    SiteInfo(key: 'nodejs_dbku', name: '「直」独播库', type: '3', api: 'nodejs_dbku'),
+    SiteInfo(key: 'nodejs_dashixiong', name: '「直」大师兄', type: '3', api: 'nodejs_dashixiong'),
+    SiteInfo(key: 'nodejs_hanxiaoquan', name: '「直」韩小圈', type: '3', api: 'nodejs_hanxiaoquan'),
+    SiteInfo(key: 'nodejs_ciyuancheng', name: '「直」次元城', type: '3', api: 'nodejs_ciyuancheng'),
+    SiteInfo(key: 'nodejs_dmghg', name: '「直」动漫共和国', type: '3', api: 'nodejs_dmghg'),
+    SiteInfo(key: 'nodejs_anich', name: '「直」AniCh', type: '3', api: 'nodejs_anich'),
+    SiteInfo(key: 'nodejs_dmbus', name: '「直」动漫巴士', type: '3', api: 'nodejs_dmbus'),
+    SiteInfo(key: 'nodejs_akianime', name: '「直」AkiAnime', type: '3', api: 'nodejs_akianime'),
+    SiteInfo(key: 'nodejs_jiong', name: '「直」囧次元', type: '3', api: 'nodejs_jiong'),
+    SiteInfo(key: 'nodejs_4kzn', name: '「盘」指南', type: '3', api: 'nodejs_4kzn'),
+    SiteInfo(key: 'nodejs_kafei', name: '「直」咖啡', type: '3', api: 'nodejs_kafei'),
+    SiteInfo(key: 'nodejs_emby', name: 'Emby', type: '3', api: 'nodejs_emby'),
+    SiteInfo(key: 'nodejs_alist-video', name: 'Alist', type: '3', api: 'nodejs_alist-video'),
+    SiteInfo(key: 'nodejs_fenxiang', name: '「盘」分享', type: '3', api: 'nodejs_fenxiang'),
   ];
 
   static SourceInfo _demoSource() => const SourceInfo(
@@ -515,18 +567,66 @@ class AppStore extends ChangeNotifier {
     sites: _demoSites,
   );
 
-  /// Gives the seeded source its sites on installs that predate them.
+  /// Keys of the dozen made-up names that shipped before the real list above
+  /// was extracted. Only used to recognise (and drop) that placeholder data.
+  static const Set<String> _legacyPlaceholderKeys = {
+    'wanou',
+    'muou',
+    'shandian',
+    'duoduo',
+    'ouge',
+    'huajuan',
+    'huban',
+    'xiaoban',
+    'woniu',
+    'naixi',
+    'xiaomao',
+    'paopao',
+  };
+
+  /// Gives the seeded source its sites on installs that predate them, and
+  /// upgrades the twelve placeholder names to the real 59.
   ///
   /// Without this, an existing `flutter.sources` keeps a source with no site
   /// list, `sitesForSelection` returns nothing, and search goes blank after the
   /// upgrade -- a regression that only shows up for anyone who already ran the
-  /// app. Returns true when something changed so the caller can persist.
+  /// app. The placeholder pass keeps whatever the user switched off, and leaves
+  /// sites they added themselves in place. Returns true when something changed
+  /// so the caller can persist.
   static bool _backfillDemoSites(List<SourceInfo> sources) {
     var changed = false;
     for (var index = 0; index < sources.length; index++) {
       final source = sources[index];
-      if (source.id != _demoSourceId || source.sites.isNotEmpty) continue;
-      sources[index] = source.copyWith(sites: _demoSites);
+      if (source.id != _demoSourceId) continue;
+
+      if (source.sites.isEmpty) {
+        sources[index] = source.copyWith(sites: _demoSites);
+        changed = true;
+        continue;
+      }
+
+      final legacy = source.sites
+          .where((site) => _legacyPlaceholderKeys.contains(site.key))
+          .toList();
+      if (legacy.isEmpty) continue;
+      if (source.sites.any((site) => site.key.startsWith('nodejs_'))) continue;
+
+      final off = {
+        for (final site in legacy)
+          if (!site.enabled) site.key,
+      };
+      final extras = source.sites
+          .where((site) => !_legacyPlaceholderKeys.contains(site.key))
+          .toList();
+      sources[index] = source.copyWith(
+        sites: [
+          for (final site in _demoSites)
+            off.contains(site.key.substring('nodejs_'.length))
+                ? site.copyWith(enabled: false)
+                : site,
+          ...extras,
+        ],
+      );
       changed = true;
     }
     return changed;

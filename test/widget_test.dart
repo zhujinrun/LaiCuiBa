@@ -169,7 +169,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('全部'), findsOneWidget);
-    expect(find.text('「盘」 玩偶'), findsWidgets);
+    // Site chips and result tags both render the config's own names, prefix
+    // included -- the UI no longer invents a 「盘」 of its own.
+    expect(find.textContaining('「盘」'), findsWidgets);
     expect(find.text('第40集(全)'), findsWidgets);
 
     // 严格 turns 尚 into an exact-title match, which nothing satisfies.
@@ -242,16 +244,16 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('编辑'));
     await tester.pumpAndSettle();
-    expect(find.text('站点 12 个'), findsOneWidget);
+    expect(find.text('站点 59 个'), findsOneWidget);
 
-    await tester.tap(find.text('站点 12 个'));
+    await tester.tap(find.text('站点 59 个'));
     await tester.pumpAndSettle();
 
     // Flip the first site off; the summary has to say so, otherwise the user
     // has no way to tell what actually reaches search.
     await tester.tap(find.byType(CupertinoSwitch).first);
     await tester.pumpAndSettle();
-    expect(find.text('站点 12 个 · 11 个参与搜索'), findsOneWidget);
-    expect(store.activeSites, hasLength(11));
+    expect(find.text('站点 59 个 · 58 个参与搜索'), findsOneWidget);
+    expect(store.activeSites, hasLength(58));
   });
 }

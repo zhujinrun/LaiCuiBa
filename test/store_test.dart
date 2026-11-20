@@ -503,15 +503,22 @@ void main() {
     // Sources -> sites: the junction every page reads from
     // -----------------------------------------------------------------------
 
-    test('the seeded source carries the twelve sites its config declares',
+    test('the seeded source carries the 59 sites its config declares',
         () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();
 
-      expect(store.sources.first.sites, hasLength(12));
-      expect(store.activeSites, hasLength(12));
-      expect(store.activeSites.first.name, '玩偶');
-      expect(store.sitesForSelection(null), hasLength(12));
+      expect(store.sources.first.sites, hasLength(59));
+      expect(store.activeSites, hasLength(59));
+      // The bundle's first meta block, not a made-up name.
+      expect(store.activeSites.first.name, '「盘」多多');
+      expect(store.activeSites.first.key, 'nodejs_duoduo');
+      // The site the original's history rows point at has to be in there.
+      expect(
+        store.activeSites.any((site) => site.key == 'nodejs_jianpian'),
+        isTrue,
+      );
+      expect(store.sitesForSelection(null), hasLength(59));
     });
 
     test('silencing a site drops it from the fan-out and persists', () async {
@@ -519,17 +526,20 @@ void main() {
       final store = await AppStore.load();
       final id = store.sources.first.id;
 
-      await store.toggleSite(id, 'wanou');
-      expect(store.activeSites, hasLength(11));
-      expect(store.activeSites.any((site) => site.name == '玩偶'), isFalse);
+      await store.toggleSite(id, 'nodejs_wanou');
+      expect(store.activeSites, hasLength(58));
+      expect(
+        store.activeSites.any((site) => site.key == 'nodejs_wanou'),
+        isFalse,
+      );
       // What search actually fans out over shrinks with it.
-      expect(store.sitesForSelection(null), hasLength(11));
+      expect(store.sitesForSelection(null), hasLength(58));
 
       final reloaded = await AppStore.load();
-      expect(reloaded.activeSites, hasLength(11));
+      expect(reloaded.activeSites, hasLength(58));
 
-      await reloaded.toggleSite(id, 'wanou');
-      expect(reloaded.activeSites, hasLength(12));
+      await reloaded.toggleSite(id, 'nodejs_wanou');
+      expect(reloaded.activeSites, hasLength(59));
     });
 
     test('a pasted source joins the fan-out and leaves when deleted', () async {
@@ -547,11 +557,11 @@ void main() {
       );
       expect(id, 'pasted-1');
       // With every source selected both configs contribute.
-      expect(store.sitesForSelection(null), hasLength(13));
+      expect(store.sitesForSelection(null), hasLength(60));
       expect(store.sitesForSelection({'pasted-1'}).single.name, '我自己的站');
 
       await store.removeSource('pasted-1');
-      expect(store.sitesForSelection(null), hasLength(12));
+      expect(store.sitesForSelection(null), hasLength(59));
       expect(store.sources.any((source) => source.id == 'pasted-1'), isFalse);
     });
 
@@ -626,13 +636,49 @@ void main() {
       });
 
       final store = await AppStore.load();
-      expect(store.sources.first.sites, hasLength(12));
-      expect(store.activeSites, hasLength(12));
+      expect(store.sources.first.sites, hasLength(59));
+      expect(store.activeSites, hasLength(59));
 
       // The backfill is written back rather than recomputed every launch.
       final reloaded = await AppStore.load();
-      expect(reloaded.sources.first.sites, hasLength(12));
+      expect(reloaded.sources.first.sites, hasLength(59));
       expect(reloaded.currentSourceId, '1794457036493149');
+    });
+
+    test('the twelve placeholder sites are upgraded, switches intact', () async {
+      // Builds before the config bundle was mined seeded a dozen made-up names
+      // (`wanou`, `naixi`, ...). They have to be replaced by the real 59 or the
+      // user keeps searching a list that never existed.
+      SharedPreferences.setMockInitialValues({
+        'seeded': true,
+        'sources': jsonEncode([
+          {
+            'id': '1794457036493149',
+            'type': 'tvbox',
+            'name': '豆儿猫源',
+            'url': 'https://example.com/douer/index.js.md5',
+            'sites': [
+              {'key': 'wanou', 'name': '玩偶', 'type': '3', 'enabled': false},
+              {'key': 'muou', 'name': '木偶', 'type': '3'},
+              {'key': 'my-own', 'name': '我加的站', 'type': '3'},
+            ],
+          },
+        ]),
+      });
+
+      final store = await AppStore.load();
+      final sites = store.sources.first.sites;
+      expect(sites, hasLength(60)); // 59 real + the one the user added
+      expect(sites.last.name, '我加的站');
+      expect(
+        sites.firstWhere((site) => site.key == 'nodejs_wanou').enabled,
+        isFalse,
+        reason: 'a site the user silenced has to stay silenced',
+      );
+      expect(
+        sites.firstWhere((site) => site.key == 'nodejs_muou').enabled,
+        isTrue,
+      );
     });
   });
 }

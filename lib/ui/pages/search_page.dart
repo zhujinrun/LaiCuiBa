@@ -350,7 +350,7 @@ class _SiteChips extends StatelessWidget {
                   for (final site in shown) ...[
                     const SizedBox(width: 9),
                     _Chip(
-                      label: '「盘」 ${site.site}',
+                      label: site.site,
                       count: site.count,
                       selected: search.site == site.site,
                       onTap: () => search.selectSite(site.site),
@@ -604,7 +604,8 @@ class _Poster extends StatelessWidget {
   }
 }
 
-/// The small 「盘」 site pill under a result's remarks.
+/// The site pill under a result's remarks. Names arrive already prefixed
+/// (`「盘」玩偶`, `「直」荐片`), so it must not add a tag of its own.
 class _SiteTag extends StatelessWidget {
   const _SiteTag({required this.site});
 
@@ -624,7 +625,7 @@ class _SiteTag extends StatelessWidget {
       child: Center(
         widthFactor: 1,
         child: Text(
-          '「盘」 $site',
+          site,
           style: const TextStyle(
             fontSize: 11,
             height: 1.0,

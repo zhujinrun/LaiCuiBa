@@ -61,7 +61,11 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
   每行 JSON、每行 `名称$地址`）；`AppStore.sitesForSelection()` 成为搜索与计数唯一取数口，
   `demoSites` 硬编码常量已删除；资源页 `+` 可粘贴配置真实加源，`⋯` 菜单可设当前 / 编辑 /
   删除，编辑里能逐个静音站点；老 `flutter.sources`（无 sites）在 load 时自动补种
-- **66 个测试全绿**（`store_test` 37 + `site_parser_test` 11 + `search_test` 8 +
+- **站点清单换成真的 59 个**：豆儿猫源没有 JSON 配置，站点全在 `index.js` 的
+  `meta:{key,name,type}` 里；`tool/extract_config_sites.py` 抽出 61 条、去掉
+  `baseset`/`webpage` 两条非影视站点得 59 条，接进 `_demoSites`。老安装里的
+  12 个占位名字会由 `_backfillDemoSites` 就地换掉（保留静音开关与用户自己加的源）
+- **67 个测试全绿**（`store_test` 38 + `site_parser_test` 11 + `search_test` 8 +
   `assets_test` 3 + `widget_test` 7）、`flutter analyze` 零问题
 
 ---
