@@ -19,13 +19,24 @@ import '../../models/models.dart';
 /// rendered but inert: they need the source layer from Phase 2. 收藏 is live and
 /// writes to `flutter.favorites`.
 class DetailPage extends StatefulWidget {
-  const DetailPage({super.key, required this.item, this.episodeIndex});
+  const DetailPage({
+    super.key,
+    required this.item,
+    this.episodeIndex,
+    this.onPlay,
+  });
 
   final MediaItem item;
 
   /// Episode the user last watched, used for the 「继续」 button and the
   /// highlighted chip. Null for films and for titles with no history.
   final int? episodeIndex;
+
+  /// Invoked with the episode index the user chose to play (null for films).
+  /// The shell resolves the URL and opens the player; keeping the resolution
+  /// there lets it fall back to the source's `play` action when the detail
+  /// carries no play URLs.
+  final ValueChanged<int?>? onPlay;
 
   @override
   State<DetailPage> createState() => _DetailPageState();
@@ -75,6 +86,22 @@ class _DetailPageState extends State<DetailPage> {
     );
   }
 
+  /// Primary button: plays the resume episode for series, the film itself
+  /// otherwise.
+  void _onPlayPrimary() {
+    final cb = widget.onPlay;
+    if (cb == null) return;
+    if (episodes.isEmpty) {
+      cb(null); // film
+      return;
+    }
+    final i = widget.episodeIndex;
+    cb(i != null && i < episodes.length ? i : 0);
+  }
+
+  /// Episode chip: plays the selected episode (its index within the full list).
+  void _onPlayEpisode(int index) => widget.onPlay?.call(index);
+
   @override
   Widget build(BuildContext context) {
     final ranges = <int>[
@@ -95,6 +122,7 @@ class _DetailPageState extends State<DetailPage> {
               resumeLabel: _resumeLabel,
               favorite: _isFavorite,
               onFavorite: _toggleFavorite,
+              onPlay: _onPlayPrimary,
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(
@@ -124,6 +152,7 @@ class _DetailPageState extends State<DetailPage> {
                       labels: pageItems,
                       current: widget.episodeIndex,
                       offset: start,
+                      onEpisode: _onPlayEpisode,
                     ),
                   ],
                   if (item.actors.isNotEmpty) ...[
@@ -162,12 +191,14 @@ class _Hero extends StatelessWidget {
     required this.resumeLabel,
     required this.favorite,
     required this.onFavorite,
+    required this.onPlay,
   });
 
   final MediaItem item;
   final String resumeLabel;
   final bool favorite;
   final VoidCallback onFavorite;
+  final VoidCallback onPlay;
 
   @override
   Widget build(BuildContext context) {
@@ -245,6 +276,7 @@ class _Hero extends StatelessWidget {
                       resumeLabel: resumeLabel,
                       favorite: favorite,
                       onFavorite: onFavorite,
+                      onPlay: onPlay,
                     ),
                   ],
                 ),
@@ -354,11 +386,13 @@ class _ActionRow extends StatelessWidget {
     required this.resumeLabel,
     required this.favorite,
     required this.onFavorite,
+    required this.onPlay,
   });
 
   final String resumeLabel;
   final bool favorite;
   final VoidCallback onFavorite;
+  final VoidCallback onPlay;
 
   @override
   Widget build(BuildContext context) {
@@ -368,6 +402,7 @@ class _ActionRow extends StatelessWidget {
           label: resumeLabel,
           icon: CupertinoIcons.play_fill,
           primary: true,
+          onTap: onPlay,
         ),
         const SizedBox(width: 13),
         const _PillButton(label: '换平台', icon: CupertinoIcons.shuffle),
@@ -605,6 +640,7 @@ class _EpisodeGrid extends StatelessWidget {
     required this.labels,
     required this.current,
     required this.offset,
+    required this.onEpisode,
   });
 
   final List<String> labels;
@@ -612,6 +648,9 @@ class _EpisodeGrid extends StatelessWidget {
 
   /// Index of [labels]' first entry within the full episode list.
   final int offset;
+
+  /// Invoked with the absolute episode index (offset + i) on tap.
+  final ValueChanged<int> onEpisode;
 
   @override
   Widget build(BuildContext context) {
@@ -634,6 +673,7 @@ class _EpisodeGrid extends StatelessWidget {
                 label: label,
                 width: width,
                 selected: current != null && current == offset + i,
+                onTap: () => onEpisode(offset + i),
               ),
           ],
         );
@@ -647,11 +687,13 @@ class _EpisodeChip extends StatefulWidget {
     required this.label,
     required this.width,
     required this.selected,
+    required this.onTap,
   });
 
   final String label;
   final double width;
   final bool selected;
+  final VoidCallback onTap;
 
   @override
   State<_EpisodeChip> createState() => _EpisodeChipState();
@@ -672,7 +714,7 @@ class _EpisodeChipState extends State<_EpisodeChip> {
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
-        onTap: () {},
+        onTap: widget.onTap,
         child: Container(
           width: widget.width,
           height: 44,

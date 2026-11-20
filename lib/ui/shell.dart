@@ -12,6 +12,7 @@ import '../services/store.dart';
 import 'pages/common_pages.dart';
 import 'pages/detail_page.dart';
 import 'pages/home_page.dart';
+import 'pages/player_page.dart';
 import 'pages/search_page.dart';
 import 'pages/settings_page.dart';
 import 'page_header.dart';
@@ -48,6 +49,9 @@ class _ShellState extends State<Shell> {
   /// Non-null while the detail page is open in the content column.
   MediaItem? _detail;
   int? _detailEpisode;
+
+  /// Non-null while the full-screen player is open on top of the shell.
+  _PlayerSession? _player;
 
   static const _titles = {
     LcbPage.home: '首页',
@@ -131,6 +135,58 @@ class _ShellState extends State<Shell> {
     _header.reset(_titles[_page]!);
   }
 
+  /// Resolves a playable URL for [item]'s chosen episode and opens the player.
+  ///
+  /// Prefers the URLs the detail payload already carries ([MediaItem.playLines],
+  /// first line); falls back to the source's `play` action when they are absent
+  /// (e.g. a demo fixture that has never fetched a real detail). Keeps the
+  /// resolution async so the spider round-trip never blocks the tap.
+  void _openPlayer(MediaItem item, int? episodeIndex) {
+    final lines = item.playLines;
+    final line = lines.isNotEmpty ? lines.first : null;
+    final eps = line?.episodes ?? const <PlayEpisode>[];
+
+    String? url;
+    if (eps.isNotEmpty) {
+      final i = (episodeIndex ?? 0).clamp(0, eps.length - 1);
+      url = eps[i].url;
+    }
+
+    if (url != null && url.isNotEmpty) {
+      _showPlayer(item, episodeIndex, url);
+      return;
+    }
+
+    // Fallback: ask the source's play action. 豆儿猫源 answers {parse:1} here
+    // (its detail already carried the URLs), so this mainly serves other
+    // source shapes.
+    _store.playReal(item, nid: episodeIndex).then((resolved) {
+      if (!mounted || resolved == null || resolved.isEmpty) return;
+      if (_detail?.id != item.id) return; // user navigated away
+      _showPlayer(item, episodeIndex, resolved);
+    });
+  }
+
+  void _showPlayer(MediaItem item, int? episodeIndex, String url) {
+    setState(() {
+      _player = _PlayerSession(
+        title: item.title,
+        url: url,
+        subtitle: StoreScope.of(context).siteNameOfKey(
+          item.siteKey,
+          fallback: '',
+        ),
+        episodes: item.episodes,
+        episodeIndex: episodeIndex,
+      );
+    });
+  }
+
+  void _closePlayer() {
+    if (!mounted) return;
+    setState(() => _player = null);
+  }
+
   Widget _body() {
     final detail = _detail;
     if (detail != null) {
@@ -138,6 +194,7 @@ class _ShellState extends State<Shell> {
         key: ValueKey('detail-${detail.id}'),
         item: detail,
         episodeIndex: _detailEpisode,
+        onPlay: (i) => _openPlayer(detail, i),
       );
     }
     switch (_page) {
@@ -156,6 +213,26 @@ class _ShellState extends State<Shell> {
 
   @override
   Widget build(BuildContext context) {
+    final player = _player;
+    return Stack(
+      children: [
+        _buildScaffold(),
+        if (player != null)
+          PlayerPage(
+            key: ValueKey('player-${player.url}'),
+            title: player.title,
+            subtitle: player.subtitle,
+            url: player.url,
+            episodes: player.episodes,
+            episodeIndex: player.episodeIndex,
+            onEpisode: (i) => _openPlayer(_detail!, i),
+            onClose: _closePlayer,
+          ),
+      ],
+    );
+  }
+
+  Widget _buildScaffold() {
     return Scaffold(
       backgroundColor: LcbColors.surface,
       body: LcbSearchScope(
@@ -211,6 +288,25 @@ class _ShellState extends State<Shell> {
       ),
     );
   }
+}
+
+/// The in-flight player session held by the shell while the full-screen player
+/// is open. Carries everything [PlayerPage] needs; the shell owns it so the
+/// detail page can keep the spider resolution out of its own render path.
+class _PlayerSession {
+  const _PlayerSession({
+    required this.title,
+    required this.url,
+    required this.episodes,
+    this.subtitle,
+    this.episodeIndex,
+  });
+
+  final String title;
+  final String url;
+  final String? subtitle;
+  final List<String> episodes;
+  final int? episodeIndex;
 }
 
 class _Sidebar extends StatelessWidget {
