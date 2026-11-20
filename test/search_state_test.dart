@@ -5,8 +5,9 @@ import 'package:lai_cui_ba/models/models.dart';
 import 'package:lai_cui_ba/services/spider_session.dart';
 
 /// The `submit` behaviour: with a real search wired, the demo catalogue must not
-/// flash first (its non-尚公主 rows carry no episodes); the results stay empty
-/// until the real search lands, and only fall back to demo when it returns null.
+/// flash first (its non-尚公主 rows carry no episodes); results appear site by
+/// site as each stream event lands, and only fall back to demo when every site
+/// comes back empty.
 void main() {
   const sites = [
     SiteInfo(key: 'wanou', name: '玩偶', type: '3'),
@@ -16,7 +17,7 @@ void main() {
   test('no real search: demo answers immediately', () {
     final search = LcbSearch(
       sitesProvider: (_) => sites,
-      realSearch: null,
+      realSearchStream: null,
     );
     search.setQuery('尚公主');
     search.submit();
@@ -26,13 +27,12 @@ void main() {
     expect(search.outcome.hits.first.item.title, '尚公主');
   });
 
-  test('real search returns empty: the results stay empty while loading', () async {
+  test('real search emits nothing: fall back to demo when done', () async {
     final search = LcbSearch(
       sitesProvider: (_) => sites,
-      realSearch: (keyword, {strict = false}) async {
-        // A slow real search that ultimately returns nothing.
+      realSearchStream: (keyword, {strict = false}) async* {
+        // A slow real search that ultimately emits no site.
         await Future<void>.delayed(const Duration(milliseconds: 20));
-        return const SpiderSearch(groups: []);
       },
     );
     search.setQuery('尚公主');
@@ -42,26 +42,29 @@ void main() {
     expect(search.loading, isTrue);
     expect(search.outcome.hits, isEmpty);
 
-    // Once the (empty) real search lands, fall back to the demo catalogue.
+    // Once the (empty) real search closes, fall back to the demo catalogue.
     await Future<void>.delayed(const Duration(milliseconds: 40));
     expect(search.loading, isFalse);
     expect(search.outcome.hits, isNotEmpty);
     expect(search.outcome.hits.first.item.title, '尚公主');
   });
 
-  test('real search returns hits: demo is replaced, never shown first', () async {
+  test('real search streams hits: appended site by site', () async {
     final search = LcbSearch(
       sitesProvider: (_) => sites,
-      realSearch: (keyword, {strict = false}) async {
+      realSearchStream: (keyword, {strict = false}) async* {
         await Future<void>.delayed(const Duration(milliseconds: 20));
-        return const SpiderSearch(
-          groups: [
-            SpiderSearchSite(
-              site: '玩偶',
-              items: [
-                MediaItem(id: '100', title: '庆余年', siteKey: 'wanou'),
-              ],
-            ),
+        yield const SpiderSearchSite(
+          site: '玩偶',
+          items: [
+            MediaItem(id: '100', title: '庆余年', siteKey: 'wanou'),
+          ],
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+        yield const SpiderSearchSite(
+          site: '多多',
+          items: [
+            MediaItem(id: '200', title: '狂飙', siteKey: 'duoduo'),
           ],
         );
       },
@@ -73,9 +76,15 @@ void main() {
     expect(search.loading, isTrue);
     expect(search.outcome.hits, isEmpty);
 
-    await Future<void>.delayed(const Duration(milliseconds: 40));
+    // The first site lands and is shown immediately, still loading the rest.
+    await Future<void>.delayed(const Duration(milliseconds: 30));
     expect(search.loading, isFalse);
     expect(search.outcome.hits, hasLength(1));
     expect(search.outcome.hits.first.item.id, '100');
+
+    // The second site appends.
+    await Future<void>.delayed(const Duration(milliseconds: 70));
+    expect(search.outcome.hits, hasLength(2));
+    expect(search.outcome.sites, hasLength(2));
   });
 }

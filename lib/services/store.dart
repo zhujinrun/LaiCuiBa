@@ -402,6 +402,27 @@ class AppStore extends ChangeNotifier {
     );
   }
 
+  /// Streams search results one site at a time, in completion order, so the UI
+  /// can show each site's hits as soon as it responds. Returns null when the
+  /// runtime is unavailable.
+  Stream<SpiderSearchSite>? searchRealStream(
+    String keyword, {
+    bool strict = false,
+  }) {
+    final session = spider;
+    final js = _jsSource();
+    if (session == null || js == null) return null;
+    final sites = currentSource!.searchableSites;
+    if (sites.isEmpty) return null;
+    return session.searchStream(
+      sourceId: js.$1,
+      md5Url: js.$2,
+      sites: sites,
+      keyword: keyword,
+      strict: strict,
+    );
+  }
+
   /// Fetches the full record for [item] from its site. Returns null when the
   /// item carries no site key / vod id or the runtime is unavailable.
   Future<MediaItem?> detailReal(MediaItem item) async {

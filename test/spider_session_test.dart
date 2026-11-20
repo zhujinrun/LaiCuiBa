@@ -194,4 +194,43 @@ void main() {
     );
     expect(result.ok, isFalse);
   });
+
+  test('searchStream emits sites in completion order, not declaration order',
+      () async {
+    await serve((request) async {
+      // duoduo answers fast, jianpian answers slowly -- even though jianpian is
+      // declared first, its hits must not appear before duoduo's.
+      final isJianpian = request.uri.path == '/spider/jianpian/3/search';
+      if (isJianpian) {
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+      }
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(
+        jsonEncode({
+          'list': [
+            {
+              'vod_id': isJianpian ? '575857' : '9985',
+              'vod_name': isJianpian ? '尚公主' : '别的剧',
+              'vod_pic': 'https://img.example/1.webp',
+              'vod_remarks': '第1集',
+            },
+          ],
+        }),
+      );
+      await request.response.close();
+    });
+
+    final s = session(port);
+    final seen = <String>[];
+    await for (final group in s.searchStream(
+      sourceId: 'douer',
+      md5Url: 'https://x/index.js.md5',
+      sites: const [jianpian, duoduo],
+      keyword: '剧',
+    )) {
+      seen.add(group.site);
+    }
+
+    expect(seen, ['盘多多', '荐片']);
+  });
 }

@@ -42,8 +42,8 @@ class _ShellState extends State<Shell> {
   /// Owns the 搜索 mode: the field in the header and the results in the column.
   late final _search = LcbSearch(
     sitesProvider: (selection) => _store.sitesForSelection(selection),
-    realSearch: (keyword, {strict = false}) =>
-        _store.searchReal(keyword, strict: strict),
+    realSearchStream: (keyword, {strict = false}) =>
+        _store.searchRealStream(keyword, strict: strict),
   );
 
   /// Non-null while the detail page is open in the content column.

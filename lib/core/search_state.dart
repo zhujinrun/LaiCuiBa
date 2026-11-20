@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 
 import '../models/models.dart';
@@ -16,7 +18,7 @@ import '../services/spider_session.dart';
 /// results in when they land. A failed or empty real search falls back to the
 /// demo answers, so the page never goes blank.
 class LcbSearch extends ChangeNotifier {
-  LcbSearch({this.sitesProvider, this.realSearch});
+  LcbSearch({this.sitesProvider, this.realSearchStream});
 
   /// Resolves "which sites should this fan out to" from the current selection.
   ///
@@ -26,10 +28,13 @@ class LcbSearch extends ChangeNotifier {
   /// rebuild plumbing in between.
   final List<SiteInfo> Function(Set<String>? selection)? sitesProvider;
 
-  /// Reaches the real spider. Returns null when no runtime is wired, in which
-  /// case the demo catalogue answers. Injected so the store owns the session.
-  final Future<SpiderSearch?> Function(String keyword, {bool strict})?
-      realSearch;
+  /// Reaches the real spider as a stream that emits one site's hits at a time,
+  /// in completion order, so the page can show each site's results as they
+  /// arrive instead of waiting for the slowest site. Returns null when no
+  /// runtime is wired, in which case the demo catalogue answers. Injected so
+  /// the store owns the session.
+  final Stream<SpiderSearchSite>? Function(String keyword, {bool strict})?
+      realSearchStream;
 
   final TextEditingController text = TextEditingController();
   final FocusNode focus = FocusNode();
@@ -45,6 +50,10 @@ class LcbSearch extends ChangeNotifier {
   /// Guards against a stale response overwriting a newer query: each submit
   /// bumps the generation and only the matching response is kept.
   int _generation = 0;
+
+  /// The active stream subscription, cancelled when a newer submit supersedes
+  /// it or the controller is disposed.
+  StreamSubscription<SpiderSearchSite>? _searchSub;
 
   bool get isOpen => _open;
   String get query => _query;
@@ -102,6 +111,7 @@ class LcbSearch extends ChangeNotifier {
     _loading = false;
     _site = null;
     _outcome = const SearchOutcome(hits: [], sites: []);
+    _cancelSearch();
     text.clear();
     focus.unfocus();
     notifyListeners();
@@ -114,7 +124,14 @@ class LcbSearch extends ChangeNotifier {
     _loading = false;
     _site = null;
     _outcome = const SearchOutcome(hits: [], sites: []);
+    _cancelSearch();
     notifyListeners();
+  }
+
+  /// Cancels any in-flight streamed search, marking it superseded.
+  void _cancelSearch() {
+    _searchSub?.cancel();
+    _searchSub = null;
   }
 
   /// Commits the current query, which is what Enter and a suggestion tap do.
@@ -122,16 +139,19 @@ class LcbSearch extends ChangeNotifier {
   /// With a real spider wired, the demo catalogue must not flash first: its
   /// rows (except 尚公主) carry no episode data, so a user tapping one before
   /// the real results land would land on an empty detail page. Show the loading
-  /// state until the spider answers, and only fall back to the demo catalogue
-  /// when no runtime is present (or the spider came back empty).
+  /// state until the first site responds, then append each subsequent site's
+  /// hits as they arrive (谁先响应谁先显示), and only fall back to the demo
+  /// catalogue when no runtime is present or every site came back empty.
   void submit() {
     if (_query.trim().isEmpty) return;
     _submitted = true;
     focus.unfocus();
 
     final gen = ++_generation;
-    final real = realSearch;
-    if (real == null) {
+    // Cancel any in-flight search from a previous submit.
+    _cancelSearch();
+    final streamFn = realSearchStream;
+    if (streamFn == null) {
       _outcome = _demoOutcome(_query);
       _loading = false;
       notifyListeners();
@@ -143,19 +163,43 @@ class LcbSearch extends ChangeNotifier {
     _loading = true;
     notifyListeners();
 
-    real(_query, strict: _strict).then((result) {
-      if (gen != _generation || !_submitted) return;
-      _loading = false;
-      _outcome = result != null && !result.isEmpty
-          ? _fromSpider(result)
-          : _demoOutcome(_query);
-      notifyListeners();
-    }).catchError((Object _) {
-      if (gen != _generation || !_submitted) return;
-      _loading = false;
+    final groups = <SpiderSearchSite>[];
+    var gotAny = false;
+    final stream = streamFn(_query, strict: _strict);
+    if (stream == null) {
       _outcome = _demoOutcome(_query);
+      _loading = false;
       notifyListeners();
-    });
+      return;
+    }
+    _searchSub = stream.listen(
+      (group) {
+        if (gen != _generation || !_submitted) return;
+        gotAny = true;
+        groups.add(group);
+        _outcome = _fromSpiderGroups(groups);
+        _loading = false;
+        notifyListeners();
+      },
+      onError: (Object _) {
+        _finish(gen, groups, gotAny);
+      },
+      onDone: () {
+        _finish(gen, groups, gotAny);
+      },
+      cancelOnError: true,
+    );
+  }
+
+  /// Wraps up a streamed search: clear loading and, if nothing landed, fall
+  /// back to the demo catalogue so the page never goes blank.
+  void _finish(int gen, List<SpiderSearchSite> groups, bool gotAny) {
+    if (gen != _generation || !_submitted) return;
+    _loading = false;
+    if (!gotAny) {
+      _outcome = _demoOutcome(_query);
+    }
+    notifyListeners();
   }
 
   void pickSuggestion(String suggestion) {
@@ -221,11 +265,12 @@ class LcbSearch extends ChangeNotifier {
         )
       : const SearchOutcome(hits: [], sites: []);
 
-  /// Maps a real spider search onto the same shape the page already renders.
-  SearchOutcome _fromSpider(SpiderSearch result) {
+  /// Maps a set of spider search groups onto the same shape the page renders.
+  /// Takes the accumulated groups so each newly-arrived site simply appends.
+  SearchOutcome _fromSpiderGroups(List<SpiderSearchSite> groups) {
     final hits = <SearchHit>[];
     final summaries = <SearchSiteSummary>[];
-    for (final group in result.groups) {
+    for (final group in groups) {
       summaries.add(
         SearchSiteSummary(site: group.site, count: group.items.length),
       );
@@ -244,6 +289,7 @@ class LcbSearch extends ChangeNotifier {
 
   @override
   void dispose() {
+    _cancelSearch();
     text.dispose();
     focus.dispose();
     super.dispose();

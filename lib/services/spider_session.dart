@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -106,8 +107,9 @@ class SpiderSession {
 
   /// Keyword search, fanned out to every enabled site behind [source].
   ///
-  /// Each site that returns at least one hit becomes a [SpiderSearchSite]; the
-  /// caller groups rows the way the original does (结果按平台分组).
+  /// This is the aggregated form: it awaits every site and returns one
+  /// [SpiderSearch]. Prefer [searchStream] for the UI so results appear
+  /// site-by-site as each one responds.
   Future<SpiderSearch> search({
     required String sourceId,
     required String md5Url,
@@ -118,41 +120,70 @@ class SpiderSession {
     if (!await ensureLoaded(id: sourceId, md5Url: md5Url)) {
       return SpiderSearch.failure(lastError ?? '源未就绪');
     }
-    final client = _client!;
-    // Fan out in parallel: the demo source declares ~59 sites and a serial
-    // round-trip per site (~1.5s each) kept the real results from landing for
-    // nearly two minutes, so the UI showed the demo catalogue (whose non-尚公主
-    // rows carry no episodes) long after the user expected answers.
-    final results = await Future.wait<({SiteInfo site, SpiderList? list})>([
-      for (final site in sites)
-        () async {
-          try {
-            final list = await client.search(
-              site.key,
-              site.type,
-              keyword,
-              strict: strict,
-            );
-            return (site: site, list: list);
-          } on Object {
-            // A dead site must not sink the whole query; it contributes nothing.
-            return (site: site, list: null);
-          }
-        }(),
-    ]);
-
     final groups = <SpiderSearchSite>[];
-    for (final r in results) {
-      final list = r.list;
-      if (list == null || list.items.isEmpty) continue;
-      groups.add(
-        SpiderSearchSite(
-          site: r.site.name,
-          items: [for (final item in list.items) item.withSiteKey(r.site.key)],
-        ),
-      );
+    await for (final group in searchStream(
+      sourceId: sourceId,
+      md5Url: md5Url,
+      sites: sites,
+      keyword: keyword,
+      strict: strict,
+    )) {
+      groups.add(group);
     }
     return SpiderSearch(groups: groups);
+  }
+
+  /// Streams search results one site at a time, in completion order, so the UI
+  /// can render each site's hits as soon as it responds instead of waiting for
+  /// the slowest of ~59 sites. Sites that fail or return nothing are skipped.
+  Stream<SpiderSearchSite> searchStream({
+    required String sourceId,
+    required String md5Url,
+    required List<SiteInfo> sites,
+    required String keyword,
+    bool strict = false,
+  }) async* {
+    if (!await ensureLoaded(id: sourceId, md5Url: md5Url)) {
+      // Report the failure through the aggregated path; a stream with no
+      // events is indistinguishable from "no results" to the caller.
+      lastError ??= '源未就绪';
+      return;
+    }
+    final client = _client!;
+    if (sites.isEmpty) return;
+    // Fan out in parallel and push each site's hits into a controller as they
+    // finish, so the stream emits in completion order and a slow site never
+    // blocks the fast ones from appearing.
+    final controller = StreamController<SpiderSearchSite>();
+    var done = 0;
+    final total = sites.length;
+    for (final site in sites) {
+      () async {
+        SpiderList? list;
+        try {
+          list = await client.search(site.key, site.type, keyword,
+              strict: strict);
+        } on Object {
+          // A dead site must not sink the whole query; it contributes nothing.
+          list = null;
+        }
+        if (list != null && list.items.isNotEmpty) {
+          controller.add(
+            SpiderSearchSite(
+              site: site.name,
+              items: [
+                for (final item in list.items) item.withSiteKey(site.key),
+              ],
+            ),
+          );
+        }
+        done++;
+        if (done == total) {
+          controller.close();
+        }
+      }();
+    }
+    yield* controller.stream;
   }
 
   /// Full record for one `vod_id`, fetching the site's detail payload.
