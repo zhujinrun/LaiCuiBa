@@ -473,7 +473,7 @@ class _BottomBar extends StatelessWidget {
                     const Spacer(),
                     _RateButton(rate: rate, onRate: onRate),
                     const SizedBox(width: 16),
-                    _VolumeControl(volume: volume, onVolume: onVolume),
+                    VolumeControl(volume: volume, onVolume: onVolume),
                   ],
                 ),
               ],
@@ -580,8 +580,9 @@ class _RateButtonState extends State<_RateButton> {
   }
 }
 
-class _VolumeControl extends StatelessWidget {
-  const _VolumeControl({required this.volume, required this.onVolume});
+@visibleForTesting
+class VolumeControl extends StatelessWidget {
+  const VolumeControl({super.key, required this.volume, required this.onVolume});
 
   final double volume;
   final ValueChanged<double> onVolume;
@@ -598,10 +599,13 @@ class _VolumeControl extends StatelessWidget {
         SizedBox(
           width: 90,
           child: Slider(
-            value: volume,
+            // media_kit carries volume as 0-100; Slider wants 0-1. Mapping here
+            // keeps the raw value in one place so a 100 never lands on a 0-1
+            // slider (which asserts and, in a debug build, kills the app).
+            value: volume / 100,
             activeColor: LcbColors.primary,
             inactiveColor: const Color(0x66FFFFFF),
-            onChanged: onVolume,
+            onChanged: (v) => onVolume(v * 100),
           ),
         ),
       ],
