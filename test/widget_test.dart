@@ -242,6 +242,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(CupertinoIcons.plus));
     await tester.pumpAndSettle();
+    // + opens 添加资源; the paste form is one of its nine entries now.
+    await tester.tap(find.text('粘贴站点 / 配置文本'));
+    await tester.pumpAndSettle();
     expect(find.text('添加影视源'), findsOneWidget);
 
     const config = '{"sites":[{"key":"mine","name":"我的站","api":"csp_Mine"}]}';
@@ -406,5 +409,129 @@ void main() {
     // Three places name the file: the toast, the folder hint and the row.
     expect(find.textContaining('lcb-'), findsWidgets);
     expect(scratch.listSync().whereType<File>(), hasLength(1));
+  });
+
+  testWidgets('添加资源 lists the original nine entries in three groups', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('资源').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(CupertinoIcons.plus));
+    await tester.pumpAndSettle();
+
+    expect(find.text('添加资源'), findsOneWidget);
+    for (final group in ['媒体服务器', '影视源', '从本地导入']) {
+      expect(find.text(group), findsOneWidget, reason: 'missing group $group');
+    }
+    for (final entry in [
+      'Emby 服务器',
+      '飞牛影视 / Jellyfin',
+      'TVBox 影视源',
+      '直播频道',
+      '粘贴站点 / 配置文本',
+      '导入文件',
+      '导入直播列表文件',
+      '导入文件夹里的源',
+      '从 ZIP 本地包导入',
+    ]) {
+      expect(find.text(entry), findsOneWidget, reason: 'missing entry $entry');
+    }
+  });
+
+  testWidgets('an address-only source is stored and says what is missing', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('资源').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(CupertinoIcons.plus));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('TVBox 影视源'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byType(TextField).last,
+      'https://example.com/config.json',
+    );
+    await tester.pump();
+    await tester.tap(find.text('添加'));
+    await tester.pumpAndSettle();
+
+    expect(store.sources, hasLength(2));
+    final added = store.sources.last;
+    expect(added.type, 'tvbox');
+    expect(added.url, 'https://example.com/config.json');
+    // No sites are invented: the address is all that was given.
+    expect(added.sites, isEmpty);
+    expect(added.homeSite, isEmpty);
+    expect(find.text('未使用 · 地址待拉取'), findsOneWidget);
+
+    // Selecting it does not make anything up either.
+    await tester.tap(find.text('TVBox 影视源'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前使用 · 待联网拉取'), findsOneWidget);
+    expect(store.activeSites, isEmpty);
+  });
+
+  testWidgets('the Emby form keeps address and user, never the password', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('资源').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(CupertinoIcons.plus));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Emby 服务器'));
+    await tester.pumpAndSettle();
+
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), '客厅 Emby');
+    await tester.enterText(fields.at(1), 'http://192.168.1.10:8096');
+    await tester.enterText(fields.at(2), 'lxy');
+    await tester.enterText(fields.at(3), 'secret');
+    await tester.pump();
+    await tester.tap(find.text('添加'));
+    await tester.pumpAndSettle();
+
+    final added = store.sources.last;
+    expect(added.type, 'emby');
+    expect(added.name, '客厅 Emby');
+    expect(added.url, 'http://192.168.1.10:8096');
+    expect(added.username, 'lxy');
+    // A password with nowhere to be exchanged for a token is not written.
+    expect(added.password, isEmpty);
+    expect(find.text('未连接 · lxy'), findsOneWidget);
   });
 }

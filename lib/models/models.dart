@@ -348,6 +348,7 @@ class SourceInfo {
     this.checkedAt = 0,
     this.sites = const [],
     this.homeSite = '',
+    this.channelCount = 0,
   });
 
   final String id;
@@ -365,6 +366,10 @@ class SourceInfo {
   /// has been parsed (see `services/site_parser.dart`); every page that fans
   /// out over sites reads this rather than a hard-coded list.
   final List<SiteInfo> sites;
+
+  /// Channels a local live list declared. Only `live` sources carry one; it is
+  /// what the card shows instead of a site count.
+  final int channelCount;
 
   /// The site the home feed is drawn from, matching the original's
   /// `homeSite` (`nodejs_jianpian`). Empty when the config has not named one;
@@ -386,6 +391,7 @@ class SourceInfo {
     int? checkedAt,
     List<SiteInfo>? sites,
     String? homeSite,
+    int? channelCount,
   }) => SourceInfo(
     id: id,
     type: type,
@@ -399,6 +405,7 @@ class SourceInfo {
     checkedAt: checkedAt ?? this.checkedAt,
     sites: sites ?? this.sites,
     homeSite: homeSite ?? this.homeSite,
+    channelCount: channelCount ?? this.channelCount,
   );
 
   /// Replaces one site by key, leaving the rest in order. Used by the editor to
@@ -425,6 +432,7 @@ class SourceInfo {
     // exact shape the original produces.
     if (sites.isNotEmpty) 'sites': sites.map((e) => e.toJson()).toList(),
     if (homeSite.isNotEmpty) 'homeSite': homeSite,
+    if (channelCount != 0) 'channelCount': channelCount,
   };
 
   factory SourceInfo.fromJson(Map<String, dynamic> json) => SourceInfo(
@@ -443,6 +451,7 @@ class SourceInfo {
         if (raw is Map) SiteInfo.fromJson(Map<String, dynamic>.from(raw)),
     ],
     homeSite: json['homeSite'] as String? ?? '',
+    channelCount: json['channelCount'] as int? ?? 0,
   );
 }
 

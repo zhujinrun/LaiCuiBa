@@ -18,8 +18,8 @@ import 'page_header.dart';
 import 'widgets/manage_folders_sheet.dart';
 import 'widgets/search_sources_dialog.dart';
 import 'widgets/shell_header.dart';
+import 'widgets/add_source_menu.dart';
 import 'widgets/site_picker_dialog.dart';
-import 'widgets/source_dialogs.dart';
 
 class Shell extends StatefulWidget {
   const Shell({super.key});
@@ -524,7 +524,7 @@ class _HeaderContent extends StatelessWidget {
             const SizedBox(width: 11),
             _HeaderToolIcon(
               icon: CupertinoIcons.plus,
-              onTap: () => showAddSourceDialog(context),
+              onTap: () => showAddSourceMenu(context),
             ),
             const SizedBox(width: 11),
             const _HeaderToolIcon(icon: CupertinoIcons.checkmark_circle),

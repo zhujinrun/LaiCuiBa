@@ -79,6 +79,13 @@ extension SourceTypeStyle on String {
         return CupertinoIcons.cloud;
       case 'php':
         return CupertinoIcons.gear;
+      case 'py':
+      case 'js':
+        return CupertinoIcons.doc_text;
+      case 'live':
+        return CupertinoIcons.waveform_path_ecg;
+      case 'jellyfin':
+        return CupertinoIcons.tv;
       case 'tvbox':
       default:
         return CupertinoIcons.film;
@@ -104,6 +111,14 @@ extension SourceTypeStyle on String {
         return 'Kazumi';
       case 'php':
         return 'PHP';
+      case 'py':
+        return 'PY';
+      case 'js':
+        return 'JS';
+      case 'live':
+        return '直播';
+      case 'jellyfin':
+        return 'Jellyfin';
       case 'tvbox':
       default:
         return 'TVBox';
@@ -133,10 +148,33 @@ class _SourceCard extends StatelessWidget {
   /// declared, so it reports those; with no config parsed there is nothing
   /// honest to show, and a borrowed number would just be wrong.
   String get _status {
-    if (!selected) return '未使用';
-    final sites = source.searchableSites.length;
-    if (sites > 0) return '当前使用 · $sites 个站点';
-    return '当前使用 · 未解析';
+    switch (source.type) {
+      case 'live':
+        if (source.channelCount > 0) {
+          return '${selected ? '当前使用 · ' : ''}本地列表 · ${source.channelCount} 个频道';
+        }
+        return '直播地址 · 待联网解析';
+      case 'py':
+      case 'php':
+      case 'js':
+        // A spider file declares its sites only when something runs it.
+        return '本地 spider 文件 · 待宿主执行';
+      case 'emby':
+      case 'jellyfin':
+        return source.username.isEmpty
+            ? '未连接 · 待挂载'
+            : '未连接 · ${source.username}';
+      default:
+        final sites = source.searchableSites.length;
+        // An address-only source says so even before it is selected: the user
+        // just added it and needs to know why no sites appeared.
+        final pending = sites == 0 && source.url.isNotEmpty;
+        if (pending) {
+          return selected ? '当前使用 · 待联网拉取' : '未使用 · 地址待拉取';
+        }
+        if (!selected) return '未使用';
+        return sites > 0 ? '当前使用 · $sites 个站点' : '当前使用 · 未解析';
+    }
   }
 
   String get _latency {
