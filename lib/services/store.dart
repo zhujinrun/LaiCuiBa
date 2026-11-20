@@ -527,6 +527,93 @@ class AppStore extends ChangeNotifier {
   }
 
   // -------------------------------------------------------------------------
+  // Backup
+  // -------------------------------------------------------------------------
+
+  /// Total sites across every source -- what 数据与存储 reports and what the
+  /// resource card counts.
+  int get siteCount =>
+      _sources.fold(0, (total, source) => total + source.sites.length);
+
+  /// The whole local dataset in the shape the preferences store keeps it, so a
+  /// backup can be read back key by key.
+  Map<String, dynamic> exportBundle() => {
+    'sources': [for (final source in _sources) source.toJson()],
+    'current': _current,
+    'history': [for (final entry in _history) entry.toJson()],
+    'favorites': [for (final entry in _favorites) entry.toJson()],
+    'favoriteFolders': [for (final entry in _favoriteFolders) entry.toJson()],
+    'settings': _settings.toJson(),
+  };
+
+  /// Replaces every list with the bundle's and persists once.
+  ///
+  /// A bundle that would wipe everything is rejected rather than silently
+  /// emptying the app: an empty or malformed file must never look like a
+  /// successful restore.
+  Future<void> importBundle(Map<String, dynamic> bundle) async {
+    final sources = _listFrom(bundle['sources'], SourceInfo.fromJson);
+    final history = _listFrom(bundle['history'], HistoryEntry.fromJson);
+    final favorites = _listFrom(bundle['favorites'], FavoriteEntry.fromJson);
+    final folders = _listFrom(
+      bundle['favoriteFolders'],
+      FavoriteFolder.fromJson,
+    );
+    if (sources.isEmpty && history.isEmpty && favorites.isEmpty) {
+      throw const FormatException('备份里没有可恢复的源、收藏或历史');
+    }
+
+    final rawSettings = bundle['settings'];
+    final settings = rawSettings is Map
+        ? AppSettings.fromJson(Map<String, dynamic>.from(rawSettings))
+        : _settings;
+
+    _sources
+      ..clear()
+      ..addAll(sources);
+    _history
+      ..clear()
+      ..addAll(history);
+    _favorites
+      ..clear()
+      ..addAll(favorites);
+    _favoriteFolders
+      ..clear()
+      ..addAll(folders);
+    _settings = settings;
+
+    final rawCurrent = bundle['current'];
+    final validCurrent =
+        rawCurrent is String && _sources.any((s) => s.id == rawCurrent);
+    _current = validCurrent
+        ? rawCurrent
+        : (_sources.isEmpty ? null : _sources.first.id);
+    favoriteFolderId = null;
+
+    await _persistSources();
+    await _persistHistory();
+    await _persistFavorites();
+    await _persistFolders();
+    await _persistSettings();
+    await _prefs.setString(_kCurrent, jsonEncode(_current));
+    // A restored bundle is a populated install; without this the next launch
+    // would seed the demo rows back on top of it.
+    await _prefs.setBool(_kSeeded, true);
+    notifyListeners();
+  }
+
+  static List<T> _listFrom<T>(
+    Object? raw,
+    T Function(Map<String, dynamic>) fromJson,
+  ) {
+    if (raw is! List) return <T>[];
+    return [
+      for (final item in raw)
+        if (item is Map) fromJson(Map<String, dynamic>.from(item)),
+    ];
+  }
+
+  // -------------------------------------------------------------------------
   // Persistence helpers
   // -------------------------------------------------------------------------
 

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui' show Size;
 
 import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoSwitch;
@@ -7,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:lai_cui_ba/main.dart';
+import 'package:lai_cui_ba/services/backup.dart';
 import 'package:lai_cui_ba/services/store.dart';
 import 'package:lai_cui_ba/ui/shell.dart';
 
@@ -307,5 +309,102 @@ void main() {
     expect(find.text('1/59'), findsOneWidget);
     expect(find.text('「盘」夸克'), findsOneWidget);
     expect(find.text('「盘」多多'), findsNothing);
+  });
+
+  testWidgets('数据与存储 reports the store and clears history for real', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('设置').first);
+    await tester.pumpAndSettle();
+
+    // The root row already carries a real count instead of a chevron alone.
+    expect(find.text('1 个源'), findsOneWidget);
+
+    await tester.tap(find.text('数据与存储'));
+    await tester.pumpAndSettle();
+
+    // 本机数据 sums what the store holds -- 59 seeded sites, all enabled.
+    expect(find.text('59 个站点'), findsOneWidget);
+    expect(
+      find.textContaining('59/59 个启用站点'),
+      findsOneWidget,
+      reason: 'the summary must show enabled / total sites',
+    );
+    expect(find.text('1 条'), findsOneWidget);
+
+    // Clearing needs a confirmation, then the count, the history page and the
+    // home rail all go empty together.
+    await tester.tap(find.text('清空观看历史'));
+    await tester.pumpAndSettle();
+    expect(find.text('清空观看历史？'), findsOneWidget);
+
+    await tester.tap(find.text('清空'));
+    await tester.pumpAndSettle();
+
+    expect(store.history, isEmpty);
+    expect(find.text('0 条'), findsOneWidget);
+    expect(store.continueWatching, isEmpty);
+  });
+
+  testWidgets('备份与恢复 writes a file the dialog lists', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    // Real files, scratch folder -- never the user's own backup directory.
+    final scratch = Directory.systemTemp.createTempSync('lcb-widget-backup-');
+    LcbBackup.overrideDirectory = scratch;
+    addTearDown(() {
+      LcbBackup.overrideDirectory = null;
+      // Windows sometimes still holds the file for a moment after the write;
+      // the scratch folder lives under %TEMP% either way.
+      try {
+        if (scratch.existsSync()) scratch.deleteSync(recursive: true);
+      } on FileSystemException {
+        // ignore
+      }
+    });
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('设置').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('数据与存储'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('备份与恢复'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('还没有备份'), findsOneWidget);
+    expect(find.textContaining('本机共 1 个源 · 59 个站点'), findsOneWidget);
+
+    // The export touches the real file system, which only runs inside
+    // runAsync; pumpAndSettle alone would leave the future pending.
+    await tester.runAsync(() async {
+      await tester.tap(find.text('立即备份'));
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pumpAndSettle();
+
+    expect(find.text('还没有备份'), findsNothing);
+    // Three places name the file: the toast, the folder hint and the row.
+    expect(find.textContaining('lcb-'), findsWidgets);
+    expect(scratch.listSync().whereType<File>(), hasLength(1));
   });
 }

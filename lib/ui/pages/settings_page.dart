@@ -6,6 +6,7 @@ import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../services/store.dart';
 import '../page_header.dart';
+import '../widgets/backup_dialog.dart';
 
 /// Settings root + the sub-pages reachable from it.
 ///
@@ -54,12 +55,12 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         children: _sub != null
             ? _subRows(_sub!, StoreScope.of(context))
-            : _rootRows(),
+            : _rootRows(StoreScope.of(context)),
       ),
     );
   }
 
-  List<Widget> _rootRows() => [
+  List<Widget> _rootRows(AppStore store) => [
         const _GroupLabel('通用'),
         _Group(
           rows: [
@@ -162,7 +163,10 @@ class _SettingsPageState extends State<SettingsPage> {
               color: LcbColors.sysGray,
               title: '数据与存储',
               subtitle: '备份恢复、下载管理、缓存与观看历史',
-              onTap: () {},
+              // The only group whose numbers are real, so it opens instead of
+              // sitting as a placeholder.
+              value: '${store.sources.length} 个源',
+              onTap: () => _open('数据与存储'),
             ),
           ],
         ),
@@ -225,6 +229,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return _playbackRows(store);
       case '媒体徽章':
         return _badgeRows();
+      case '数据与存储':
+        return _dataRows(store);
       default:
         return const [];
     }
@@ -250,6 +256,139 @@ class _SettingsPageState extends State<SettingsPage> {
       default:
         return '简体中文';
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 数据与存储
+  // ---------------------------------------------------------------------------
+
+  /// The original's seven rows in its order, with every number read from the
+  /// store. 本机数据 on top is ours -- the original has no summary row -- because
+  /// "1 个源 · 59 个站点" is the one place a user sees what this install holds.
+  List<Widget> _dataRows(AppStore store) => [
+        const _GroupLabel('数据'),
+        _Group(
+          rows: [
+            _Row(
+              icon: CupertinoIcons.chart_pie_fill,
+              color: LcbColors.sysPurple,
+              title: '本机数据',
+              subtitle:
+                  '${store.sources.length} 个源 · '
+                  '${store.activeSites.length}/${store.siteCount} 个启用站点 · '
+                  '${store.favorites.length} 条收藏 · '
+                  '${store.history.length} 条历史',
+              value: '${store.siteCount} 个站点',
+            ),
+            _Row(
+              icon: CupertinoIcons.archivebox_fill,
+              color: LcbColors.sysOrange,
+              title: '备份与恢复',
+              subtitle: '把源、站点开关、收藏和观看历史导出成文件，或从文件恢复',
+              onTap: () => showBackupDialog(context, store),
+            ),
+            _Row(
+              icon: CupertinoIcons.arrow_down_circle_fill,
+              color: LcbColors.sysBlue,
+              title: '下载管理',
+              subtitle: '正在下载与已完成的任务',
+              // Nothing can be downloaded until playback resolves a real URL, so
+              // this stays an honest zero rather than a fabricated count.
+              value: '0 个',
+              onTap: () => _toast('下载要等播放链路接上真实地址后才能做'),
+            ),
+            _Row(
+              icon: CupertinoIcons.settings,
+              color: LcbColors.sysTeal,
+              title: '下载设置',
+              subtitle: '常规设置 m3u8 分片、同时下载数、限速、重试',
+              onTap: () => _toast('下载设置要等下载功能落地'),
+            ),
+            _Row(
+              icon: CupertinoIcons.square_stack_3d_down_right,
+              color: LcbColors.sysPurple,
+              title: '源图标包',
+              subtitle: '导入、合并或删除 ZIP 图标包',
+              onTap: () => _toast('图标包要等源图标解析完成'),
+            ),
+            _Row(
+              icon: CupertinoIcons.photo,
+              color: LcbColors.sysGray,
+              title: '清除图片缓存',
+              subtitle: '海报与头像的本地缓存',
+              // Posters are generated gradients plus bundled fixture art, so
+              // there is no on-disk cache to clear -- the number is truly zero.
+              value: '0 KB',
+              onTap: () => _toast('当前没有可清除的图片缓存'),
+            ),
+            _Row(
+              icon: CupertinoIcons.bubble_left_fill,
+              color: LcbColors.sysSky,
+              title: '清理 TMDB 缓存',
+              subtitle: '网络数据占满给标题与 TMDB 资料；清理后下次打开会重新刷新',
+              value: '0 KB',
+              onTap: () => _toast('没有 TMDB 缓存：片单还没走真实接口'),
+            ),
+            _Row(
+              icon: CupertinoIcons.time,
+              color: LcbColors.sysRed,
+              title: '清空观看历史',
+              subtitle: store.history.isEmpty
+                  ? '历史已经空了'
+                  : '清空后首页的「继续观看」也会一起收起',
+              value: '${store.history.length} 条',
+              onTap: () => _clearHistory(store),
+            ),
+          ],
+        ),
+      ];
+
+  /// Empties the watch history after a confirmation, so the row's count, the
+  /// history page and the home rail all drop to zero together.
+  Future<void> _clearHistory(AppStore store) async {
+    final count = store.history.length;
+    if (count == 0) {
+      _toast('观看历史已经是空的');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: const Color(0x78000000),
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Text(
+          '清空观看历史？',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          '共 $count 条，清空后无法恢复（收藏不受影响）。',
+          style: const TextStyle(fontSize: 13.5, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('清空', style: TextStyle(color: LcbColors.sysRed)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await store.clearHistory();
+    if (!mounted) return;
+    _toast('已清空 $count 条观看历史');
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+    );
   }
 
   List<Widget> _appearanceRows(AppStore store) => [
