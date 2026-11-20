@@ -13,14 +13,15 @@ HistoryEntry _entry({
   bool following = false,
   int positionMs = 31840,
   int durationMs = 2905400,
+  int episodeIndex = 38,
 }) {
   return HistoryEntry(
     key: key,
     sourceId: 'src',
     title: title,
     poster: '',
-    episode: '第39集',
-    episodeIndex: 38,
+    episode: '第${episodeIndex + 1}集',
+    episodeIndex: episodeIndex,
     positionMs: positionMs,
     durationMs: durationMs,
     updatedAt: 0,
@@ -452,6 +453,50 @@ void main() {
       // The first-launch flag is now set, so an empty history stays empty.
       final reloaded = await AppStore.load();
       expect(reloaded.history, isEmpty);
+    });
+
+    test('resumePositionFor returns the saved position for a matching episode',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      // The demo history seeds 尚公主 at episodeIndex 38, positionMs 31840.
+      const item = MediaItem(id: '575857', title: '尚公主');
+
+      final resumed = store.resumePositionFor(item, episodeIndex: 38);
+      expect(resumed, 31840);
+
+      // A different episode has no saved position.
+      expect(store.resumePositionFor(item, episodeIndex: 0), isNull);
+
+      // A different title has none either.
+      expect(
+        store.resumePositionFor(
+          const MediaItem(id: 'x', title: '不存在的剧'),
+          episodeIndex: 38,
+        ),
+        isNull,
+      );
+    });
+
+    test('resumePositionFor skips a position watched to the end', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      await store.putHistory(
+        _entry(
+          key: 'src|nodejs_jianpian|99',
+          title: '看完了',
+          episodeIndex: 1,
+          positionMs: 100000,
+          durationMs: 100000,
+        ),
+      );
+      expect(
+        store.resumePositionFor(
+          const MediaItem(id: '99', title: '看完了'),
+          episodeIndex: 1,
+        ),
+        isNull,
+      );
     });
 
     test('HistoryEntry round-trips the cross-source locators', () {

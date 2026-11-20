@@ -135,15 +135,18 @@ class _ShellState extends State<Shell> {
     _header.reset(_titles[_page]!);
   }
 
-  /// Resolves a playable URL for [item]'s chosen episode and opens the player.
+  /// Resolves a playable URL for [item]'s chosen episode (on [lineIndex]) and
+  /// opens the player, resuming from the saved position when there is one.
   ///
   /// Prefers the URLs the detail payload already carries ([MediaItem.playLines],
-  /// first line); falls back to the source's `play` action when they are absent
-  /// (e.g. a demo fixture that has never fetched a real detail). Keeps the
-  /// resolution async so the spider round-trip never blocks the tap.
-  void _openPlayer(MediaItem item, int? episodeIndex) {
+  /// the chosen line); falls back to the source's `play` action when they are
+  /// absent (e.g. a demo fixture that has never fetched a real detail). Keeps
+  /// the resolution async so the spider round-trip never blocks the tap.
+  void _openPlayer(MediaItem item, int? episodeIndex, int lineIndex) {
     final lines = item.playLines;
-    final line = lines.isNotEmpty ? lines.first : null;
+    final line = (lineIndex >= 0 && lineIndex < lines.length)
+        ? lines[lineIndex]
+        : (lines.isNotEmpty ? lines.first : null);
     final eps = line?.episodes ?? const <PlayEpisode>[];
 
     String? url;
@@ -153,21 +156,31 @@ class _ShellState extends State<Shell> {
     }
 
     if (url != null && url.isNotEmpty) {
-      _showPlayer(item, episodeIndex, url);
+      _showPlayer(item, episodeIndex, lineIndex, url);
       return;
     }
 
     // Fallback: ask the source's play action. 豆儿猫源 answers {parse:1} here
     // (its detail already carried the URLs), so this mainly serves other
     // source shapes.
-    _store.playReal(item, nid: episodeIndex).then((resolved) {
+    _store.playReal(item, flag: line?.name, nid: episodeIndex).then((resolved) {
       if (!mounted || resolved == null || resolved.isEmpty) return;
       if (_detail?.id != item.id) return; // user navigated away
-      _showPlayer(item, episodeIndex, resolved);
+      _showPlayer(item, episodeIndex, lineIndex, resolved);
     });
   }
 
-  void _showPlayer(MediaItem item, int? episodeIndex, String url) {
+  void _showPlayer(
+    MediaItem item,
+    int? episodeIndex,
+    int lineIndex,
+    String url,
+  ) {
+    // Resume from the saved position, but only when the requested episode is
+    // the one the history row recorded (a fresh episode starts from zero).
+    final resumeMs = episodeIndex == null
+        ? null
+        : _store.resumePositionFor(item, episodeIndex: episodeIndex);
     setState(() {
       _player = _PlayerSession(
         title: item.title,
@@ -178,6 +191,8 @@ class _ShellState extends State<Shell> {
         ),
         episodes: item.episodes,
         episodeIndex: episodeIndex,
+        lineIndex: lineIndex,
+        startAt: resumeMs == null ? null : Duration(milliseconds: resumeMs),
       );
     });
   }
@@ -194,7 +209,7 @@ class _ShellState extends State<Shell> {
         key: ValueKey('detail-${detail.id}'),
         item: detail,
         episodeIndex: _detailEpisode,
-        onPlay: (i) => _openPlayer(detail, i),
+        onPlay: (i, line) => _openPlayer(detail, i, line),
       );
     }
     switch (_page) {
@@ -225,7 +240,8 @@ class _ShellState extends State<Shell> {
             url: player.url,
             episodes: player.episodes,
             episodeIndex: player.episodeIndex,
-            onEpisode: (i) => _openPlayer(_detail!, i),
+            startAt: player.startAt,
+            onEpisode: (i) => _openPlayer(_detail!, i, player.lineIndex),
             onClose: _closePlayer,
           ),
       ],
@@ -300,6 +316,8 @@ class _PlayerSession {
     required this.episodes,
     this.subtitle,
     this.episodeIndex,
+    this.lineIndex = 0,
+    this.startAt,
   });
 
   final String title;
@@ -307,6 +325,12 @@ class _PlayerSession {
   final String? subtitle;
   final List<String> episodes;
   final int? episodeIndex;
+
+  /// The play line this URL came from; next/prev episode stays on it.
+  final int lineIndex;
+
+  /// Where to seek on open, for 续播.
+  final Duration? startAt;
 }
 
 class _Sidebar extends StatelessWidget {

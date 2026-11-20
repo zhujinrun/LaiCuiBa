@@ -32,11 +32,11 @@ class DetailPage extends StatefulWidget {
   /// highlighted chip. Null for films and for titles with no history.
   final int? episodeIndex;
 
-  /// Invoked with the episode index the user chose to play (null for films).
-  /// The shell resolves the URL and opens the player; keeping the resolution
-  /// there lets it fall back to the source's `play` action when the detail
-  /// carries no play URLs.
-  final ValueChanged<int?>? onPlay;
+  /// Invoked with the episode index the user chose to play (null for films) and
+  /// the selected play line. The shell resolves the URL and opens the player;
+  /// keeping the resolution there lets it fall back to the source's `play`
+  /// action when the detail carries no play URLs.
+  final void Function(int? episodeIndex, int lineIndex)? onPlay;
 
   @override
   State<DetailPage> createState() => _DetailPageState();
@@ -47,6 +47,10 @@ class _DetailPageState extends State<DetailPage> {
   /// holds the resume episode, matching the original.
   late int _range = _rangeOf(widget.episodeIndex);
 
+  /// Selected play line (线路) index. When the detail carries [MediaItem.playLines],
+  /// the episode grid renders that line's episodes; 0 otherwise.
+  int _line = 0;
+
   static const _rangeSize = 20;
 
   int _rangeOf(int? index) =>
@@ -54,7 +58,17 @@ class _DetailPageState extends State<DetailPage> {
 
   MediaItem get item => widget.item;
 
-  List<String> get episodes => item.episodes;
+  /// Lines to choose from; empty when the record has no play URLs (demo).
+  List<PlayLine> get lines => item.playLines;
+
+  /// Episode labels for the selected line, falling back to [MediaItem.episodes]
+  /// when the record carries no play URLs.
+  List<String> get episodes {
+    if (lines.isNotEmpty && _line < lines.length) {
+      return [for (final e in lines[_line].episodes) e.label];
+    }
+    return item.episodes;
+  }
 
   bool get _isFavorite =>
       StoreScope.of(context).favorites.any((e) => e.title == item.title);
@@ -92,15 +106,24 @@ class _DetailPageState extends State<DetailPage> {
     final cb = widget.onPlay;
     if (cb == null) return;
     if (episodes.isEmpty) {
-      cb(null); // film
+      cb(null, _line); // film
       return;
     }
     final i = widget.episodeIndex;
-    cb(i != null && i < episodes.length ? i : 0);
+    cb(i != null && i < episodes.length ? i : 0, _line);
   }
 
   /// Episode chip: plays the selected episode (its index within the full list).
-  void _onPlayEpisode(int index) => widget.onPlay?.call(index);
+  void _onPlayEpisode(int index) => widget.onPlay?.call(index, _line);
+
+  /// Line chip: switches the selected play line and re-opens the grid on its
+  /// first page.
+  void _onSelectLine(int line) {
+    setState(() {
+      _line = line;
+      _range = 0;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -140,6 +163,9 @@ class _DetailPageState extends State<DetailPage> {
                       selectedRange: _range,
                       onRange: (r) => setState(() => _range = r),
                       total: episodes.length,
+                      lineNames: [for (final l in lines) l.name],
+                      selectedLine: _line,
+                      onSelectLine: _onSelectLine,
                       // The real site the record came from; the original shows
                       // the same chip, only there it is `「直」荐片` because its
                       // home feed was drawn from that site.
@@ -518,6 +544,9 @@ class _EpisodeHeader extends StatelessWidget {
     required this.onRange,
     required this.total,
     required this.siteLabel,
+    required this.lineNames,
+    required this.selectedLine,
+    required this.onSelectLine,
   });
 
   final List<int> ranges;
@@ -527,6 +556,16 @@ class _EpisodeHeader extends StatelessWidget {
 
   /// Name of the site this record came from, shown on the first filter chip.
   final String siteLabel;
+
+  /// Names of the play lines (线路) the detail payload carried. Empty when the
+  /// record has no play URLs, in which case the line chip stays inert.
+  final List<String> lineNames;
+
+  /// Index of the currently selected line in [lineNames].
+  final int selectedLine;
+
+  /// Invoked with the newly selected line index.
+  final ValueChanged<int> onSelectLine;
 
   static const _pageSize = 20;
 
@@ -547,10 +586,10 @@ class _EpisodeHeader extends StatelessWidget {
                 caret: true,
               ),
               const SizedBox(width: 6),
-              const _FilterChip(
-                label: 'LZ线路',
-                icon: CupertinoIcons.play_circle,
-                caret: true,
+              _LineChip(
+                lineNames: lineNames,
+                selectedLine: selectedLine,
+                onSelectLine: onSelectLine,
               ),
               const SizedBox(width: 6),
               const _FilterChip(
@@ -823,6 +862,126 @@ class _CategoryRow extends StatelessWidget {
           ),
       ],
     );
+  }
+}
+
+/// The line (线路) chip in the 选集 filter row. When the detail carries play
+/// lines it shows the current line's name and opens a menu to switch; without
+/// lines (demo catalogue) it renders the original's literal `LZ线路` and stays
+/// inert, since there is nothing to switch between.
+class _LineChip extends StatefulWidget {
+  const _LineChip({
+    required this.lineNames,
+    required this.selectedLine,
+    required this.onSelectLine,
+  });
+
+  final List<String> lineNames;
+  final int selectedLine;
+  final ValueChanged<int> onSelectLine;
+
+  @override
+  State<_LineChip> createState() => _LineChipState();
+}
+
+class _LineChipState extends State<_LineChip> {
+  bool _hover = false;
+
+  String get _label {
+    final names = widget.lineNames;
+    if (names.isEmpty) return 'LZ线路';
+    final i = widget.selectedLine;
+    return (i >= 0 && i < names.length) ? names[i] : names.first;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final names = widget.lineNames;
+    if (names.length < 2) {
+      // One line (or none): no menu, just the label. Keep the caret for the
+      // no-line case so the empty state still reads like the original.
+      return _chip(onTap: null);
+    }
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: () => _showMenu(context),
+        child: _chip(onTap: () => _showMenu(context)),
+      ),
+    );
+  }
+
+  Widget _chip({VoidCallback? onTap}) {
+    return Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: _hover ? const Color(0xFFE8E8EC) : LcbColors.searchFill,
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            CupertinoIcons.play_circle,
+            size: 13,
+            color: LcbColors.primaryDim,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            _label,
+            style: const TextStyle(fontSize: 12.5, color: LcbColors.text),
+          ),
+          const SizedBox(width: 3),
+          const Icon(
+            CupertinoIcons.chevron_compact_down,
+            size: 12,
+            color: LcbColors.textSecondary,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showMenu(BuildContext context) async {
+    final names = widget.lineNames;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || overlay == null) return;
+    final topLeft = box.localToGlobal(Offset.zero, ancestor: overlay);
+    final position = RelativeRect.fromRect(
+      Rect.fromLTWH(topLeft.dx, topLeft.dy, box.size.width, box.size.height),
+      Offset.zero & overlay.size,
+    );
+
+    final selected = await showMenu<int>(
+      context: context,
+      position: position,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      items: [
+        for (final (i, name) in names.indexed)
+          PopupMenuItem<int>(
+            value: i,
+            child: Text(
+              name,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight:
+                    i == widget.selectedLine ? FontWeight.w600 : FontWeight.w400,
+                color: i == widget.selectedLine
+                    ? LcbColors.primaryDim
+                    : LcbColors.text,
+              ),
+            ),
+          ),
+      ],
+    );
+    if (selected != null && selected != widget.selectedLine) {
+      widget.onSelectLine(selected);
+    }
   }
 }
 
