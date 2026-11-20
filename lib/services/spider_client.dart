@@ -85,6 +85,37 @@ class SpiderClient {
     return _vodToItem(Map<String, dynamic>.from(raw), storeKey);
   }
 
+  /// Resolves the play URL for one episode.
+  ///
+  /// The catvod `play` action takes `{id, flag, nid}` where `flag` is the line
+  /// name (线路) and `nid` the episode index, and answers either a single URL
+  /// (`{url}` / `{parse:0, url}`) or a list (`{list:[{url}]}`). This returns
+  /// the first usable URL, or null when the source has nothing to play.
+  Future<String?> play(
+    String storeKey,
+    String type,
+    String vodId, {
+    String? flag,
+    int? nid,
+  }) async {
+    final json = await _call(storeKey, type, 'play', {
+      'id': vodId,
+      if (flag != null && flag.isNotEmpty) 'flag': flag,
+      if (nid != null) 'nid': nid,
+    });
+    // list form: {list:[{url}]}
+    final list = json['list'] as List?;
+    if (list != null && list.isNotEmpty && list.first is Map) {
+      final first = list.first as Map;
+      final url = first['url'];
+      if (url is String && url.trim().isNotEmpty) return url.trim();
+    }
+    // single form: {url}
+    final url = json['url'];
+    if (url is String && url.trim().isNotEmpty) return url.trim();
+    return null;
+  }
+
   Future<Map<String, dynamic>> _call(
     String storeKey,
     String type,
@@ -149,8 +180,48 @@ class SpiderClient {
       actors: actor.isEmpty
           ? const []
           : actor.split('/').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
+      episodes: const [],
+      playLines: parsePlayLines(vod['vod_play_from'], vod['vod_play_url']),
       siteKey: siteKey,
     );
+  }
+
+  /// Parses the catvod `vod_play_from` / `vod_play_url` pair into [PlayLine]s.
+  ///
+  /// `vod_play_from` lists line names separated by `$$$`; `vod_play_url` holds
+  /// the parallel episode block per line, also `$$$`-separated. Inside a block
+  /// episodes are `#`-separated and each episode is `label$url` (split on the
+  /// first `$` so a URL that itself contains `$` survives).
+  static List<PlayLine> parsePlayLines(
+    Object? playFrom,
+    Object? playUrl,
+  ) {
+    final from = playFrom is String ? playFrom.trim() : '';
+    final url = playUrl is String ? playUrl.trim() : '';
+    if (from.isEmpty && url.isEmpty) return const [];
+
+    final names = from.split(r'$$$');
+    final blocks = url.split(r'$$$');
+
+    final lines = <PlayLine>[];
+    final count = names.length > blocks.length ? names.length : blocks.length;
+    for (var i = 0; i < count; i++) {
+      final name = i < names.length ? names[i].trim() : '';
+      final block = i < blocks.length ? blocks[i] : '';
+      final episodes = <PlayEpisode>[];
+      if (block.isNotEmpty) {
+        for (final part in block.split('#')) {
+          final sep = part.indexOf(r'$');
+          final label = sep < 0 ? part.trim() : part.substring(0, sep).trim();
+          final epUrl = sep < 0 ? '' : part.substring(sep + 1).trim();
+          if (label.isEmpty && epUrl.isEmpty) continue;
+          episodes.add(PlayEpisode(label: label, url: epUrl));
+        }
+      }
+      if (name.isEmpty && episodes.isEmpty) continue;
+      lines.add(PlayLine(name: name, episodes: episodes));
+    }
+    return lines;
   }
 }
 

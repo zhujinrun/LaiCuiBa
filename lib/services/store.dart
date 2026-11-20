@@ -422,6 +422,33 @@ class AppStore extends ChangeNotifier {
     );
   }
 
+  /// Resolves the play URL for one episode of [item]. Returns null when the
+  /// item carries no site / vod id or the runtime cannot produce a URL. The
+  /// detail page prefers the URLs already parsed into [item.playLines]; this
+  /// is the fallback that asks the source's `play` action directly.
+  Future<String?> playReal(
+    MediaItem item, {
+    String? flag,
+    int? nid,
+  }) async {
+    final session = spider;
+    final js = _jsSource();
+    if (session == null || js == null) return null;
+    final siteKey = item.siteKey;
+    final site = siteKey == null ? null : siteOf(js.$1, siteKey);
+    if (site == null) return null;
+    final vodId = item.id;
+    if (vodId.isEmpty) return null;
+    return session.play(
+      sourceId: js.$1,
+      md5Url: js.$2,
+      site: site,
+      vodId: vodId,
+      flag: flag,
+      nid: nid,
+    );
+  }
+
   /// Home categories for the active home site, e.g. 电影 / 电视剧.
   Future<List<SpiderClass>> homeCategoriesReal() async {
     final session = spider;

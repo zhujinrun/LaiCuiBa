@@ -150,4 +150,89 @@ void main() {
     expect(result.items, isEmpty);
     expect(result.total, 0);
   });
+
+  test('play resolves a single-url response', () async {
+    await serve((request) async {
+      expect(request.uri.path, '/spider/jianpian/3/play');
+      bodyCache = await utf8.decodeStream(request);
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(
+        jsonEncode({
+          'parse': 0,
+          'url': 'https://cdn.example/ep1.m3u8',
+        }),
+      );
+      await request.response.close();
+    });
+
+    final client = SpiderClient(port);
+    final url = await client.play('nodejs_jianpian', '3', '575857', flag: 'LZ线路', nid: 1);
+
+    expect(url, 'https://cdn.example/ep1.m3u8');
+    expect(bodyCache, contains('"flag":"LZ线路"'));
+    expect(bodyCache, contains('"nid":1'));
+  });
+
+  test('play resolves a list-form response', () async {
+    await serve((request) async {
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(
+        jsonEncode({
+          'list': [
+            {'url': 'https://cdn.example/ep1.m3u8'},
+          ],
+        }),
+      );
+      await request.response.close();
+    });
+
+    final client = SpiderClient(port);
+    final url = await client.play('nodejs_jianpian', '3', '575857');
+
+    expect(url, 'https://cdn.example/ep1.m3u8');
+  });
+
+  test('play returns null when the source has nothing', () async {
+    await serve((request) async {
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(jsonEncode({}));
+      await request.response.close();
+    });
+
+    final client = SpiderClient(port);
+    expect(await client.play('nodejs_jianpian', '3', '575857'), isNull);
+  });
+
+  test('parsePlayLines splits lines and episodes on the catvod separators', () {
+    final lines = SpiderClient.parsePlayLines(
+      r'LZ线路$$$盘夸克',
+      r'第1集$https://a/1.m3u8#第2集$https://a/2.m3u8'
+      r'$$$'
+      r'正片$https://b/1.m3u8',
+    );
+
+    expect(lines, hasLength(2));
+    expect(lines[0].name, 'LZ线路');
+    expect(lines[0].episodes, hasLength(2));
+    expect(lines[0].episodes[0].label, '第1集');
+    expect(lines[0].episodes[0].url, 'https://a/1.m3u8');
+    expect(lines[0].episodes[1].label, '第2集');
+    expect(lines[0].episodes[1].url, 'https://a/2.m3u8');
+    expect(lines[1].name, '盘夸克');
+    expect(lines[1].episodes.single.label, '正片');
+    expect(lines[1].episodes.single.url, 'https://b/1.m3u8');
+  });
+
+  test('parsePlayLines keeps a dollar sign inside the URL', () {
+    final lines = SpiderClient.parsePlayLines(
+      'LZ',
+      r'第1集$https://a/sig=$x$y',
+    );
+    expect(lines.single.episodes.single.url, 'https://a/sig=\$x\$y');
+  });
+
+  test('parsePlayLines tolerates an empty from/url pair', () {
+    expect(SpiderClient.parsePlayLines(null, null), isEmpty);
+    expect(SpiderClient.parsePlayLines('', ''), isEmpty);
+  });
 }

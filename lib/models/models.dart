@@ -15,6 +15,7 @@ class MediaItem {
     this.categories = const [],
     this.actors = const [],
     this.episodes = const [],
+    this.playLines = const [],
     this.siteKey,
   });
 
@@ -51,6 +52,12 @@ class MediaItem {
   /// Episode labels for series; empty for films.
   final List<String> episodes;
 
+  /// Playable lines (线路) and, within each, the play URL of every episode.
+  /// Parsed from the catvod `vod_play_from` / `vod_play_url` fields a real
+  /// detail payload carries. Empty until a real detail has been fetched; the
+  /// demo catalogue has none.
+  final List<PlayLine> playLines;
+
   /// Which site this record came from (`nodejs_jianpian`, …). Every card the
   /// pages render carries it, so the detail page can name the site in its
   /// 选集 filter row and history can say where a title was watched. Null only
@@ -74,8 +81,31 @@ class MediaItem {
     categories: categories,
     actors: actors,
     episodes: episodes,
+    playLines: playLines,
     siteKey: siteKey ?? this.siteKey,
   );
+}
+
+/// One playable line (线路) of a title, e.g. 「直」蓝光 / 「盘」夸克. A source
+/// detail payload lists every line in `vod_play_from` (separated by `$$$`) and
+/// each line's episodes in the parallel `vod_play_url` field.
+class PlayLine {
+  const PlayLine({required this.name, this.episodes = const []});
+
+  /// Line name as the source reports it, e.g. LZ线路.
+  final String name;
+
+  /// Playable episodes inside the line. Empty for a film, which carries a
+  /// single entry (itself).
+  final List<PlayEpisode> episodes;
+}
+
+/// One playable episode: a display label (第1集 / 正片) plus the URL that plays.
+class PlayEpisode {
+  const PlayEpisode({required this.label, required this.url});
+
+  final String label;
+  final String url;
 }
 
 class Episode {

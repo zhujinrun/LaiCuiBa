@@ -154,6 +154,20 @@ class SpiderSession {
     return item?.withSiteKey(site.key);
   }
 
+  /// Resolves the play URL for one episode of [vodId]. Returns null when the
+  /// source cannot produce a URL (dead line, missing episode, runtime down).
+  Future<String?> play({
+    required String sourceId,
+    required String md5Url,
+    required SiteInfo site,
+    required String vodId,
+    String? flag,
+    int? nid,
+  }) async {
+    if (!await ensureLoaded(id: sourceId, md5Url: md5Url)) return null;
+    return _client!.play(site.key, site.type, vodId, flag: flag, nid: nid);
+  }
+
   /// Home categories for the home site, e.g. 电影 / 电视剧 / 动漫 / 综艺.
   Future<List<SpiderClass>> home({
     required String sourceId,
