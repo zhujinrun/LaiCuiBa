@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import 'catalog_sites.dart';
 import 'demo_data.dart' as demo;
+import 'spider_client.dart' show SpiderClass;
+import 'spider_session.dart';
 
 /// Application-wide persistent state: watch history, favourites (in their own
 /// store, matching the original's `flutter.favorites` + `flutter.favoriteFolders`),
@@ -30,6 +32,11 @@ class AppStore extends ChangeNotifier {
   final List<SourceInfo> _sources;
   String? _current;
   AppSettings _settings;
+
+  /// The catvod (猫源) runtime, wired up lazily on first use. Null when the
+  /// app has no `js`-type source or the runtime paths were never configured,
+  /// which keeps the demo catalogue the only source of truth until then.
+  SpiderSession? spider;
 
   /// Active favourites sub-tab (0 = 收藏, 1 = 追剧). Kept here so the header
   /// tabs and the body stay in sync without threading a controller through.
@@ -352,6 +359,92 @@ class AppStore extends ChangeNotifier {
     final site = homeSite;
     if (site == null) return items;
     return [for (final item in items) item.withSiteKey(site.key)];
+  }
+
+  // -------------------------------------------------------------------------
+  // Real source data (spider)
+  //
+  // The getters above answer from the demo catalogue until the runtime is up;
+  // these async methods reach the catvod spider and are what the pages call to
+  // swap in real content. Every one degrades gracefully: a missing session, a
+  // dead site or a failed download just returns nothing (or falls back to demo)
+  // rather than throwing.
+  // -------------------------------------------------------------------------
+
+  /// The current `js`-type source and its subscription URL, or null when the
+  /// active source is not a 猫源 (Emby / live / file / tvbox-without-bundle).
+  (String, String)? _jsSource() {
+    final source = currentSource;
+    if (source == null) return null;
+    if (source.type != 'js' && source.type != 'tvbox') return null;
+    if (source.url.trim().isEmpty) return null;
+    return (source.id, source.url);
+  }
+
+  /// Whether a real spider search is possible right now.
+  bool get canSearchReal => spider != null && _jsSource() != null;
+
+  /// Runs a keyword search against every enabled site behind the active source.
+  /// Returns null when the runtime is unavailable (the caller then falls back
+  /// to the demo catalogue).
+  Future<SpiderSearch?> searchReal(String keyword, {bool strict = false}) async {
+    final session = spider;
+    final js = _jsSource();
+    if (session == null || js == null) return null;
+    final sites = currentSource!.searchableSites;
+    if (sites.isEmpty) return null;
+    return session.search(
+      sourceId: js.$1,
+      md5Url: js.$2,
+      sites: sites,
+      keyword: keyword,
+      strict: strict,
+    );
+  }
+
+  /// Fetches the full record for [item] from its site. Returns null when the
+  /// item carries no site key / vod id or the runtime is unavailable.
+  Future<MediaItem?> detailReal(MediaItem item) async {
+    final session = spider;
+    final js = _jsSource();
+    if (session == null || js == null) return null;
+    final siteKey = item.siteKey;
+    final site = siteKey == null ? null : siteOf(js.$1, siteKey);
+    if (site == null) return null;
+    // The search list's vod_id is the id the source uses for a detail lookup.
+    final vodId = item.id;
+    if (vodId.isEmpty) return null;
+    return session.detail(
+      sourceId: js.$1,
+      md5Url: js.$2,
+      site: site,
+      vodId: vodId,
+    );
+  }
+
+  /// Home categories for the active home site, e.g. 电影 / 电视剧.
+  Future<List<SpiderClass>> homeCategoriesReal() async {
+    final session = spider;
+    final js = _jsSource();
+    final site = homeSite;
+    if (session == null || js == null || site == null) return const [];
+    return session.home(sourceId: js.$1, md5Url: js.$2, site: site);
+  }
+
+  /// Category feed for one `tid`. Empty when the upstream site has no fresh
+  /// feed for that category.
+  Future<List<MediaItem>> categoryReal(String tid) async {
+    final session = spider;
+    final js = _jsSource();
+    final site = homeSite;
+    if (session == null || js == null || site == null) return const [];
+    final list = await session.category(
+      sourceId: js.$1,
+      md5Url: js.$2,
+      site: site,
+      tid: tid,
+    );
+    return [for (final item in list.items) item.withSiteKey(site.key)];
   }
 
   // -------------------------------------------------------------------------
