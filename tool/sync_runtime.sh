@@ -18,4 +18,19 @@ copy() {
 }
 
 copy "$SRC/node/node.exe" "$HERE/assets/runtime/node/node.exe"
+
+# Also drop the runtime next to the debug build output, where RuntimePaths
+# resolves it from the executable's own directory. cat_host.js lives in assets
+# and is copied verbatim (it is ours, not the original's).
+for target in \
+  "$HERE/build/windows/x64/runner/Debug/runtime/node" \
+  "$HERE/build/windows/x64/runner/Release/runtime/node"; do
+  if [ -d "$(dirname "$(dirname "$target")")" ]; then
+    mkdir -p "$target"
+    cp "$HERE/assets/runtime/node/node.exe" "$target/node.exe"
+    cp "$HERE/assets/runtime/node/cat_host.js" "$target/cat_host.js"
+    echo "已同步 $target"
+  fi
+done
+
 echo "完成。node.exe 已就位（不提交到 git）。"
