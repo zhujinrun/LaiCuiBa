@@ -508,7 +508,7 @@ class AppStore extends ChangeNotifier {
     // The history key needs a stable vod id; the demo catalogue's card id is
     // the fixture id, which is fine for demo continuity but won't match a real
     // source lookup. Real records carry the source's own vod_id in `id`.
-    final key = '$source.id|${siteKey ?? ''}|$vodId';
+    final key = '${source.id}|${siteKey ?? ''}|$vodId';
 
     String episodeLabel;
     if (episodeIndex == null) {

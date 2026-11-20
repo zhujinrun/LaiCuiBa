@@ -173,7 +173,7 @@ class _PlayerPageState extends State<PlayerPage> {
   String get _titleLine {
     final label = _currentLabel;
     if (label.isEmpty) return widget.title;
-    return '$widget.title · $label';
+    return '${widget.title} · $label';
   }
 
   @override
