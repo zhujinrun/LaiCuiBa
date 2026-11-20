@@ -29,7 +29,7 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
 | --- | --- |
 | Phase 0 — 界面骨架 | ✅ 完成 |
 | Phase 1 — 数据层与页面闭环 | ✅ 完成（详情页 + 搜索页都已落地） |
-| Phase 2 — 源接入（灵魂） | ⬜ 未开始（需联网 + 原版二进制） |
+| Phase 2 — 源接入（灵魂） | 🔶 部分（源→站点数据流已通；spider/联网抓取未做） |
 | Phase 3 — 播放链路 | ⬜ 未开始 |
 | Phase 4 — 外设模块 | ⬜ 未开始 |
 | Phase 5 — 多端 | ⬜ 未开始 |
@@ -56,8 +56,13 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
 - **搜索页**：顶栏展开成输入框（+ 严格 / 源选择 / 取消），空态 → 联想 → 结果三态；
   结果按站点分组（`全部 N` + 站点 chip + `还有 N 个站点`）、结果行点进详情；
   「搜索哪些资源」弹窗（多选源、取消选择全部）；`Ctrl+K` 打开、`Esc` 关闭
-- **44 个测试全绿**（`store_test` 30 + `search_test` 6 + `assets_test` 3 +
-  `widget_test` 5）、`flutter analyze` 零问题
+- **源 → 站点数据流（Phase 2 的纯本地下半部）**：`SiteInfo` 模型 + `SourceInfo.sites`；
+  `services/site_parser.dart` 纯本地解析 TVBox/catvod 配置（`{"sites":[…]}`、裸数组、
+  每行 JSON、每行 `名称$地址`）；`AppStore.sitesForSelection()` 成为搜索与计数唯一取数口，
+  `demoSites` 硬编码常量已删除；资源页 `+` 可粘贴配置真实加源，`⋯` 菜单可设当前 / 编辑 /
+  删除，编辑里能逐个静音站点；老 `flutter.sources`（无 sites）在 load 时自动补种
+- **66 个测试全绿**（`store_test` 37 + `site_parser_test` 11 + `search_test` 8 +
+  `assets_test` 3 + `widget_test` 7）、`flutter analyze` 零问题
 
 ---
 
@@ -129,9 +134,10 @@ lib/
   models/models.dart        MediaItem/Episode/ContinueWatching/HomeSection/
                             HistoryEntry/FavoriteEntry/FavoriteFolder/AppSettings
   services/
-    store.dart              AppStore（数据读写 + seed + 各 getter）
+    store.dart              AppStore（数据读写 + seed + 源/站点取数口 + 各 getter）
+    site_parser.dart        TVBox/catvod 配置 -> SiteInfo（纯本地 JSON，不联网）
     demo_data.dart          演示片单（截图里的真实内容）+ detailDemo
-    search.dart             搜索结果模型 + searchCatalogue()（Phase 2 换真实站点搜索）
+    search.dart             搜索结果模型 + searchCatalogue()（按传入的站点 fan-out）
   ui/
     shell.dart              侧栏 + 顶栏 + 页面切换（详情页/搜索态都挂在内容列）
     page_header.dart
@@ -147,6 +153,7 @@ lib/
       poster_art.dart       PosterArt（有 image 显示真实封面，否则渐变占位）
       manage_folders_sheet.dart
       search_sources_dialog.dart 「搜索哪些资源」源选择弹窗
+      source_dialogs.dart   添加 / 编辑 / 删除源（粘贴配置、站点开关）
       shell_header.dart
 ```
 
@@ -176,13 +183,33 @@ lib/
 - 「下载」「追更」「评论」按钮同样等 Phase 3/4 落地，目前只做视觉。
 - 选集分页只做了「1-20 / 21-40」这类按 20 切分，未做原版的更多档位（如 100 集以上）。
 
-### 🟡 Phase 2 — 源接入（灵魂，未开始）
+### 🔶 Phase 2 — 源接入（灵魂）
+
+**已完成（纯本地部分）**
+- `SiteInfo`（`key`/`name`/`type`/`api`/`ext`/`enabled`）+ `SourceInfo.sites`，
+  sites 为空时整个字段不序列化，老数据形状不变
+- `services/site_parser.dart`：TVBox/catvod 配置的纯本地解析，带 BOM 容错、
+  重复 key 去重、`searchable:0` 保留但静音、`silenced`/`invalid` 两个计数
+- `AppStore`：`sitesOf` / `activeSites` / `sitesForSelection`（按显示名去重）/
+  `toggleSite` / `replaceSites` / `addSource` / `updateSource` / `removeSource`
+- 搜索改为接收 `List<SiteInfo>`，`demoSites` 常量删除；`LcbSearch.sitesProvider`
+  由 shell 注入，页面不认识"源"
+- 首页 `heroItems` / `homeSections`、详情 `detailOf` 都收进 `AppStore`，
+  Phase 2 换实现时页面零改动
+- 资源页：`+` → 粘贴配置加源；`⋯` → 设为当前 / 重新检测（提示待做）/ 编辑 / 删除；
+  编辑里「站点 N 个 · M 个参与搜索」可展开逐个启停
+- 老数据迁移：`flutter.sources` 里无 `sites` 的演示源在 load 时补种（有回归测试）
+
+**未完成**
+- 原版「添加资源」的其余 8 个入口：Emby / 飞牛 Jellyfin / TVBox 影视源（填地址）/
+  直播频道 / 导入文件 / 导入直播列表 / 导入文件夹 / 从 ZIP 导入
+- 从配置地址联网拉取（现在只能粘贴或导入本地内容）
 - 猫源宿主：Node.js + fastify，实现 `catServerFactory`/`catDartServerPort`/`messageToDart`/
   `js2p://_WEB_` 协议
 - TVBox：CPython + JS spider（参考原版 `py_host`/`spider_channel`）
 - 挂载：Emby/WebDAV/AList/网盘
 - 可用性度量：不只判 `supported`，补 `latencyMs`/`movieCount`/`checkedAt`
-- ⚠️ 依赖原版包 `node/`、`python/` 二进制 + 联网，**不适合无人值守推进**
+- ⚠️ 以上都依赖原版包 `node/`、`python/` 二进制 + 联网，**不适合无人值守推进**
 
 ### 🟡 Phase 3 — 播放链路（未开始）
 - `media_kit` + 原版 `libmpv-2.dll`
@@ -233,15 +260,18 @@ dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 
 ## 九、下一步建议
 
-1. **让用户验收这一轮**（详情页 + 搜索页）：
-   - 详情页：五个入口（首页续播卡 / 分区海报 / hero「详情」/ 收藏网格 / 历史行）进去，
-     看 hero 尺寸、`继续 第N集`、分页高亮、电影隐藏选集、收藏写库、返回停原页。
-   - 搜索页：点顶栏搜索框或按 `Ctrl+K`，看空态文案；输入「尚」看联想；
-     回车看分组 chip 与结果行；点 `严格` 看是否只剩精确匹配；点右下圆钮 / 顶栏网格图标
-     看「搜索哪些资源」弹窗；`取消` 或 `Esc` 回到原来的页面。
+1. **让用户验收这一轮**（源 → 站点数据流）：
+   - 资源页顶栏 `+` → 粘贴一段配置（例如 `我的站$https://a.example/api.php`，或整份
+     `{"sites":[…]}`）→ 看「解析到 N 个站点」→ 添加后列表多一张卡；
+   - 卡片 `⋯` → 编辑 → 「站点 N 个 · M 个参与搜索」展开，关掉一个站点；
+   - 打开搜索 → 右下圆钮，弹出的源列表里应能看到新加的源；
+   - 删掉那个源后，搜索的站点 chip 随之减少。
 2. 验收无误后由**用户自己**推送（AI 不 push）：`git push -u origin master`。
-3. Phase 1 只剩「设置页媒体徽章子页」一个纯本地小项，其余都要 Phase 2 之后。
-4. Phase 2 起必须用户在场 + 联网 + 原版二进制（Node/Python/mpv），不适合无人值守推进。
+3. 下一步的自然顺序是补「添加资源」的其余 8 个入口（尤其 Emby / 导入文件 / 导入文件夹，
+   都只需本地文件与表单，不联网），再做从配置地址联网拉取。
+4. spider 执行（Node / Python / drpy）、真实片单与播放地址必须用户在场 + 原版二进制，
+   不适合无人值守推进。
+5. Phase 1 只剩「设置页媒体徽章子页」一个纯本地小项。
 
 ---
 

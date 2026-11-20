@@ -46,15 +46,19 @@ lib/
     theme.dart           颜色 / 字号 / 间距 token
     detail_nav.dart      LcbDetailScope：任何页面把详情页推给 shell
     search_state.dart    LcbSearch：搜索模式的开关 / 输入 / 严格 / 选源 + scope
-  models/models.dart     MediaItem / HistoryEntry / FavoriteEntry / AppSettings …
-  services/demo_data.dart 演示片单 + detailDemo 详情夹具
-  services/search.dart   搜索结果模型 + searchCatalogue()（Phase 2 换成真实站点搜索）
+  models/models.dart     MediaItem / SiteInfo / SourceInfo / HistoryEntry …
+  services/
+    store.dart           AppStore：源与站点的唯一真相源 + sitesForSelection()
+    site_parser.dart     TVBox / catvod 配置 -> SiteInfo（纯本地 JSON）
+    demo_data.dart       演示片单 + detailDemo 详情夹具
+    search.dart          搜索结果模型 + searchCatalogue()（按站点 fan-out）
   ui/
     shell.dart           侧栏 + 顶栏 + 页面切换（含详情页 / 搜索态顶栏）
     pages/detail_page.dart 详情页（hero / 选集 / 演员阵容 / 分类）
     pages/search_page.dart 搜索页（空态 / 联想 / 结果）
-    pages/               其它功能页
+    pages/common_pages.dart 资源 / 收藏 / 历史页
     widgets/search_sources_dialog.dart 「搜索哪些资源」源选择弹窗
+    widgets/source_dialogs.dart 添加 / 编辑 / 删除源
     widgets/             hero_banner / media_card / poster_art / manage_folders_sheet
 ```
 
@@ -132,9 +136,47 @@ lib/
 约 70% 的站点。Phase 2 只需把 `searchCatalogue` 换成真实站点搜索，UI 与状态机不动。
 
 ### Phase 2 — 源接入（灵魂）
+
+#### 已落地：源 → 站点的数据流（纯本地部分）
+
+原版的数据链是 `源(配置地址) --解析--> 站点列表 --fan-out--> 结果`，而重建版原先
+只有"源"这一层，站点是搜索页写死的 `demoSites` 常量 —— 源成了孤岛，只有资源页读它。
+
+现在这条链是通的，而且没有一行需要联网：
+
+| 环节 | 位置 | 说明 |
+| --- | --- | --- |
+| 站点模型 | `models.dart` 的 `SiteInfo` | `key` / `name` / `type` / `api` / `ext` / `enabled`；`key` 对应原版历史里的 `siteKey` |
+| 源携带站点 | `SourceInfo.sites` | 序列化时 sites 为空就整个省略，老数据的 JSON 形状不变 |
+| 配置解析 | `services/site_parser.dart` | 纯本地 JSON：`{"sites":[…]}`、裸数组、`{"config":{"sites":[…]}}`、每行 JSON、每行 `名称$地址$ext`；带 BOM 容错 |
+| 唯一取数口 | `AppStore.sitesForSelection(sel)` | 按选中的源取站点、按显示名去重。搜索 fan-out 与资源页计数都读它 |
+| 消费方 | `LcbSearch.sitesProvider` | shell 把 store 的取数函数注入搜索状态，页面不认识"源"这个概念 |
+
+几个必须记住的设计点：
+
+- **`searchable: 0` 的站点保留但 `enabled=false`**，而不是丢弃 —— 用户可以在编辑里打开。
+  解析结果同时报 `silenced` / `invalid` 两个计数，避免"文件里明明有 12 个却只出 10 个"。
+- **搜索状态通过注入的闭包取站点**，不直接读全局。这样删源、静音站点、粘贴新配置
+  都会立刻改变下一次搜索，中间不需要任何 rebuild 额外逻辑。
+- **`_siteCarries` 用显示名做 hash**，不用 key。store 已经按显示名去重，显示名就是
+  chip 的真实身份；用 key 会让之前从原版量到的分布全部变掉。
+- **默认站点种子要迁移**：上一版写进 `flutter.sources` 的源没有 `sites` 字段，
+  不补种的话升级后 fan-out 是空的（搜索一片空白）。`_backfillDemoSites` 在 load 时
+  补一次并写回，有专门的回归测试。
+- **资源页状态行改成"当前使用 · N 个站点"**，不再显示存死的"58 部"。原版能显示部数
+  是因为它真的抓过目录，我们没抓，编一个数字只会在验收时变成 bug 报告。等真实抓取
+  落地再换回"部"。
+
+**当前入口只有一个**：资源页顶栏 `+` 直接打开「添加影视源」（粘贴配置文本）。
+原版的「添加资源」是 3 组 9 项（Emby / 飞牛 Jellyfin / TVBox 影视源 / 直播频道 /
+粘贴配置 / 导入文件 / 导入直播列表 / 导入文件夹 / 从 ZIP 导入），其余 8 项分别需要
+网络拉取或 spider 运行时，属于下一步。
+
+#### 还没做的（真正的灵魂部分）
 - 猫源宿主：Node.js + fastify，需要实现宿主注入的 `catServerFactory`、
   `catDartServerPort`、`messageToDart`，以及 `js2p://_WEB_` 协议
 - TVBox：CPython + JS spider，参考原版 `py_host` / `spider_channel`
+- 从配置地址联网拉取（现在只能粘贴/导入本地内容）
 - 挂载：Emby / WebDAV / AList / 网盘
 - 可用性度量：不只判 `supported`，补 `latencyMs` / `movieCount` / `checkedAt`
 
