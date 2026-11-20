@@ -117,7 +117,7 @@ def main() -> int:
         target = pathlib.Path(__file__).resolve().parent.parent / (
             "lib/services/catalog_sites.dart"
         )
-        target.write_text(dart_file(sites), encoding="utf-8")
+        target.write_text(dart_file(sites), encoding="utf-8", newline="\n")
         print(f"wrote {len(sites)} sites to {target}")
         return 0
 
