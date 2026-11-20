@@ -349,8 +349,9 @@ class _SiteChips extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final allSites = outcome.sites;
-    // Expanded shows every site; collapsed keeps the first searchSitesShown and
-    // folds the rest into 还有 N 个站点.
+    // Expanded shows every site on wrapped rows; collapsed keeps the first
+    // searchSitesShown on one scrollable row and folds the rest into
+    // 还有 N 个站点.
     final shown = search.expanded
         ? allSites
         : allSites.take(searchSitesShown).toList(growable: false);
@@ -359,46 +360,53 @@ class _SiteChips extends StatelessWidget {
     // sites to reveal; hide it when everything already fits.
     final canExpand = allSites.length > searchSitesShown;
 
-    return SizedBox(
-      height: 34,
-      child: Row(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _Chip(
-                    label: '全部',
-                    count: outcome.total,
-                    selected: search.site == null,
-                    onTap: () => search.selectSite(null),
-                  ),
-                  for (final site in shown) ...[
-                    const SizedBox(width: 9),
-                    _Chip(
-                      label: site.site,
-                      count: site.count,
-                      selected: search.site == site.site,
-                      onTap: () => search.selectSite(site.site),
-                    ),
-                  ],
-                  if (hidden > 0) ...[
-                    const SizedBox(width: 16),
-                    _OverflowLabel(hidden: hidden),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          if (canExpand)
-            _ExpandButton(
-              expanded: search.expanded,
-              onTap: search.toggleExpanded,
-            ),
-        ],
+    final chips = <Widget>[
+      _Chip(
+        label: '全部',
+        count: outcome.total,
+        selected: search.site == null,
+        onTap: () => search.selectSite(null),
       ),
+      for (final site in shown)
+        _Chip(
+          label: site.site,
+          count: site.count,
+          selected: search.site == site.site,
+          onTap: () => search.selectSite(site.site),
+        ),
+    ];
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          // Expanded wraps so every site is visible without horizontal
+          // scrolling; collapsed stays a single scrollable row.
+          child: search.expanded
+              ? Wrap(spacing: 9, runSpacing: 8, children: chips)
+              : SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (var i = 0; i < chips.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 9),
+                        chips[i],
+                      ],
+                      if (hidden > 0) ...[
+                        const SizedBox(width: 16),
+                        _OverflowLabel(hidden: hidden),
+                      ],
+                    ],
+                  ),
+                ),
+        ),
+        const SizedBox(width: 12),
+        if (canExpand)
+          _ExpandButton(
+            expanded: search.expanded,
+            onTap: search.toggleExpanded,
+          ),
+      ],
     );
   }
 }
@@ -425,34 +433,39 @@ class _Chip extends StatelessWidget {
         child: Container(
           height: 34,
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: selected ? LcbColors.primaryDim : LcbColors.card,
             borderRadius: BorderRadius.circular(17),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  height: 1.0,
-                  color: selected ? Colors.white : LcbColors.text,
+          // Center(widthFactor: 1) keeps the chip hugging its label: a plain
+          // `alignment:` on the Container would stretch it across the row, which
+          // in the expanded Wrap makes every site occupy a full line.
+          child: Center(
+            widthFactor: 1,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    height: 1.0,
+                    color: selected ? Colors.white : LcbColors.text,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 5),
-              Text(
-                '$count',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  height: 1.0,
-                  color: selected ? Colors.white : LcbColors.text,
+                const SizedBox(width: 5),
+                Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    height: 1.0,
+                    color: selected ? Colors.white : LcbColors.text,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -627,7 +640,8 @@ class _Poster extends StatelessWidget {
     if (image == null) {
       return _fallback();
     }
-    final isNetwork = image.startsWith('http://') || image.startsWith('https://');
+    final isNetwork =
+        image.startsWith('http://') || image.startsWith('https://');
     if (isNetwork) {
       return Image.network(
         image,

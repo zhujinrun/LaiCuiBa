@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:ui' show Size;
 
 import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoSwitch;
-import 'package:flutter/material.dart' show Icons, TextField;
+import 'package:flutter/material.dart' show Icons, TextField, Wrap;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -250,18 +250,23 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
-    // Collapsed: the tail reports how many sites are hidden.
+    // Collapsed: the tail reports how many sites are hidden, and the chip row
+    // scrolls horizontally (no Wrap).
     expect(find.textContaining('还有'), findsOneWidget);
 
-    // Tap the expand chevron to reveal every site.
+    // Tap the expand chevron to reveal every site on wrapped rows.
     await tester.tap(find.byIcon(CupertinoIcons.chevron_down));
     await tester.pumpAndSettle();
     expect(find.textContaining('还有'), findsNothing);
+    // The chip row switched to a wrapping layout, so all sites are now on
+    // screen rather than hidden behind a horizontal scroll.
+    expect(find.byType(Wrap), findsOneWidget);
 
     // And it collapses back.
     await tester.tap(find.byIcon(CupertinoIcons.chevron_up));
     await tester.pumpAndSettle();
     expect(find.textContaining('还有'), findsOneWidget);
+    expect(find.byType(Wrap), findsNothing);
   });
 
   testWidgets('tapping a search result opens the detail page and back returns', (
