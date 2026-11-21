@@ -54,6 +54,10 @@ FavoriteEntry _fav({
 }
 
 void main() {
+  // The app does not seed a sample history or favourite any more; these tests
+  // need rows to exercise those pages, so they opt in explicitly.
+  setUpAll(() => AppStore.seedSampleUserData = true);
+
   group('HistoryEntry', () {
     test('round-trips through json preserving all fields', () {
       final e = _entry(favorite: true, following: true);
@@ -226,7 +230,7 @@ void main() {
 
   group('AppStore', () {
     test(
-      'seeds demo source, history, folder and favourite on first launch',
+      'seeds a sample source, history and favourite when the seam asks for them',
       () async {
         SharedPreferences.setMockInitialValues({});
         final store = await AppStore.load();
@@ -243,7 +247,7 @@ void main() {
       },
     );
 
-    test('seeded demo data survives a relaunch', () async {
+    test('seeded sample data survives a relaunch', () async {
       SharedPreferences.setMockInitialValues({});
       await AppStore.load(); // first launch seeds + persists
 
@@ -254,6 +258,78 @@ void main() {
       expect(reloaded.favoriteFolders, isNotEmpty);
       expect(reloaded.history, isNotEmpty);
       expect(reloaded.currentSourceId, reloaded.sources.first.id);
+    });
+
+    test('a real first launch starts with a source but no history', () async {
+      // The shipping default: no sample history or favourite, because a row the
+      // user never watched is indistinguishable from one they did.
+      AppStore.seedSampleUserData = false;
+      addTearDown(() => AppStore.seedSampleUserData = true);
+
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+
+      expect(store.sources, hasLength(1), reason: 'a source to point at');
+      expect(store.history, isEmpty);
+      expect(store.favorites, isEmpty);
+      expect(store.favoriteFolders, isEmpty);
+    });
+
+    test('fixture rows left by an older build are dropped, real ones stay', () async {
+      AppStore.seedSampleUserData = false;
+      addTearDown(() => AppStore.seedSampleUserData = true);
+
+      SharedPreferences.setMockInitialValues({
+        'seeded': true,
+        'history': jsonEncode([
+          {
+            'key': 'src|nodejs_jianpian|575987',
+            'sourceId': 'src',
+            'title': '谷雨',
+            'poster': 'https://img.example/gy.webp',
+            'episode': '第01集',
+            'episodeIndex': 0,
+            'positionMs': 72823,
+            'durationMs': 2776586,
+            'updatedAt': 1795177232674,
+          },
+          {
+            'key': 'src|nodejs_jianpian|575857',
+            'sourceId': 'src',
+            'title': '尚公主',
+            'poster': 'assets/demo/cont0.webp',
+            'episode': '第39集',
+            'episodeIndex': 38,
+            'positionMs': 31840,
+            'durationMs': 2905400,
+            'updatedAt': 1795135664669,
+          },
+        ]),
+        'favorites': jsonEncode([
+          {
+            'key': 'src|nodejs_jianpian|575252',
+            'sourceId': 'src',
+            'title': '欢迎来龙餐馆',
+            'poster': 'assets/demo/b0.jpg',
+            'vodId': '575252',
+            'folderId': '1795101875822513',
+            'addedAt': 1795101878495,
+          },
+        ]),
+        'favoriteFolders': jsonEncode([
+          {'id': '1795101875822513', 'name': '好看的电影'},
+        ]),
+      });
+
+      final store = await AppStore.load();
+
+      expect(store.history.map((e) => e.title), ['谷雨']);
+      expect(store.favorites, isEmpty);
+      expect(
+        store.favoriteFolders,
+        isEmpty,
+        reason: 'the sample folder held nothing but the sample favourite',
+      );
     });
 
     test('visibleFavorites returns all when no folder selected', () async {
@@ -606,7 +682,7 @@ void main() {
     // Sources -> sites: the junction every page reads from
     // -----------------------------------------------------------------------
 
-    test('the home feed names the site it was drawn from', () async {
+    test('the home site resolves to the name the header shows', () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();
 
@@ -616,19 +692,14 @@ void main() {
       expect(store.homeSite?.key, 'nodejs_jianpian');
       expect(store.homeSite?.name, '「直」荐片');
 
-      // Every card and the detail payload carry that key, so the detail page's
-      // 选集 chip and the history row can name the same site.
-      expect(store.heroItems.first.siteKey, 'nodejs_jianpian');
-      final section = store.homeSections.first;
-      expect(
-        section.items.every((item) => item.siteKey == 'nodejs_jianpian'),
-        isTrue,
-      );
-      final detail = store.detailOf(store.heroItems.first);
-      expect(detail.siteKey, 'nodejs_jianpian');
-
+      // Cards carry their own key now that they come from the source, so the
+      // store only has to resolve one to a display name.
       expect(store.siteNameOfKey('nodejs_jianpian'), '「直」荐片');
       expect(store.siteNameOfKey('gone', fallback: '某站'), '某站');
+
+      // The fixture rails are off at runtime: nothing here invents content.
+      expect(store.heroItems, isEmpty);
+      expect(store.homeSections, isEmpty);
     });
 
     test('a disabled home site falls back to the first enabled one', () async {
@@ -652,7 +723,6 @@ void main() {
       final reloaded = await AppStore.load();
       expect(reloaded.sources.first.homeSite, 'nodejs_guazi');
       expect(reloaded.homeSite?.name, '「直」瓜子');
-      expect(reloaded.heroItems.first.siteKey, 'nodejs_guazi');
     });
 
     test('history resolves its site key to a display name', () async {

@@ -4,30 +4,34 @@ import 'package:lai_cui_ba/core/search_state.dart';
 import 'package:lai_cui_ba/models/models.dart';
 import 'package:lai_cui_ba/services/spider_session.dart';
 
-/// The `submit` behaviour: with a real search wired, the demo catalogue must not
-/// flash first (its non-尚公主 rows carry no episodes); results appear site by
-/// site as each stream event lands, and only fall back to demo when every site
-/// comes back empty.
+/// The `submit` behaviour: results appear site by site as each stream event
+/// lands. Nothing is filled in from the bundled fixtures -- they are off at
+/// runtime -- so a search that reaches no site reports that rather than showing
+/// sample rows.
 void main() {
   const sites = [
     SiteInfo(key: 'wanou', name: '玩偶', type: '3'),
     SiteInfo(key: 'duoduo', name: '多多', type: '3'),
   ];
 
-  test('no real search: demo answers immediately', () {
+  test('no real search: the query stays on the machine and says so', () {
     final search = LcbSearch(
       sitesProvider: (_) => sites,
       realSearchStream: null,
     );
     // 严格 defaults on.
     expect(search.strict, isTrue);
+    expect(search.canSearch, isFalse);
 
     search.setQuery('尚公主');
     search.submit();
 
+    // No runtime means no site was asked. An empty result here is the honest
+    // answer; the page reads [canSearch] and blames the missing component
+    // rather than the sites.
     expect(search.loading, isFalse);
-    expect(search.outcome.hits, isNotEmpty);
-    expect(search.outcome.hits.first.item.title, '尚公主');
+    expect(search.outcome.hits, isEmpty);
+    expect(search.outcome.sites, isEmpty);
   });
 
   test('strict defaults on and toggleExpanded flips the chip row', () {
@@ -47,7 +51,7 @@ void main() {
     expect(search.expanded, isFalse);
   });
 
-  test('real search emits nothing: fall back to demo when done', () async {
+  test('real search emits nothing: the page ends up with no results', () async {
     final search = LcbSearch(
       sitesProvider: (_) => sites,
       realSearchStream: (keyword, {strict = false}) async* {
@@ -58,15 +62,14 @@ void main() {
     search.setQuery('尚公主');
     search.submit();
 
-    // The demo catalogue must not win the race: while loading, nothing is shown.
+    // Nothing placeholder-shaped wins the race: while loading, nothing is shown.
     expect(search.loading, isTrue);
     expect(search.outcome.hits, isEmpty);
 
-    // Once the (empty) real search closes, fall back to the demo catalogue.
+    // The sites answered with nothing, and that is what the page keeps.
     await Future<void>.delayed(const Duration(milliseconds: 40));
     expect(search.loading, isFalse);
-    expect(search.outcome.hits, isNotEmpty);
-    expect(search.outcome.hits.first.item.title, '尚公主');
+    expect(search.outcome.hits, isEmpty);
   });
 
   test('real search streams hits: appended site by site', () async {

@@ -74,16 +74,16 @@ class CatalogueFeed {
 
 /// Turns a 猫源's `home` + `category` into the rails the home page draws.
 ///
-/// Until now the home page only had two answers: a mount's library, or the
-/// bundled fixtures. A 猫源 could already be searched, opened and played, but
-/// its front page was still demo data -- the last place where "real source" and
-/// "what the user sees" disagreed.
+/// A mount answers the front page with its own library; a 猫源 has to be asked
+/// for its rails. Without this the page had no answer of its own and borrowed
+/// fixture data -- the last place where "real source" and "what the user sees"
+/// disagreed.
 class SourceCatalogue {
   const SourceCatalogue(this.session);
 
   final SpiderSession session;
 
-  /// Rails shown. The fixture declares two; live sources declare four to ten.
+  /// Rails shown. Sources declare four to ten; two is the smallest seen.
   /// Five is enough for a first screen without paging a source to death.
   static const maxSections = 5;
 

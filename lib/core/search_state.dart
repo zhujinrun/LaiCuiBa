@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../models/models.dart';
+import '../services/demo_data.dart';
 import '../services/search.dart';
 import '../services/spider_session.dart';
 
@@ -13,12 +14,21 @@ import '../services/spider_session.dart';
 /// exposed through [LcbSearchScope] rather than passed down: the field lives in
 /// the shell's header while the results live in the content column.
 ///
-/// Search is async now: a committed query first shows the demo catalogue
-/// instantly, then asks the real spider (when a runtime is wired) and swaps the
-/// results in when they land. A failed or empty real search falls back to the
-/// demo answers, so the page never goes blank.
+/// Search is async: a committed query goes to the real spider (when a runtime is
+/// wired) and each site's hits are appended as they arrive. Nothing is filled in
+/// from the bundled fixtures unless [lcbDemoCatalogue] is on, so an empty result
+/// means the sites said nothing -- not that the page had a placeholder to spare.
 class LcbSearch extends ChangeNotifier {
-  LcbSearch({this.sitesProvider, this.realSearchStream});
+  LcbSearch({
+    this.sitesProvider,
+    this.realSearchStream,
+    this.canReachSource,
+  });
+
+  /// Answers "can this query reach a site right now". The store's answer moves
+  /// when the active source changes, so it is a callback rather than a value
+  /// read once at construction.
+  final bool Function()? canReachSource;
 
   /// Resolves "which sites should this fan out to" from the current selection.
   ///
@@ -30,8 +40,8 @@ class LcbSearch extends ChangeNotifier {
 
   /// Reaches the real spider as a stream that emits one site's hits at a time,
   /// in completion order, so the page can show each site's results as they
-  /// arrive instead of waiting for the slowest site. Returns null when no
-  /// runtime is wired, in which case the demo catalogue answers. Injected so
+  /// arrive instead of waiting for the slowest site. Null when no runtime is
+  /// wired, in which case nothing can answer and the page says so. Injected so
   /// the store owns the session.
   final Stream<SpiderSearchSite>? Function(String keyword, {bool strict})?
       realSearchStream;
@@ -79,6 +89,11 @@ class LcbSearch extends ChangeNotifier {
   bool isSourceSelected(String id) => _sources?.contains(id) ?? true;
 
   bool get anySource => _sources == null || _sources!.isNotEmpty;
+
+  /// Whether a query can reach a source at all. False when the app is running
+  /// without the cat host, where "no results" would be a lie: the search never
+  /// left the machine.
+  bool get canSearch => canReachSource?.call() ?? realSearchStream != null;
 
   /// Results for the committed query. Replaced in place once the real search
   /// lands; empty until the first commit.
@@ -145,12 +160,13 @@ class LcbSearch extends ChangeNotifier {
 
   /// Commits the current query, which is what Enter and a suggestion tap do.
   ///
-  /// With a real spider wired, the demo catalogue must not flash first: its
-  /// rows (except 尚公主) carry no episode data, so a user tapping one before
-  /// the real results land would land on an empty detail page. Show the loading
-  /// state until the first site responds, then append each subsequent site's
-  /// hits as they arrive (谁先响应谁先显示), and only fall back to the demo
-  /// catalogue when no runtime is present or every site came back empty.
+  /// The page shows the loading state until the first site responds, then
+  /// appends each following site's hits (谁先响应谁先显示). Nothing is shown in
+  /// the meantime: a fixture row has no episode data, so a user tapping one
+  /// before the real results land would open an empty detail page -- and would
+  /// have no way to tell it was never a real answer. When no runtime is wired
+  /// the query cannot leave the machine, and the page reports that instead of an
+  /// empty result set.
   void submit() {
     if (_query.trim().isEmpty) return;
     _submitted = true;
@@ -161,13 +177,13 @@ class LcbSearch extends ChangeNotifier {
     _cancelSearch();
     final streamFn = realSearchStream;
     if (streamFn == null) {
-      _outcome = _demoOutcome(_query);
+      _outcome = _offlineOutcome(_query);
       _loading = false;
       notifyListeners();
       return;
     }
-    // Real source available: hold the demo catalogue back so it cannot win the
-    // race against a slow fan-out and hand the user an episode-less row.
+    // Clear the previous answer so a slow fan-out cannot leave stale rows from
+    // an older query on screen while the new one is in flight.
     _outcome = const SearchOutcome(hits: [], sites: []);
     _loading = true;
     notifyListeners();
@@ -176,7 +192,7 @@ class LcbSearch extends ChangeNotifier {
     var gotAny = false;
     final stream = streamFn(_query, strict: _strict);
     if (stream == null) {
-      _outcome = _demoOutcome(_query);
+      _outcome = _offlineOutcome(_query);
       _loading = false;
       notifyListeners();
       return;
@@ -200,13 +216,13 @@ class LcbSearch extends ChangeNotifier {
     );
   }
 
-  /// Wraps up a streamed search: clear loading and, if nothing landed, fall
-  /// back to the demo catalogue so the page never goes blank.
+  /// Wraps up a streamed search: clear loading. Nothing landed means the sites
+  /// found nothing, which the outcome already says.
   void _finish(int gen, List<SpiderSearchSite> groups, bool gotAny) {
     if (gen != _generation || !_submitted) return;
     _loading = false;
     if (!gotAny) {
-      _outcome = _demoOutcome(_query);
+      _outcome = _offlineOutcome(_query);
     }
     notifyListeners();
   }
@@ -272,12 +288,15 @@ class LcbSearch extends ChangeNotifier {
     setQuery('');
   }
 
-  /// The demo-catalogue answer, computed synchronously so results never lag.
-  SearchOutcome _demoOutcome(String query) => _submitted && anySource
+  /// The offline answer: the fixture catalogue when it is enabled, nothing
+  /// otherwise. Synchronous so a build with [lcbDemoCatalogue] on can still
+  /// answer without a runtime.
+  SearchOutcome _offlineOutcome(String query) => _submitted && anySource
       ? searchCatalogue(
           query,
           strict: _strict,
           sites: sitesProvider?.call(_sources) ?? const [],
+          demo: lcbDemoCatalogue,
         )
       : const SearchOutcome(hits: [], sites: []);
 

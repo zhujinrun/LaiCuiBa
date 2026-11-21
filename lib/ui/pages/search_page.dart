@@ -37,6 +37,10 @@ class SearchPage extends StatelessWidget {
 
     final outcome = search.outcome;
     if (search.loading && outcome.isEmpty) return const _SearchLoading();
+    // "No results" only means something if the query could reach a site. Without
+    // the cat host it never left the machine, and saying the sites found nothing
+    // would blame the source for a missing component.
+    if (!search.canSearch) return const _SearchUnavailable();
     if (outcome.isEmpty) return const _SearchNoResults();
 
     return _Results(search: search, outcome: outcome);
@@ -136,8 +140,8 @@ class _SearchNoResults extends StatelessWidget {
   }
 }
 
-/// Shown while the real spider search is in flight and the demo catalogue has
-/// nothing to show yet (a keyword the fixtures do not carry).
+/// Shown while the fan-out is in flight and no site has answered yet. Holds the
+/// page empty on purpose: a fixture row here would look like a real hit.
 class _SearchLoading extends StatelessWidget {
   const _SearchLoading();
 
@@ -149,6 +153,24 @@ class _SearchLoading extends StatelessWidget {
         icon: CupertinoIcons.search,
         title: '正在搜索',
         subtitle: '正在向全部站点发起搜索…',
+      ),
+    );
+  }
+}
+
+/// Shown when the query had nowhere to go: the cat host is not installed, so no
+/// site was asked and there is no result set to report.
+class _SearchUnavailable extends StatelessWidget {
+  const _SearchUnavailable();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: _bodyPadding,
+      child: _CenteredNote(
+        icon: CupertinoIcons.exclamationmark_circle,
+        title: '暂时无法搜索',
+        subtitle: '本机缺少猫源运行时，搜索需要它把关键词发到站点。',
       ),
     );
   }

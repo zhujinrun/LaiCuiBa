@@ -11,11 +11,56 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:lai_cui_ba/main.dart';
 import 'package:lai_cui_ba/models/models.dart';
 import 'package:lai_cui_ba/services/backup.dart';
+import 'package:lai_cui_ba/services/demo_data.dart' as demo;
 import 'package:lai_cui_ba/services/source_probe.dart';
+import 'package:lai_cui_ba/services/spider_session.dart';
 import 'package:lai_cui_ba/services/store.dart';
 import 'package:lai_cui_ba/ui/shell.dart';
 
+/// Stands in for the cat host's detail action: fills in the fields a result row
+/// cannot carry (episode list, cast, genres) the way a source does. The detail
+/// page has to render a real record, and the fixtures that used to supply one
+/// are off.
+Future<MediaItem?> fakeDetail(MediaItem item) async => MediaItem(
+      id: item.id,
+      title: item.title,
+      image: item.image,
+      latest: '第40集',
+      year: 2026,
+      area: '中国大陆',
+      categories: const ['剧情', '爱情', '古装'],
+      overview: '由测试替身提供的简介，用来验证详情页渲染的是源记录。',
+      actors: const ['孟子义', '李昀锐', '吴汉坤'],
+      episodes: [for (var i = 1; i <= 40; i++) '第$i集'],
+      siteKey: item.siteKey,
+      sourceName: item.sourceName,
+    );
+
+/// Stands in for the cat host's search action: one group per site, one hit per
+/// group. [strict] copies the source's own rule -- only an exact title matches.
+Stream<SpiderSearchSite>? Function(String, {bool strict}) fakeSearch(
+  List<String> sites, {
+  String title = '尚公主',
+  String latest = '第40集(全)',
+}) {
+  return (String keyword, {bool strict = false}) async* {
+    if (keyword.trim().isEmpty) return;
+    if (strict && keyword != title) return;
+    if (!title.contains(keyword)) return;
+    for (final site in sites) {
+      yield SpiderSearchSite(
+        site: site,
+        items: [MediaItem(id: 'v-$site', title: title, latest: latest)],
+      );
+    }
+  };
+}
+
 void main() {
+  // The app does not seed a sample history or favourite any more; these tests
+  // need rows to exercise those pages, so they opt in explicitly.
+  setUpAll(() => AppStore.seedSampleUserData = true);
+
   testWidgets('shell renders sidebar groups and hero headline', (tester) async {
     tester.view.physicalSize = const Size(1360, 860);
     tester.view.devicePixelRatio = 1.0;
@@ -84,10 +129,11 @@ void main() {
 
     expect(store.sources.first.homeSite, 'nodejs_myquark');
     expect(find.text('选择站点'), findsNothing);
-    // The chip and every card follow the choice.
+    // The chip follows the choice. The cards do too, but they are drawn from
+    // whatever the site answers with, so there is nothing here to pin until a
+    // source answers -- the fixtures that used to stand in are off.
     expect(find.text('「盘」夸克'), findsOneWidget);
     expect(find.text('「直」荐片'), findsNothing);
-    expect(store.heroItems.first.siteKey, 'nodejs_myquark');
   });
 
   testWidgets('favorites page shows folder chips and poster grid', (
@@ -126,6 +172,10 @@ void main() {
 
     SharedPreferences.setMockInitialValues({});
     final store = await AppStore.load();
+    // The detail page opens on the row's own fields, then swaps in the record
+    // its site returns. Without the cat host on this machine that call is
+    // stubbed, which is the same shape the real one has.
+    store.detailStub = fakeDetail;
 
     await tester.pumpWidget(LcbApp(store: store));
     await tester.pump(const Duration(milliseconds: 900));
@@ -195,6 +245,8 @@ void main() {
 
     SharedPreferences.setMockInitialValues({});
     final store = await AppStore.load();
+    // Two sites answer, which is enough to prove the rows are grouped by site.
+    store.searchStub = fakeSearch(const ['「盘」夸克', '「直」荐片']);
 
     await tester.pumpWidget(LcbApp(store: store));
     await tester.pump(const Duration(milliseconds: 900));
@@ -205,7 +257,6 @@ void main() {
     // Typing shows the drop-down, not results.
     await tester.enterText(find.byType(TextField), '尚');
     await tester.pumpAndSettle();
-    expect(find.text('尚公主'), findsWidgets);
     expect(find.text('选集'), findsNothing);
 
     // Enter commits it. 严格 defaults on, so the inexact 尚 matches nothing.
@@ -218,8 +269,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('全部'), findsOneWidget);
-    // Site chips and result tags both render the config's own names, prefix
-    // included -- the UI no longer invents a 「盘」 of its own.
+    // Site chips and result tags both render the names the source reports,
+    // prefix included -- the UI no longer invents a 「盘」 of its own.
     expect(find.textContaining('「盘」'), findsWidgets);
     expect(find.text('第40集(全)'), findsWidgets);
 
@@ -240,6 +291,10 @@ void main() {
 
     SharedPreferences.setMockInitialValues({});
     final store = await AppStore.load();
+    // Twelve sites answer, so the chip row has a tail to fold.
+    store.searchStub = fakeSearch([
+      for (final site in store.sources.first.sites.take(12)) site.name,
+    ]);
 
     await tester.pumpWidget(LcbApp(store: store));
     await tester.pump(const Duration(milliseconds: 900));
@@ -247,7 +302,6 @@ void main() {
     await tester.tap(find.text('搜索...'));
     await tester.pumpAndSettle();
 
-    // 尚公主 fans out over the 59 seeded sites, so more than 8 answer.
     await tester.enterText(find.byType(TextField), '尚公主');
     await tester.pumpAndSettle();
     await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -282,6 +336,8 @@ void main() {
 
     SharedPreferences.setMockInitialValues({});
     final store = await AppStore.load();
+    store.searchStub = fakeSearch(const ['「直」荐片']);
+    store.detailStub = fakeDetail;
 
     await tester.pumpWidget(LcbApp(store: store));
     await tester.pump(const Duration(milliseconds: 900));
@@ -613,7 +669,7 @@ void main() {
     expect(find.text('0.7s'), findsOneWidget);
   });
 
-  testWidgets('a mounted source replaces the demo catalogue on 首页', (
+  testWidgets('a mounted source owns 首页, and says when its library is empty', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1920, 1040);
@@ -643,14 +699,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 900));
     await tester.pump(const Duration(milliseconds: 400));
 
-    // The demo rails are gone (their section header is what proves it -- a
+    // No fixture rail survives (its section header is what proves it -- a
     // history row may legitimately still say 尚公主 in 继续观看), and the page
     // says whose empty library this is instead.
-    expect(find.text(store.homeSections.first.title), findsNothing);
+    expect(find.text(demo.homeSections.first.title), findsNothing);
     expect(find.text('客厅 Emby 的影片库里还没有内容'), findsOneWidget);
   });
 
-  testWidgets('a 猫源 that cannot answer keeps the demo catalogue on 首页', (
+  testWidgets('a 猫源 that cannot answer says so on 首页', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1920, 1040);
@@ -667,11 +723,34 @@ void main() {
     await tester.pumpWidget(LcbApp(store: store));
     await tester.pump(const Duration(milliseconds: 900));
 
-    // A failed attempt must not cost the user the front page: the catalogue
-    // stays, and the page does not claim the source is empty.
-    expect(find.text(store.homeSections.first.title), findsWidgets);
+    // No fixture stands in for the missing answer: the page names the source
+    // that failed, offers a retry, and keeps the spinner out of the way.
+    expect(find.text(demo.homeSections.first.title), findsNothing);
+    expect(find.text('豆儿猫源 没有答上来'), findsOneWidget);
+    expect(find.text('重试'), findsOneWidget);
     expect(find.textContaining('的首页没有取到片单'), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
+  testWidgets('with no source at all, 首页 points at 资源 instead of fixtures', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+    for (final source in [...store.sources]) {
+      await store.removeSource(source.id);
+    }
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    expect(find.text(demo.homeSections.first.title), findsNothing);
+    expect(find.text('还没有可用的来源'), findsOneWidget);
   });
 
   testWidgets('the Emby form refuses to save a mount it could not log in to', (

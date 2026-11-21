@@ -37,9 +37,22 @@ class AppStore extends ChangeNotifier {
   AppSettings _settings;
 
   /// The catvod (猫源) runtime, wired up lazily on first use. Null when the
-  /// app has no `js`-type source or the runtime paths were never configured,
-  /// which keeps the demo catalogue the only source of truth until then.
+  /// app has no `js`-type source or the runtime paths were never configured --
+  /// in which case nothing can answer a spider request, and the pages say so
+  /// rather than filling in fixtures.
   SpiderSession? spider;
+
+  /// Test seam: when set, [searchRealStream] answers from here instead of the
+  /// cat host. The search page is worth exercising without node.exe, and a stub
+  /// is the only way to do that -- a real session needs the runtime on disk.
+  @visibleForTesting
+  Stream<SpiderSearchSite>? Function(String keyword, {bool strict})? searchStub;
+
+  /// Test seam: when set, [detailReal] answers from here instead of the cat
+  /// host. Same reason as [searchStub]: the detail page's behaviour with a real
+  /// record is worth covering without node.exe on the test machine.
+  @visibleForTesting
+  Future<MediaItem?> Function(MediaItem item)? detailStub;
 
   /// Active favourites sub-tab (0 = 收藏, 1 = 追剧). Kept here so the header
   /// tabs and the body stay in sync without threading a controller through.
@@ -59,6 +72,17 @@ class AppStore extends ChangeNotifier {
   static const _kCurrent = 'current';
   static const _kSettings = 'settings';
   static const _kSeeded = 'seeded';
+
+  /// Set once the fixture rows left behind by earlier builds are gone.
+  static const _kPurgedFixtures = 'purgedFixtureRows';
+
+  /// Whether a first launch starts with a sample history row and favourite.
+  ///
+  /// Defaults to [demo.lcbSeedSampleUserData] (off). Tests that need rows to
+  /// exercise the 历史 and 收藏 pages flip it in `setUpAll`, which keeps the
+  /// fixtures out of the app while leaving the pages covered.
+  @visibleForTesting
+  static bool seedSampleUserData = demo.lcbSeedSampleUserData;
 
   // -------------------------------------------------------------------------
   // Load
@@ -98,25 +122,32 @@ class AppStore extends ChangeNotifier {
       _decodeMap(prefs.getString(_kSettings)),
     );
 
-    // Seed demo data only on the true first launch, tracked by an explicit
-    // flag. Seeding on "list is empty" would resurrect demo rows after the
-    // user clears their history/favourites, so the flag is authoritative.
+    // Seed on the true first launch only, tracked by an explicit flag. Seeding
+    // on "list is empty" would resurrect rows after the user clears their
+    // history/favourites, so the flag is authoritative.
     final isFirstLaunch = !(prefs.getBool(_kSeeded) ?? false);
     if (isFirstLaunch) {
+      // The sample source is kept: it is a real subscription, not invented
+      // content, and a fresh install needs something to point at.
       if (sources.isEmpty) {
         sources.add(_demoSource());
       }
-      if (history.isEmpty) {
-        history.add(_demoHistoryEntry(sources.first.id, sources.first.name));
+      // A sample watch history and favourite are not kept: they read exactly
+      // like something the user did, and there is no way to tell them apart on
+      // the page.
+      if (AppStore.seedSampleUserData) {
+        if (history.isEmpty) {
+          history.add(_demoHistoryEntry(sources.first.id, sources.first.name));
+        }
+        if (folders.isEmpty) {
+          folders.add(_demoFolder());
+        }
+        if (favorites.isEmpty) {
+          favorites.add(_demoFavorite(folders.first.id));
+        }
       }
-      if (folders.isEmpty) {
-        folders.add(_demoFolder());
-      }
-      if (favorites.isEmpty) {
-        favorites.add(_demoFavorite(folders.first.id));
-      }
-      // Persist the seeded demo rows so a relaunch does not lose them (the
-      // flag alone would skip seeding while the lists were never written).
+      // Persist the seeded state so a relaunch does not lose it (the flag alone
+      // would skip seeding while the lists were never written).
       await prefs.setString(
         _kSources,
         jsonEncode(sources.map((e) => e.toJson()).toList()),
@@ -139,6 +170,42 @@ class AppStore extends ChangeNotifier {
         _kSources,
         jsonEncode(sources.map((e) => e.toJson()).toList()),
       );
+    }
+
+    // Installs that ran while the fixture catalogue was live still carry a
+    // sample watch history and favourite. They cannot be told apart from real
+    // records on screen, so they are dropped once: a real record's poster is a
+    // URL its source served, and `assets/demo/` was only ever the fixtures'.
+    if (!AppStore.seedSampleUserData &&
+        !(prefs.getBool(_kPurgedFixtures) ?? false)) {
+      final beforeHistory = history.length;
+      final beforeFavorites = favorites.length;
+      history.removeWhere((e) => e.poster.startsWith('assets/demo/'));
+      favorites.removeWhere((e) => e.poster.startsWith('assets/demo/'));
+      // The demo folder only ever held that favourite; leave it if it has
+      // anything real in it now.
+      folders.removeWhere(
+        (f) =>
+            f.id == _demoFolderId &&
+            !favorites.any((e) => e.folderId == f.id),
+      );
+      if (history.length != beforeHistory) {
+        await prefs.setString(
+          _kHistory,
+          jsonEncode(history.map((e) => e.toJson()).toList()),
+        );
+      }
+      if (favorites.length != beforeFavorites) {
+        await prefs.setString(
+          _kFavorites,
+          jsonEncode(favorites.map((e) => e.toJson()).toList()),
+        );
+        await prefs.setString(
+          _kFavoriteFolders,
+          jsonEncode(folders.map((e) => e.toJson()).toList()),
+        );
+      }
+      await prefs.setBool(_kPurgedFixtures, true);
     }
 
     // Fall back to the first source so the resources page has a card to show.
@@ -332,24 +399,34 @@ class AppStore extends ChangeNotifier {
   // -------------------------------------------------------------------------
   // Content
   //
-  // Everything the pages render goes through these three getters instead of
-  // reaching for the fixtures directly. That is the whole point of the
-  // indirection: Phase 2 replaces the bodies with source requests and no page
-  // changes at all.
+  // The bundled fixture catalogue is only ever returned while
+  // [lcbDemoCatalogue] is on. With it off -- the default -- these getters say
+  // "nothing", which is the truth: no source has been asked yet at this layer.
+  // The pages ask a source themselves ([spiderCatalogue], [mountLibrary]) and
+  // render the answer; an empty answer stays empty rather than borrowing
+  // fixtures, so what is on screen is always something a source said.
   // -------------------------------------------------------------------------
 
   /// Hero carousel entries, tagged with the site they came from.
-  List<MediaItem> get heroItems => _attribute(demo.heroItems);
+  List<MediaItem> get heroItems =>
+      demo.lcbDemoCatalogue ? _attribute(demo.heroItems) : const [];
 
   /// Category rows, in display order.
-  List<HomeSection> get homeSections => [
-    for (final section in demo.homeSections)
-      HomeSection(title: section.title, items: _attribute(section.items)),
-  ];
+  List<HomeSection> get homeSections => demo.lcbDemoCatalogue
+      ? [
+          for (final section in demo.homeSections)
+            HomeSection(title: section.title, items: _attribute(section.items)),
+        ]
+      : const [];
 
   /// Card definition -> the full record the detail page needs.
-  MediaItem detailOf(MediaItem item) =>
-      demo.detailFor(item).withSiteKey(item.siteKey);
+  ///
+  /// Only the fixture catalogue has a "fuller" payload than its card; a real
+  /// source's card already carries what its detail call returned, so this is a
+  /// pass-through unless the fixtures are in use.
+  MediaItem detailOf(MediaItem item) => demo.lcbDemoCatalogue
+      ? demo.detailFor(item).withSiteKey(item.siteKey)
+      : item;
 
   /// Pins a fixture to the site the home feed is supposed to come from.
   ///
@@ -367,11 +444,10 @@ class AppStore extends ChangeNotifier {
   // -------------------------------------------------------------------------
   // Real source data (spider)
   //
-  // The getters above answer from the demo catalogue until the runtime is up;
-  // these async methods reach the catvod spider and are what the pages call to
-  // swap in real content. Every one degrades gracefully: a missing session, a
-  // dead site or a failed download just returns nothing (or falls back to demo)
-  // rather than throwing.
+  // These reach the catvod spider and are what the pages call to get content.
+  // Every one degrades gracefully -- a missing session, a dead site or a failed
+  // download returns nothing rather than throwing -- and nothing is substituted
+  // for the missing answer.
   // -------------------------------------------------------------------------
 
   /// The subscription address a source can be booted from, or null when this
@@ -401,7 +477,7 @@ class AppStore extends ChangeNotifier {
   ///
   /// Deliberately looser than [spiderAddressOf]: search is worth attempting for
   /// any `js`/`tvbox` source with a remote address, and a bundle that fails to
-  /// resolve already degrades to the demo catalogue.
+  /// resolve simply yields no hits.
   (String, String)? _jsSource() {
     final source = currentSource;
     if (source == null) return null;
@@ -443,8 +519,10 @@ class AppStore extends ChangeNotifier {
     );
   }
 
-  /// Whether a real spider search is possible right now.
+  /// Whether a real search is possible right now: a cat host to run the spider,
+  /// a logged-in mount to query, or a stub standing in for either.
   bool get canSearchReal =>
+      searchStub != null ||
       (spider != null && _jsSource() != null) ||
       mountClientOf(currentSource) != null;
 
@@ -452,9 +530,8 @@ class AppStore extends ChangeNotifier {
   ///
   /// Returns an empty list for "not a mount", "not logged in" and "the server
   /// did not answer" alike: the home page only needs to know what to draw, and
-  /// it already has the source card to explain a broken mount. An empty list
-  /// still means something specific there -- it stops the demo catalogue from
-  /// being presented as the user's own library.
+  /// it already has the source card to explain a broken mount. It is never
+  /// replaced with sample rows: an empty library must look empty.
   Future<List<MediaItem>> mountLibrary({int limit = 24}) async {
     final mount = mountClientOf(currentSource);
     if (mount == null) return const [];
@@ -475,9 +552,9 @@ class AppStore extends ChangeNotifier {
   /// should draw the source's own rails rather than the bundled catalogue.
   ///
   /// Deliberately keyed on [spiderAddressOf] (strict) rather than the looser
-  /// search rule: replacing the front page is a promise, and a TVBox config URL
-  /// that cannot be booted would answer that promise with an empty screen. Such
-  /// a source keeps the demo catalogue until its type is supported.
+  /// search rule: the front page is drawn from the source or not at all, and a
+  /// TVBox config URL that cannot be booted has no rails to offer. Such a
+  /// source leaves the page in its "no source" state.
   bool get hasSpiderHome {
     final source = currentSource;
     return source != null && spiderAddressOf(source) != null;
@@ -487,9 +564,9 @@ class AppStore extends ChangeNotifier {
   /// in the cat host.
   ///
   /// Null and an empty feed mean different things: null is "not a spider
-  /// source, keep the demo catalogue", while an empty feed is "this source
-  /// answered with nothing", which the page states out loud instead of filling
-  /// with borrowed titles.
+  /// source at all", while an empty feed is "this source answered with
+  /// nothing". Both are stated on the page, the second with the source's own
+  /// site name, and neither is filled in with borrowed titles.
   Future<CatalogueFeed?> spiderCatalogue() async {
     final session = spider;
     final source = currentSource;
@@ -500,8 +577,8 @@ class AppStore extends ChangeNotifier {
   }
 
   /// Runs a keyword search against every enabled site behind the active source.
-  /// Returns null when the runtime is unavailable (the caller then falls back
-  /// to the demo catalogue).
+  /// Returns null when the runtime is unavailable, which the search page reads
+  /// as "this query cannot leave the machine" rather than "no results".
   Future<SpiderSearch?> searchReal(String keyword, {bool strict = false}) async {
     final mount = mountClientOf(currentSource);
     if (mount != null) {
@@ -539,6 +616,9 @@ class AppStore extends ChangeNotifier {
     String keyword, {
     bool strict = false,
   }) {
+    final stub = searchStub;
+    if (stub != null) return stub(keyword, strict: strict);
+
     // A mount answers as a single "site" named after the source, which is the
     // truth: one Emby box is one library, not a list of scraped sites. The
     // search page fans out over `SpiderSearchSite` groups without knowing
@@ -570,10 +650,9 @@ class AppStore extends ChangeNotifier {
   ) async* {
     try {
       final hits = _filterMountHits(await client.search(keyword), strict, keyword);
-      // Always one group, even when it is empty: the search page falls back to
-      // the demo catalogue when nothing lands, and showing bundled fixtures as
-      // if they were in the user's own media library would be a lie. An empty
-      // group says "your library has nothing matching" instead.
+      // Always one group, even when it is empty: an empty group says "your
+      // library has nothing matching", which is a different statement from
+      // "the search never ran".
       yield SpiderSearchSite(
         site: currentSource?.name ?? '影片库',
         items: hits,
@@ -607,6 +686,9 @@ class AppStore extends ChangeNotifier {
   /// Fetches the full record for [item] from its site. Returns null when the
   /// item carries no site key / vod id or the runtime is unavailable.
   Future<MediaItem?> detailReal(MediaItem item) async {
+    final stub = detailStub;
+    if (stub != null) return stub(item);
+
     final mount = mountClientOf(currentSource);
     if (mount != null) {
       try {
@@ -1069,7 +1151,7 @@ class AppStore extends ChangeNotifier {
     await _persistSettings();
     await _prefs.setString(_kCurrent, jsonEncode(_current));
     // A restored bundle is a populated install; without this the next launch
-    // would seed the demo rows back on top of it.
+    // would run the first-launch seeding on top of it.
     await _prefs.setBool(_kSeeded, true);
     notifyListeners();
   }
@@ -1236,8 +1318,10 @@ class AppStore extends ChangeNotifier {
         sourceName: sourceName,
       );
 
+  static const _demoFolderId = '1795101875822513';
+
   static FavoriteFolder _demoFolder() =>
-      const FavoriteFolder(id: '1795101875822513', name: '好看的电影');
+      const FavoriteFolder(id: _demoFolderId, name: '好看的电影');
 
   static FavoriteEntry _demoFavorite(String folderId) => FavoriteEntry(
     key: '1794457036493149|nodejs_jianpian|575252',

@@ -44,6 +44,7 @@ class _ShellState extends State<Shell> {
     sitesProvider: (selection) => _store.sitesForSelection(selection),
     realSearchStream: (keyword, {strict = false}) =>
         _store.searchRealStream(keyword, strict: strict),
+    canReachSource: () => _store.canSearchReal,
   );
 
   /// Non-null while the detail page is open in the content column.
@@ -117,8 +118,8 @@ class _ShellState extends State<Shell> {
     });
     _header.push(resolved.title, _closeDetail, showSearch: false);
 
-    // Swap in the real record when the spider has one; the demo fixture (or the
-    // card's own fields) renders until then.
+    // Swap in the real record when the source has one; the row's own fields
+    // render until then.
     _store.detailReal(item).then((full) {
       if (!mounted) return;
       if (full == null) return;
@@ -141,7 +142,7 @@ class _ShellState extends State<Shell> {
   ///
   /// Prefers the URLs the detail payload already carries ([MediaItem.playLines],
   /// the chosen line); falls back to the source's `play` action when they are
-  /// absent (e.g. a demo fixture that has never fetched a real detail). Keeps
+  /// absent (e.g. a row whose detail has not been fetched yet). Keeps
   /// the resolution async so the spider round-trip never blocks the tap.
   void _openPlayer(MediaItem item, int? episodeIndex, int lineIndex) {
     final lines = item.playLines;

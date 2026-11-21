@@ -6,11 +6,10 @@ import 'demo_data.dart';
 ///
 /// The original fans a keyword out to every site behind the active source and
 /// groups what comes back by site ("结果按平台分组"). That fan-out lives in the
-/// source layer, which this rebuild has not reached yet, so [searchCatalogue]
-/// answers from the bundled demo catalogue and spreads each title across the
-/// site names the original returned for the same query. The shapes here are the
-/// ones the real implementation needs, so Phase 2 only has to swap the body of
-/// [searchCatalogue] for a call into the source.
+/// source layer; [searchCatalogue] is the offline stand-in that answers from the
+/// bundled fixtures, and it is inert unless [lcbDemoCatalogue] is on. The shapes
+/// here are the ones the real implementation needs, so the page renders both
+/// without knowing which one answered.
 
 /// One site's copy of a title.
 class SearchHit {
@@ -89,7 +88,7 @@ List<MediaItem> get catalogueItems {
 bool _siteCarries(String title, String site) =>
     stableHash('$title@$site') % 100 < 70;
 
-/// Runs [query] against the catalogue, fanning out over [sites].
+/// Runs [query] against the fixture catalogue, fanning out over [sites].
 ///
 /// [sites] is what the active source(s) declare -- it comes from
 /// `AppStore.sitesForSelection`, never from a constant, so deleting a source or
@@ -98,11 +97,18 @@ bool _siteCarries(String title, String site) =>
 /// [strict] mirrors the original's 严格 toggle: on, only an exact title matches
 /// (15 hits against 75 for the same keyword in the live app); off, any title
 /// containing the keyword does.
+///
+/// [demo] defaults to [lcbDemoCatalogue], i.e. no fixtures: the runtime answers
+/// through the spider instead, and an offline build simply finds nothing. Tests
+/// that cover the grouping rules pass `demo: true` to exercise them without a
+/// spider.
 SearchOutcome searchCatalogue(
   String query, {
   required List<SiteInfo> sites,
   bool strict = false,
+  bool demo = lcbDemoCatalogue,
 }) {
+  if (!demo) return const SearchOutcome(hits: [], sites: []);
   final needle = query.trim();
   if (needle.isEmpty || sites.isEmpty) {
     return const SearchOutcome(hits: [], sites: []);
@@ -139,11 +145,13 @@ SearchOutcome searchCatalogue(
 }
 
 /// Suggestions for the drop-down. The original asks a web suggest API; until
-/// that exists we offer catalogue titles that contain the query plus a few
-/// common suffix words, which is enough to exercise the list.
+/// that exists the only candidates are fixture titles, so with [demo] off (the
+/// default) the list stays empty. A guess built from fixtures would look like a
+/// real suggest API while naming titles the active source may not even carry.
 const List<String> _suggestionSuffixes = [' 演员表', ' 全集', ' 在哪里播', ' 上映'];
 
-List<String> suggestionsFor(String query) {
+List<String> suggestionsFor(String query, {bool demo = lcbDemoCatalogue}) {
+  if (!demo) return const [];
   final needle = query.trim();
   if (needle.isEmpty) return const [];
   final out = <String>[];

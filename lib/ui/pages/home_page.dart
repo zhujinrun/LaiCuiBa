@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
 import '../../core/detail_nav.dart';
@@ -27,14 +28,13 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   /// The source the rails were requested from. Null while no source answers the
-  /// home screen itself -- the state every source type that cannot run in the
-  /// host leaves, and the state the bundled catalogue is drawn in.
+  /// home screen itself -- every source type that cannot run in the host leaves
+  /// the page in that state, and it is shown as such rather than papered over.
   String? _askedId;
 
-  /// True when the answer comes from a mount rather than a 猫源. A mount is an
-  /// explicit user action, so its rails replace the catalogue immediately (with
-  /// a placeholder while they load); a 猫源 answers in the background while the
-  /// catalogue stays readable.
+  /// True when the answer comes from a mount rather than a 猫源. Only used to
+  /// word the empty and error states ("影片库" vs "首页片单"), since both types
+  /// now own the page outright while they load.
   bool _mount = false;
 
   /// The rails the source answered with, or null before it has answered. An
@@ -86,10 +86,11 @@ class _HomePageState extends State<HomePage> {
     if (!mounted || _askedId != id) return;
     setState(() {
       if (feed == null || !feed.ok) {
-        // A source that could not answer keeps the catalogue. Dropping the
-        // front page to an error screen is how a transient network hiccup would
-        // turn into "the app is broken"; 检测 is where a dead source is named.
+        // Say it failed. Keeping fixtures on screen here was the old behaviour,
+        // and it made a dead source look exactly like a working one -- the whole
+        // reason the fixtures are off.
         _failed = true;
+        _feedError = feed?.error ?? '宿主没有返回片单';
         return;
       }
       _sections = feed.sections;
@@ -97,25 +98,38 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  /// The active source's name, for the notices that name who did not answer.
+  String _sourceNameOf(AppStore store) =>
+      store.currentSource?.name ?? '当前来源';
+
+  /// Re-asks the active source for its rails, after a failure.
+  void _retry(AppStore store) {
+    final id = _askedId;
+    if (id == null) return;
+    setState(() {
+      _failed = false;
+      _feedError = null;
+      _sections = null;
+    });
+    _loadFeed(store, id);
+  }
+
   @override
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
     final continueWatching = store.continueWatching;
     final answered = _sections;
-    // A mount says nothing but its own library: showing the bundled fixtures
-    // while "客厅 Emby" is the active source would pass demo titles off as the
-    // user's own. A 猫源 gets the same treatment once it answers, and keeps the
-    // catalogue until then (or forever, if it never answers).
-    final real = _askedId != null && (_mount || answered != null);
-    final sections = real
-        ? (answered ?? const <HomeSection>[])
-        : store.homeSections;
-    final hero = real
-        ? (answered == null
-              ? const <MediaItem>[]
-              : CatalogueFeed.heroOf(answered))
-        : store.heroItems;
-    final loadingMount = _mount && answered == null && !_failed;
+    // Every row here is an answer from the active source. While it is being
+    // fetched the page holds its shape with a spinner and says nothing else;
+    // when it fails or comes back empty the page says that too. There is no
+    // fixture fallback, so nothing on this screen can be mistaken for content
+    // the source does not actually have.
+    final asked = _askedId != null;
+    final sections = answered ?? const <HomeSection>[];
+    final hero = answered == null
+        ? const <MediaItem>[]
+        : CatalogueFeed.heroOf(answered);
+    final loading = asked && answered == null && !_failed;
 
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
@@ -123,11 +137,25 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (loadingMount)
+            if (loading)
               const _HeroPlaceholder()
             else if (hero.isNotEmpty)
               HeroBanner(items: hero),
-            if (real && answered != null && answered.isEmpty)
+            if (!asked)
+              const _HomeNotice(
+                icon: CupertinoIcons.tray,
+                title: '还没有可用的来源',
+                subtitle: '在「资源」里添加一个猫源，它的首页片单会显示在这里。',
+              )
+            else if (_failed)
+              _HomeNotice(
+                icon: CupertinoIcons.exclamationmark_triangle,
+                title: '${_sourceNameOf(store)} 没有答上来',
+                subtitle: _feedError ?? '宿主请求超时，可能站点暂时不可用。',
+                hint: '可以重试一次，或在「资源」里点「重新检测」确认它还能不能用。',
+                onRetry: () => _retry(store),
+              )
+            else if (answered != null && answered.isEmpty)
               _EmptyCatalogue(spider: !_mount, reason: _feedError),
             LayoutBuilder(
               builder: (context, constraints) {
@@ -218,6 +246,79 @@ class _HomePageState extends State<HomePage> {
                 );
               },
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// What the home screen says when the source cannot fill it: no source at all,
+/// or one that failed to answer. Both are stated plainly -- an empty page with
+/// no explanation reads as a broken app, and fixtures read as working content.
+class _HomeNotice extends StatelessWidget {
+  const _HomeNotice({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.hint,
+    this.onRetry,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String? hint;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 320,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 30,
+              color: LcbColors.textSecondary.withValues(alpha: 0.45),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 15,
+                color: LcbColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: LcbColors.textSecondary.withValues(alpha: 0.75),
+              ),
+            ),
+            if (hint != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                hint!,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: LcbColors.textSecondary.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
+            if (onRetry != null) ...[
+              const SizedBox(height: 18),
+              TextButton(
+                onPressed: onRetry,
+                child: const Text('重试'),
+              ),
+            ],
           ],
         ),
       ),

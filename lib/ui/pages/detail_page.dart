@@ -58,7 +58,8 @@ class _DetailPageState extends State<DetailPage> {
 
   MediaItem get item => widget.item;
 
-  /// Lines to choose from; empty when the record has no play URLs (demo).
+  /// Lines to choose from; empty when the record carries no play URLs, which is
+  /// the state before the source's detail call lands.
   List<PlayLine> get lines => item.playLines;
 
   /// Episode labels for the selected line, falling back to [MediaItem.episodes]
@@ -868,7 +869,7 @@ class _CategoryRow extends StatelessWidget {
 
 /// The line (线路) chip in the 选集 filter row. When the detail carries play
 /// lines it shows the current line's name and opens a menu to switch; without
-/// lines (demo catalogue) it renders the original's literal `LZ线路` and stays
+/// lines (no detail yet) it renders the original's literal `LZ线路` and stays
 /// inert, since there is nothing to switch between.
 class _LineChip extends StatefulWidget {
   const _LineChip({

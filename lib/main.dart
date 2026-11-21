@@ -24,8 +24,8 @@ Future<void> main() async {
   final store = await AppStore.load();
 
   // Wire the catvod runtime when node.exe + cat_host.js are present, so search
-  // and detail reach the real source. Absent binaries just leave the demo
-  // catalogue in charge.
+  // and detail reach the real source. Absent binaries leave nothing to answer
+  // spider requests, and the pages report that instead of showing samples.
   final runtime = RuntimePaths.resolve(
     executableDir: File(Platform.resolvedExecutable).parent.path,
   );
@@ -43,7 +43,7 @@ Future<void> main() async {
     );
     debugPrint('LcbSpider: runtime ready (${runtime.node})');
   } else {
-    debugPrint('LcbSpider: runtime absent, demo catalogue only');
+    debugPrint('LcbSpider: runtime absent, spider features unavailable');
   }
 
   const options = WindowOptions(

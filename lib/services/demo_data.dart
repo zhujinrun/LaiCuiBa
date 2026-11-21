@@ -6,6 +6,19 @@ import '../models/models.dart';
 /// same titles and the same cached artwork, so the rebuilt home feed can be
 /// compared with the original frame by frame. Replaced by the real source layer
 /// in a later phase.
+///
+/// Off by default: from Phase 2 on, everything on screen must be something a
+/// source actually said. A fixture that renders exactly like a live answer makes
+/// it impossible to tell a working feed from a stuck one, which is worse than an
+/// empty page -- flip this to true only to diff the layout against the original
+/// offline.
+const bool lcbDemoCatalogue = false;
+
+/// Whether a first launch starts with a sample history row, folder and
+/// favourite. Off, for the same reason as [lcbDemoCatalogue]: a 历史 row the
+/// user never watched reads exactly like one they did, so the lists start empty
+/// and fill from real playback.
+const bool lcbSeedSampleUserData = false;
 
 /// Douban scores the original shows beside each banner, read off the running
 /// app (八仙！ has no entry in the cache, so it carries no badge there either).

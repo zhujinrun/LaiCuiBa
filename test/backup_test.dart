@@ -8,6 +8,10 @@ import 'package:lai_cui_ba/services/backup.dart';
 import 'package:lai_cui_ba/services/store.dart';
 
 void main() {
+  // The app does not seed a sample history or favourite any more; these tests
+  // need rows to exercise those pages, so they opt in explicitly.
+  setUpAll(() => AppStore.seedSampleUserData = true);
+
   late Directory scratch;
 
   setUp(() {
