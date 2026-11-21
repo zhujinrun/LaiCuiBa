@@ -6,7 +6,9 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/theme.dart';
 import '../../models/models.dart';
+import '../../services/awake.dart';
 import '../../services/playback_clock.dart';
+import '../../services/skip_rule.dart';
 
 /// 播放页 — 全屏视频播放。
 ///
@@ -34,12 +36,15 @@ class PlayerPage extends StatefulWidget {
     this.episodes = const [],
     this.episodeIndex,
     this.resume,
+    this.skip = SkipRule.none,
     this.initialVolume = 100,
     this.initialRate = 1.0,
     this.onEpisode,
     this.onClose,
     this.onProgress,
     this.onPrefs,
+    this.onOutro,
+    this.awake,
   });
 
   /// Title shown in the top bar.
@@ -66,6 +71,11 @@ class PlayerPage extends StatefulWidget {
   /// so the clock can refuse it when the stream is a different cut.
   final ResumePoint? resume;
 
+  /// How much of the head and tail the viewer asked to skip. [SkipRule.none]
+  /// when the feature is off or nothing was configured — the player never
+  /// guesses where an intro ends.
+  final SkipRule skip;
+
   /// Volume (0-100) and speed to open with — the values the last session was
   /// left at, not a hardcoded 100 / 1.0×.
   final int initialVolume;
@@ -84,6 +94,16 @@ class PlayerPage extends StatefulWidget {
   /// Reports the volume and speed the session ended on.
   final void Function(int volume, double rate)? onPrefs;
 
+  /// Called once when playback reaches the tail the viewer asked to skip. The
+  /// shell decides what that means (next episode, or just finish); null leaves
+  /// the stream playing to its natural end.
+  final VoidCallback? onOutro;
+
+  /// Screen-sleep guard. The shell passes one shared instance so switching
+  /// episodes — which mounts the next player before disposing this one — cannot
+  /// end with the lock released. Null falls back to a private one.
+  final Awake? awake;
+
   @override
   State<PlayerPage> createState() => _PlayerPageState();
 }
@@ -93,7 +113,12 @@ class _PlayerPageState extends State<PlayerPage> {
   late final VideoController _controller = VideoController(_player);
 
   /// Decides every seek this session makes. Fed from the two streams below.
-  late final PlaybackClock _clock = PlaybackClock(resume: widget.resume);
+  late final PlaybackClock _clock = PlaybackClock(
+    resume: widget.resume,
+    skip: widget.skip,
+  );
+
+  late final Awake _awake = widget.awake ?? SystemAwake();
 
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration>? _durationSub;
@@ -110,6 +135,16 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _seeking = false;
   double _seekValue = 0;
 
+  /// The tail cut-off already fired for this session, so the episode counts as
+  /// finished rather than "stopped at 96%".
+  bool _completed = false;
+  bool _outroHandled = false;
+
+  /// A short-lived line explaining an automatic jump, so the viewer is not left
+  /// wondering why the picture moved on its own.
+  String? _notice;
+  Timer? _noticeTimer;
+
   bool _controlsVisible = true;
   Timer? _hideTimer;
 
@@ -122,6 +157,7 @@ class _PlayerPageState extends State<PlayerPage> {
       if (!_seeking) _position = d;
       _clock.onPosition(d);
       _pumpClock();
+      if (_clock.takeOutro()) _fireOutro();
       if (mounted) setState(() {});
     });
     _durationSub = _player.stream.duration.listen((d) {
@@ -147,6 +183,9 @@ class _PlayerPageState extends State<PlayerPage> {
       if (mounted) setState(() {});
     });
 
+    // A viewer who starts an episode and walks away should come back to a
+    // playing episode, not a locked screen.
+    _awake.hold();
     _open();
   }
 
@@ -182,6 +221,38 @@ class _PlayerPageState extends State<PlayerPage> {
     // Show where we asked to be, not the frame the player was still painting —
     // the label would otherwise flash 0:00 over a resumed episode.
     _position = target;
+    final intro = widget.skip.introFor(_clock.duration);
+    if (intro != null && target == intro) {
+      _showNotice('已跳过片头 ${intro.inSeconds} 秒');
+    }
+  }
+
+  void _showNotice(String text) {
+    if (!mounted) return;
+    _noticeTimer?.cancel();
+    setState(() => _notice = text);
+    _noticeTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _notice = null);
+    });
+  }
+
+  /// The tail cut-off the viewer configured was reached: pause here and let the
+  /// shell wrap up (next episode or back out). Marked completed first, because
+  /// the caller may dispose this page immediately and we must not record "stopped
+  /// 90 seconds before the end" as a resume point.
+  void _fireOutro() {
+    if (_outroHandled) return;
+    _showNotice('已跳过片尾');
+    _outroHandled = true;
+    _completed = true;
+    _player.pause();
+    final callback = widget.onOutro;
+    if (callback == null) return;
+    // Hand over after the current stream event, otherwise the shell's rebuild
+    // disposes the player the event is still being read from.
+    scheduleMicrotask(() {
+      if (mounted) callback();
+    });
   }
 
   /// Every seek made from the UI goes through here, so a drag that happens
@@ -235,6 +306,7 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void dispose() {
     _hideTimer?.cancel();
+    _noticeTimer?.cancel();
     _positionSub?.cancel();
     _durationSub?.cancel();
     _playingSub?.cancel();
@@ -245,12 +317,19 @@ class _PlayerPageState extends State<PlayerPage> {
     // the timeline moved under us — that position belongs to an ad segment or
     // another cut, and writing it would resume the viewer in the wrong place.
     if (_clock.recordable) {
-      widget.onProgress?.call(_position, _duration);
+      // A tail cut-off means the viewer is done with this episode: record the
+      // full duration so the store treats it as watched instead of offering a
+      // resume point ninety seconds before the credits.
+      widget.onProgress?.call(
+        _completed ? _duration : _position,
+        _duration,
+      );
     } else {
       debugPrint('LcbPlayer: dropped position $_position/$_duration '
           '(timeline changed during playback)');
     }
     widget.onPrefs?.call(_volume.round(), _rate);
+    _awake.release();
     _player.dispose();
     super.dispose();
   }
@@ -281,6 +360,33 @@ class _PlayerPageState extends State<PlayerPage> {
               onTap: _toggleControls,
             ),
           ),
+          if (_notice != null)
+            Positioned(
+              top: 76,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xB3000000),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      _notice!,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           _TopBar(
             title: _titleLine,
             subtitle: widget.subtitle,

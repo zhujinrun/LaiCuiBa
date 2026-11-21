@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lai_cui_ba/models/models.dart';
 import 'package:lai_cui_ba/services/playback_clock.dart';
+import 'package:lai_cui_ba/services/skip_rule.dart';
 
 /// These cover the three original bugs from `ARCHITECTURE.md` §5: seeking
 /// through an unknown duration, trusting a position measured on an ad-polluted
@@ -163,6 +164,101 @@ void main() {
       clock.onDuration(Duration.zero); // a live stream forgets its duration
       expect(clock.drifting, isFalse);
       expect(clock.duration, film);
+    });
+  });
+
+  group('PlaybackClock — 片头与片尾', () {
+    const intro = SkipRule(intro: Duration(seconds: 90));
+    const tail = SkipRule(outro: Duration(seconds: 60));
+
+    test('从片头开始的新播放直接落到片头之后', () {
+      final clock = PlaybackClock(skip: intro);
+      clock.onDuration(film);
+      clock.onPosition(const Duration(seconds: 2));
+      expect(clock.pendingSeek(), const Duration(seconds: 90));
+      expect(clock.pendingSeek(), isNull);
+    });
+
+    test('续播点落在片头里时一次跳到片头之后，不做两次可见跳', () {
+      final clock = PlaybackClock(
+        resume: const ResumePoint(positionMs: 20000, totalMs: 2700000),
+        skip: intro,
+      );
+      clock.onDuration(film);
+      clock.onPosition(Duration.zero);
+      // 20s → 90s 只应发生一次，不是先落 20s 再弹到 90s。
+      expect(clock.pendingSeek(), const Duration(seconds: 90));
+      expect(clock.pendingSeek(), isNull);
+    });
+
+    test('续播点在片头之后就按续播点落位', () {
+      final clock = PlaybackClock(
+        resume: const ResumePoint(positionMs: 720000, totalMs: 2700000),
+        skip: intro,
+      );
+      clock.onDuration(film);
+      clock.onPosition(Duration.zero);
+      expect(clock.pendingSeek(), const Duration(minutes: 12));
+    });
+
+    test('不可信的续播点仍然跳到片头之后，而不是回到 0', () {
+      final clock = PlaybackClock(
+        // 记在广告时间轴上的位置，时长对不上。
+        resume: const ResumePoint(positionMs: 12000, totalMs: 15000),
+        skip: intro,
+      );
+      clock.onDuration(film);
+      clock.onPosition(Duration.zero);
+      expect(clock.pendingSeek(), const Duration(seconds: 90));
+    });
+
+    test('用户拖回片头看片头时不会被再次弹走', () {
+      final clock = PlaybackClock(skip: intro);
+      clock.onDuration(film);
+      clock.onPosition(const Duration(seconds: 2));
+      expect(clock.pendingSeek(), const Duration(seconds: 90));
+
+      clock.requestSeek(const Duration(seconds: 5));
+      expect(clock.pendingSeek(), const Duration(seconds: 5));
+
+      clock.onPosition(const Duration(seconds: 8));
+      expect(clock.pendingSeek(), isNull,
+          reason: '一次显式拖动之后，自动跳过就该让位');
+    });
+
+    test('片尾到点只报一次', () {
+      final clock = PlaybackClock(skip: tail);
+      clock.onDuration(film);
+      clock.onPosition(film - const Duration(seconds: 61));
+      expect(clock.takeOutro(), isFalse);
+      clock.onPosition(film - const Duration(seconds: 60));
+      expect(clock.takeOutro(), isTrue);
+      clock.onPosition(film - const Duration(seconds: 10));
+      expect(clock.takeOutro(), isFalse, reason: '同一回合不该反复触发');
+    });
+
+    test('没有总时长时既不跳片头也不判片尾', () {
+      final clock = PlaybackClock(
+        skip: const SkipRule(
+          intro: Duration(seconds: 90),
+          outro: Duration(seconds: 60),
+        ),
+      );
+      clock.onPosition(const Duration(seconds: 1));
+      expect(clock.pendingSeek(), isNull);
+      expect(clock.takeOutro(), isFalse);
+    });
+
+    test('时间轴变了之后片尾重新可以触发', () {
+      final clock = PlaybackClock(skip: tail);
+      clock.onDuration(film);
+      clock.onPosition(film - const Duration(seconds: 60));
+      expect(clock.takeOutro(), isTrue);
+
+      // 广告结束，正片是另一条时间轴：新的片尾位置是新的，得再判一次。
+      clock.onDuration(const Duration(minutes: 30));
+      clock.onPosition(const Duration(minutes: 29));
+      expect(clock.takeOutro(), isTrue);
     });
   });
 

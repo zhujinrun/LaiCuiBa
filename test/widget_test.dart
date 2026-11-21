@@ -507,6 +507,52 @@ void main() {
     expect(store.continueWatching, isEmpty);
   });
 
+  testWidgets('播放 settings carry the real intro/outro seconds', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('设置').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('播放'));
+    await tester.pumpAndSettle();
+
+    // The toggle alone used to claim "自动跳过片头片尾" while doing nothing.
+    // With no duration set, the row has to say so rather than lie.
+    expect(find.text('开关已开，但还没设时长，暂时不会跳'), findsOneWidget);
+    expect(find.text('未设置'), findsNWidgets(2));
+
+    await tester.tap(find.text('片头时长'));
+    await tester.pumpAndSettle();
+    expect(find.text('每集开头跳过多少秒'), findsOneWidget);
+
+    await tester.tap(find.text('90 秒'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(store.settings.introSkipMs, 90000);
+    expect(find.text('90 秒'), findsOneWidget);
+    expect(find.text('未设置'), findsOneWidget, reason: '片尾还没设');
+    expect(find.text('按下面设置的秒数自动跳过'), findsOneWidget);
+    expect(store.skipRule.intro, const Duration(seconds: 90));
+
+    // Turning the toggle off has to stop the rule from firing, not just hide it.
+    await tester.tap(find.text('跳过片头片尾'));
+    await tester.pumpAndSettle();
+    expect(store.settings.skipIntroOutro, isFalse);
+    expect(store.skipRule.isEmpty, isTrue);
+  });
+
   testWidgets('备份与恢复 writes a file the dialog lists', (tester) async {
     tester.view.physicalSize = const Size(1920, 1040);
     tester.view.devicePixelRatio = 1.0;

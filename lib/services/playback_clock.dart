@@ -1,4 +1,5 @@
 import '../models/models.dart';
+import 'skip_rule.dart';
 
 /// Where a playback session's seek bar is allowed to take the viewer.
 ///
@@ -22,12 +23,20 @@ import '../models/models.dart';
 class PlaybackClock {
   PlaybackClock({
     this.resume,
+    this.skip = SkipRule.none,
     this.tolerance = 0.2,
     this.landingSlack = const Duration(seconds: 8),
   });
 
   /// The position the session was asked to resume from, if any.
   final ResumePoint? resume;
+
+  /// How much of the head and tail the viewer asked to have skipped.
+  ///
+  /// Folded into this clock rather than handled by a second timer on purpose:
+  /// the opening resume and the automatic skip-intro want the same instant, and
+  /// two independent seekers would race for it. Here they are one decision.
+  final SkipRule skip;
 
   /// How much the duration may change before the timeline counts as a different
   /// one. 20% per the playback spec: an episode that suddenly claims to be
@@ -45,6 +54,7 @@ class PlaybackClock {
   Duration? _queued;
   bool _resumeSettled = false;
   bool _drifted = false;
+  bool _outroFired = false;
 
   /// The timeline is known, so a seek has a scale to land on.
   bool get ready => _duration > Duration.zero;
@@ -65,9 +75,11 @@ class PlaybackClock {
         tolerance)) {
       // The stream switched timelines under us — an ad segment ended, or the
       // source moved to another cut. Everything measured so far belongs to the
-      // old one, so the opening resume has to be judged again.
+      // old one, so the opening resume has to be judged again. The outro moves
+      // with the new duration too, so it gets a fresh chance to fire.
       _drifted = true;
       _resumeSettled = false;
+      _outroFired = false;
     }
     _duration = d;
   }
@@ -96,20 +108,38 @@ class PlaybackClock {
     if (_resumeSettled) return null;
     _resumeSettled = true;
 
+    // One landing decision for the whole opening: where 续播 asked to be, then
+    // out of the intro if that address sits inside it. Doing them separately
+    // would mean seeking to the saved position first and to the intro a moment
+    // later — a visible double jump for anyone who stopped in the first minute.
+    final head = skip.introFor(_duration) ?? Duration.zero;
+    var target = head;
     final saved = resume;
-    if (saved == null) return null;
-
-    final target = resolveResume(saved, _duration, tolerance: tolerance);
-    if (target == null) {
+    if (saved != null) {
       // Nothing trustworthy to resume — a different timeline, or already
       // watched to the end. Start from the head instead of dropping the viewer
-      // somewhere arbitrary; only worth a seek if we are not there already.
-      return _position > landingSlack ? Duration.zero : null;
+      // somewhere arbitrary. A known intro still moves that start forward.
+      target = resolveResume(saved, _duration, tolerance: tolerance) ?? head;
     }
+    if (target < head) target = head;
+
     // Already there: mpv honoured `start`, so re-issuing would be a pointless
-    // second jump.
+    // second jump. This also covers a stream whose intro the viewer is past by
+    // the time the duration finally arrives.
     if ((_position - target).abs() <= landingSlack) return null;
     return target;
+  }
+
+  /// True once, when playback has reached the tail the viewer asked to skip.
+  ///
+  /// The caller decides what "skipped" means — the next episode, or just
+  /// counting this one as finished. Reported at most once per timeline.
+  bool takeOutro() {
+    if (!ready || _outroFired) return false;
+    final start = skip.outroStartFor(_duration);
+    if (start == null || _position < start) return false;
+    _outroFired = true;
+    return true;
   }
 
   Duration _clamp(Duration target) {

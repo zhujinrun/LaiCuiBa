@@ -110,6 +110,13 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
   并刻意把 `…/index.js` 留给猫源。真机：夹具 js 源在真实 exe 上画出「JS 夹具」chip、
   hero「三体·全30集」与「电影」分区（三体 / 狂飙），全部来自 `req` + `pdfh` 解析的
   本地站点。**291 个测试全绿**。
+- **跳片头 / 片尾 + 防休眠（Phase 3 收尾）**：`services/skip_rule.dart` 是唯一判据——源站
+  不给片头时间点，所以沿用原版做法由用户设秒数，两条护栏（单个不超片长四成、合计不超一半）
+  把误设挡在外面；`PlaybackClock` 把片头并进**开播那一次决策**，续播落点落在片头里就只跳一次，
+  不会「先落 20 秒再弹到 90 秒」；`takeOutro()` 进片尾区间报一次，播放页把它记成「已看完」
+  并让 shell 切下一集。`services/awake.dart` 用 `wakelock_plus` 按持有者计数持有锁
+  （切集时新页 hold 早于旧页 release，bool 会把锁关掉）。设置页原来那个死开关现在带
+  「片头时长 / 片尾时长」两行真值。**313 个测试全绿**。
 - **播放时钟落地（Phase 3 核心）**：`services/playback_clock.dart` 收口所有 seek，进度条在时长未知时
   不可拖动，续播位置带 `totalMs` 由播放器用真实时长复核（跨时间轴拒绝、漂移不落盘）；
   新增 `tool/verify_clock_live.dart` 真起 libmpv 自检 9 项；音量/倍速也随关闭持久化。
@@ -262,6 +269,7 @@ lib/
 - js 宿主的覆盖率取决于源用了什么：`pdfh/pdfa` 常见语法都实现了，`html2map`、`aes`
   之类额外全局没有，遇到会报具体错误
 - 本地 js spider 直接执行（猫源宿主只认订阅目录，不认单个文件；单文件走 js 宿主）
+- 片头/片尾是全局一组数值，还不能按剧集单独记
 
 **已完成（Emby / Jellyfin 挂载，2026-11-21）**
 
@@ -441,7 +449,7 @@ TV 焦点导航（原版 `ui/tv/*` 9 个文件）、Android 适配、AI 辅助�
 cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
-flutter test                    # 冒烟测试（当前 291 个全绿）
+flutter test                    # 冒烟测试（当前 313 个全绿）
 flutter analyze                 # 静态检查（当前零问题）
 dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 
@@ -509,9 +517,10 @@ dart run tool/verify_clock_live.dart /path/to/clip.mp4
      与账号，能连上才保存；保存后首页画目录、详情画选集。
 2. 验收无误后由**用户自己**推送（AI 不 push）：`git push -u origin master`。
 3. 下一步自然顺序：
-   - **跳片头 / 防休眠**（Phase 3 剩下的）：跳片头等源站给片头时间点，`PlaybackClock`
-     的闸门已留好；防休眠要引入 `wakelock_plus`；
-   - 或纯本地收尾：设置页「媒体徽章」子页（**Phase 1 唯一剩下的一项**，现在是死控件）。
+   - **画质 / 音轨 / 字幕轨选择**（Phase 3 最后一块）：libmpv 的 `track-list` 已经在
+     `media_kit` 里，缺的是 UI 与「按线路记住选择」；
+   - 或纯本地收尾：设置页「媒体徽章」子页（**Phase 1 唯一剩下的一项**，现在是死控件）；
+   - 或外设线（Phase 4）：弹幕、刮削、投屏。
 
 ---
 

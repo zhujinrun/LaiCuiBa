@@ -12,6 +12,7 @@ import 'source_catalogue.dart';
 import 'source_probe.dart';
 import 'media_mount.dart';
 import 'play_target.dart';
+import 'skip_rule.dart';
 import 'script_runtime.dart';
 import 'spider_client.dart' show SpiderClass;
 import 'tvbox_catalogue.dart';
@@ -406,6 +407,21 @@ class AppStore extends ChangeNotifier {
 
   Future<void> _persistSettings() async {
     await _prefs.setString(_kSettings, jsonEncode(_settings.toJson()));
+  }
+
+  /// What the viewer asked to have skipped at the head and tail of an episode.
+  ///
+  /// Zero everywhere unless they set it, and [SkipRule.none] when the toggle is
+  /// off — so a fresh install seeks nowhere rather than guessing an intro.
+  SkipRule get skipRule {
+    if (!_settings.skipIntroOutro) return SkipRule.none;
+    final intro = _settings.introSkipMs;
+    final outro = _settings.outroSkipMs;
+    if (intro <= 0 && outro <= 0) return SkipRule.none;
+    return SkipRule(
+      intro: Duration(milliseconds: intro < 0 ? 0 : intro),
+      outro: Duration(milliseconds: outro < 0 ? 0 : outro),
+    );
   }
 
   /// Remembers the volume and speed the player was left at, so the next

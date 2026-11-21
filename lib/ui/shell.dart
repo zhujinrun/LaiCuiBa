@@ -7,6 +7,7 @@ import '../core/search_state.dart';
 import '../core/store_scope.dart';
 import '../core/theme.dart';
 import '../models/models.dart';
+import '../services/awake.dart';
 import '../services/demo_data.dart';
 import '../services/store.dart';
 import 'pages/common_pages.dart';
@@ -53,6 +54,11 @@ class _ShellState extends State<Shell> {
 
   /// Non-null while the full-screen player is open on top of the shell.
   _PlayerSession? _player;
+
+  /// One sleep guard for the whole shell. Shared across players because a step
+  /// to the next episode mounts the new page before disposing the old one, and
+  /// two independent guards would release the lock the new one just took.
+  final Awake _awake = SystemAwake();
 
   static const _titles = {
     LcbPage.home: '首页',
@@ -237,6 +243,24 @@ class _ShellState extends State<Shell> {
     });
   }
 
+  /// The tail the viewer configured was reached. A series moves on to the next
+  /// episode; a film (or the last episode) is simply finished — the player has
+  /// already recorded it as watched, so closing does not offer a resume point a
+  /// minute before the credits.
+  void _onOutro(_PlayerSession session) {
+    final index = session.episodeIndex;
+    final detail = _detail;
+    if (index == null || detail == null) {
+      _closePlayer();
+      return;
+    }
+    if (index + 1 >= session.episodes.length) {
+      _closePlayer();
+      return;
+    }
+    _openPlayer(detail, index + 1, session.lineIndex);
+  }
+
   void _closePlayer() {
     if (!mounted) return;
     setState(() => _player = null);
@@ -309,11 +333,14 @@ class _ShellState extends State<Shell> {
             episodes: player.episodes,
             episodeIndex: player.episodeIndex,
             resume: player.resume,
+            skip: _store.skipRule,
+            awake: _awake,
             initialVolume: _store.settings.playerVolume,
             initialRate: _store.settings.playerRate,
             onPrefs: (volume, rate) =>
                 _store.savePlaybackPrefs(volume: volume, rate: rate),
             onEpisode: (i) => _openPlayer(_detail!, i, player.lineIndex),
+            onOutro: () => _onOutro(player),
             onClose: _closePlayer,
             onProgress: (pos, dur) => _recordProgress(
               player,

@@ -410,29 +410,56 @@ js 宿主有两处绕不过去的工程问题，都不是「加个分支」能�
 | --- | --- |
 | 未就绪就换算 → 跳回片头 | 进度条在 `duration == 0` 时**不可拖动**（`Slider.onChanged: null`）；所有 seek 先问 `pendingSeek()`，未就绪一律不换算 |
 | 广告段的时间轴被当成正片 | 每行历史连 `durationMs` 一起带出（`ResumePoint`），播放器用**真实时长**复核：`resolveResume()` 在「记录时的总长」与「这次真正的总长」相差超 20% 时直接拒绝；播放中时长突变（±20%）标记 `drifting`，关闭时**不写**这条位置 |
-| 跳片头与续播抢同一次跳转 | `pendingSeek()` 取走即销毁，一回合只发一次 seek；用户拖动会顶掉未执行的续播（`requestSeek` 优先）。跳片头本身还没接数据（源站 detail 不带片头标记），但"两次 seek 合并成一次最终目标"的闸门已经在 |
+| 跳片头与续播抢同一次跳转 | `pendingSeek()` 取走即销毁，一回合只发一次 seek；用户拖动会顶掉未执行的续播（`requestSeek` 优先）。片头跳过**并入同一次决策**：先算续播落点，再判断它是否落在片头里，两次意图产出一个目标（见下节） |
 
 `start:` 只当**提示**用：mpv 在加载途中应用它，部分 HLS 流会把它丢掉。`duration` 一到就开始
 复核落点：落点与目标相差超过 8 秒才补发一次（同一个目标重复 seek 是无害的，但会造成一次肉眼可见的抖动，
 所以只有确实没落地才发）。落点核对没通过（例如贴片把基准带跑偏）时退回片头，而不是把人丢在广告里。
 
+#### 片头 / 片尾：只有用户设过才跳
+
+源站不给片头时间点（猫源的 detail、TVBox 的 `playerContent` 都只有 URL 和 header），
+所以任何「自动识别片头」都只能是猜，猜错就把正片跳了。这里沿用原版的做法：
+**用户在设置里填片头/片尾秒数，全站通用**；`SkipRule`（`lib/services/skip_rule.dart`）
+是唯一判据，两条护栏都在它里面——
+
+- 单个区间不得超过片长的 40%，两个加起来不得超过一半，否则当误设，**什么都不跳**；
+- 一秒以下按误触处理；直播（时长为零）永不生效。
+
+越界的理由很实际：90 秒片头对 45 分钟的剧没问题，套在 3 分钟短剧上就会吃掉一半。
+
+`PlaybackClock` 把片头并进**开播那一次决策**：先取续播落点（或 0），再判断它是否在片头里，
+是就把目标抬到片头末尾——所以从 0 起播、续播落在第 20 秒、续播点不可信这三种情况
+都只产生**一次** seek，不会出现「先落 20 秒再弹到 90 秒」的两次可见跳。用户一旦自己拖过
+进度条（`requestSeek`），自动跳过就永久让位，拖回片头看片头不会被弹走。
+
+片尾是另一个方向：`takeOutro()` 在位置进入 `duration - outro` 时**报一次**（同一个时间轴只报一次，
+漂移后重新可报）。播放页据此暂停并把这一集记成「已看完」（写 `duration` 而不是当前位置），
+shell 决定切下一集还是退出——最后一条不会在演职员表前留下一个「续播 92%」的坑。
+两种情况都会在画面上留一行 3 秒的提示（「已跳过片头 90 秒」/「已跳过片尾」），
+免得观众以为播放器自己乱跳。
+
 **独立验证（不需要任何外部源）**：
 
 | 载体 | 内容 |
 | --- | --- |
-| `test/playback_clock_test.dart` | 19 例：未就绪不换算、落点复核、跨时间轴拒绝、拖动顶掉续播、漂移标记、`resolveResume` 边界 |
+| `test/playback_clock_test.dart` | 27 例：未就绪不换算、落点复核、跨时间轴拒绝、拖动顶掉续播、漂移标记、`resolveResume` 边界，以及片头/片尾那 8 组 |
+| `test/skip_rule_test.dart` | 9 例：合理值生效、只设一个、直播不生效、超四成拒绝、合计超一半拒绝、短剧套长片头被拦、亚秒误触、负数 |
 | `test/store_test.dart` | 续播点带着 `totalMs` 一起返回；贴着贴片录下的一行在 45 分钟真片上被拒 |
-| `tool/verify_clock_live.dart` | **真起 libmpv** 跑同一条决策链：4 组场景 9 项断言（无续播不 seek、续播恰好一次且落到 59.96s、`start` 生效时不补发、贴片位置被拒）。用法见「七、开发」 |
+| `tool/verify_clock_live.dart` | **真起 libmpv** 跑同一条决策链：6 组场景 15 项断言（无续播不 seek、续播恰好一次且落到 59.96s、`start` 生效时不补发、贴片位置被拒、片头一次跳到 26.96s、片尾在 2:33 报一次且不重复） |
 
 播放器退出时把音量与倍速写进 `flutter.settings` 的 `playerVolume` / `playerRate`
 （`AppStore.savePlaybackPrefs`），下一集用同一档继续——和续播位置一起在关闭那一刻落盘，
 不做滑块级联写入。
 
+播放期间阻止系统休眠：`lib/services/awake.dart` 包一层 `wakelock_plus`（Windows 上就是
+`SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED)`）。它**按持有者计数**，
+因为切集时新播放页的 `initState` 早于旧页面的 `dispose`，一个 bool 会走成
+`enable → disable` 并把刚点亮的锁关掉；shell 持有一个实例传给它创建的每个播放页。
+
 #### 还没做的
-- 跳片头/片尾：源站 detail 不带片头时间点，需要先有数据（原版靠 i18n 里那套
-  `skipIntroOutro` 设置 + 逐片标记），闸门已留好。
-- 播放中不阻止系统休眠（原版用 `wakelock_plus`，本工程还没引入这个依赖）。
 - 画质/音轨/字幕轨选择（原版 `player` 设置里的整组开关）。
+- 片头/片尾目前是**全局**一组数值，还没有「按剧集单独记」（原版也是全局，但可以做得更好）。
 
 ### Phase 4 — 外设模块
 弹幕（dandanplay）、刮削（TMDB/Bangumi/豆瓣）、下载、字幕、投屏 DLNA、
@@ -459,8 +486,8 @@ TV 端焦点导航（原版 `ui/tv/*` 共 9 个文件）、Android 适配、AI �
 
 3. **自动跳片头与续播争抢**：`skipIntroOutro` 的自动 seek 和 resume 定位抢同一次
    跳转。
-   → 对策：启动阶段串行化——先 resume，再跳片头，两次 seek 合并为一次最终目标。
-   **闸门已实现**（Phase 3），跳片头本身等数据。
+   → 对策：启动阶段合并——续播落点与片头区间算出**一个**目标再发一次 seek。
+   **已实现**（Phase 3 片头/片尾）。
 
 ## 六、运行时版本（与原版严格对齐）
 
@@ -496,7 +523,7 @@ flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
 flutter test                    # 冒烟测试
 ./assets/runtime/node/node.exe tool/verify_host.js  # 猫源宿主端到端自检
 
-# 播放时钟真机自检（真起 libmpv，取 build 产物里的 DLL；先 build 再跑）
+# 播放时钟 / 片头片尾 真机自检（真起 libmpv，取 build 产物里的 DLL；先 build 再跑）
 dart run tool/verify_clock_live.dart /path/to/clip.mp4
 ```
 

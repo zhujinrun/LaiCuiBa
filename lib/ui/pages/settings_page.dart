@@ -343,6 +343,44 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ];
 
+  /// The toggle's subtitle tells the truth about what will happen: an unset
+  /// duration means nothing is skipped even with the switch on.
+  String _skipRuleHint(AppStore store) {
+    if (!store.settings.skipIntroOutro) return '已关闭';
+    final intro = store.settings.introSkipMs;
+    final outro = store.settings.outroSkipMs;
+    if (intro <= 0 && outro <= 0) return '开关已开，但还没设时长，暂时不会跳';
+    return '按下面设置的秒数自动跳过';
+  }
+
+  String _skipLabel(int ms) => ms <= 0 ? '未设置' : '${ms ~/ 1000} 秒';
+
+  /// Sets one of the two durations. Zero means "not set" and is how the viewer
+  /// clears a value they no longer want.
+  Future<void> _editSkip(AppStore store, {required bool intro}) async {
+    final currentMs = intro
+        ? store.settings.introSkipMs
+        : store.settings.outroSkipMs;
+    final seconds = await showDialog<int>(
+      context: context,
+      barrierColor: const Color(0x78000000),
+      builder: (_) => _SecondsDialog(
+        title: intro ? '片头时长' : '片尾时长',
+        hint: intro ? '每集开头跳过多少秒' : '离结尾多少秒算看完',
+        seconds: currentMs ~/ 1000,
+      ),
+    );
+    if (seconds == null) return;
+    await store.updateSettings(
+      intro
+          ? store.settings.copyWith(introSkipMs: seconds * 1000)
+          : store.settings.copyWith(outroSkipMs: seconds * 1000),
+    );
+    if (!mounted) return;
+    final what = intro ? '片头' : '片尾';
+    _toast(seconds == 0 ? '已清除$what时长' : '$what已设为 $seconds 秒');
+  }
+
   /// Empties the watch history after a confirmation, so the row's count, the
   /// history page and the home rail all drop to zero together.
   Future<void> _clearHistory(AppStore store) async {
@@ -606,12 +644,28 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: CupertinoIcons.arrow_right_arrow_left,
               color: LcbColors.sysBlue,
               title: '跳过片头片尾',
-              subtitle: '自动跳过片头片尾',
+              subtitle: _skipRuleHint(store),
               toggle: true,
               toggleValue: store.settings.skipIntroOutro,
               onToggle: (v) => store.updateSettings(
                 store.settings.copyWith(skipIntroOutro: v),
               ),
+            ),
+            _Row(
+              icon: CupertinoIcons.timer,
+              color: LcbColors.sysTeal,
+              title: '片头时长',
+              subtitle: '每集开头自动跳过这么长',
+              value: _skipLabel(store.settings.introSkipMs),
+              onTap: () => _editSkip(store, intro: true),
+            ),
+            _Row(
+              icon: CupertinoIcons.time_solid,
+              color: LcbColors.sysTeal,
+              title: '片尾时长',
+              subtitle: '离结尾这么近就算看完，接着下一集',
+              value: _skipLabel(store.settings.outroSkipMs),
+              onTap: () => _editSkip(store, intro: false),
             ),
             _Row(
               icon: CupertinoIcons.speedometer,
@@ -980,6 +1034,113 @@ class _Switch extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Asks for one duration in seconds. Zero clears it.
+///
+/// Kept as a text field plus a few common values rather than a slider: people
+/// know their show's intro is "about a minute and a half", and a slider would
+/// make an exact 90 hard to hit.
+class _SecondsDialog extends StatefulWidget {
+  const _SecondsDialog({
+    required this.title,
+    required this.hint,
+    required this.seconds,
+  });
+
+  final String title;
+  final String hint;
+
+  /// Current value; zero shows an empty field.
+  final int seconds;
+
+  @override
+  State<_SecondsDialog> createState() => _SecondsDialogState();
+}
+
+class _SecondsDialogState extends State<_SecondsDialog> {
+  /// Anything past fifteen minutes is a mis-tap, not an intro.
+  static const _maxSeconds = 900;
+  static const _presets = [30, 60, 90, 120, 180];
+
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.seconds > 0 ? '${widget.seconds}' : '',
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  int get _value {
+    final parsed = int.tryParse(_controller.text.trim()) ?? 0;
+    return parsed < 0 ? 0 : (parsed > _maxSeconds ? _maxSeconds : parsed);
+  }
+
+  void _submit() => Navigator.of(context).pop(_value);
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text(
+        widget.title,
+        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+      ),
+      content: SizedBox(
+        width: 320,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              onSubmitted: (_) => _submit(),
+              decoration: InputDecoration(
+                hintText: widget.hint,
+                suffixText: '秒',
+                isDense: true,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final preset in _presets)
+                  ActionChip(
+                    label: Text('$preset 秒'),
+                    onPressed: () =>
+                        setState(() => _controller.text = '$preset'),
+                  ),
+                ActionChip(
+                  label: const Text('清除'),
+                  onPressed: () => setState(() => _controller.clear()),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              '留空或填 0 表示不跳。超过片长四成的设置不会生效，'
+              '以免把正片当成片头跳掉。',
+              style: TextStyle(fontSize: 12, color: Color(0xFF8A8A8F), height: 1.5),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        TextButton(onPressed: _submit, child: const Text('保存')),
+      ],
     );
   }
 }

@@ -683,6 +683,8 @@ class AppSettings {
     this.adaptiveColor = false,
     this.homeBannerEnabled = true,
     this.skipIntroOutro = true,
+    this.introSkipMs = 0,
+    this.outroSkipMs = 0,
     this.shortDramaPreload = false,
     this.secondHome = true,
     this.homeCategoryButton = true,
@@ -707,6 +709,12 @@ class AppSettings {
   final bool adaptiveColor;
   final bool homeBannerEnabled;
   final bool skipIntroOutro;
+
+  /// How long the intro and the credits are, in milliseconds, as the viewer
+  /// told us once. Zero means "not set" — the app never guesses a cut point,
+  /// because the sources do not report one.
+  final int introSkipMs;
+  final int outroSkipMs;
   final bool shortDramaPreload;
   final bool secondHome;
   final bool homeCategoryButton;
@@ -737,6 +745,8 @@ class AppSettings {
     bool? adaptiveColor,
     bool? homeBannerEnabled,
     bool? skipIntroOutro,
+    int? introSkipMs,
+    int? outroSkipMs,
     bool? shortDramaPreload,
     bool? secondHome,
     bool? homeCategoryButton,
@@ -760,6 +770,8 @@ class AppSettings {
       adaptiveColor: adaptiveColor ?? this.adaptiveColor,
       homeBannerEnabled: homeBannerEnabled ?? this.homeBannerEnabled,
       skipIntroOutro: skipIntroOutro ?? this.skipIntroOutro,
+      introSkipMs: introSkipMs ?? this.introSkipMs,
+      outroSkipMs: outroSkipMs ?? this.outroSkipMs,
       shortDramaPreload: shortDramaPreload ?? this.shortDramaPreload,
       secondHome: secondHome ?? this.secondHome,
       homeCategoryButton: homeCategoryButton ?? this.homeCategoryButton,
@@ -787,6 +799,8 @@ class AppSettings {
     'adaptiveColor': adaptiveColor,
     'homeBannerEnabled': homeBannerEnabled,
     'skipIntroOutro': skipIntroOutro,
+    'introSkipMs': introSkipMs,
+    'outroSkipMs': outroSkipMs,
     'shortDramaPreload': shortDramaPreload,
     'secondHome': secondHome,
     'homeCategoryButton': homeCategoryButton,
@@ -824,6 +838,8 @@ class AppSettings {
       adaptiveColor: pop('adaptiveColor', false),
       homeBannerEnabled: pop('homeBannerEnabled', true),
       skipIntroOutro: pop('skipIntroOutro', true),
+      introSkipMs: pop('introSkipMs', 0),
+      outroSkipMs: pop('outroSkipMs', 0),
       shortDramaPreload: pop('shortDramaPreload', false),
       secondHome: pop('secondHome', true),
       homeCategoryButton: pop('homeCategoryButton', true),
