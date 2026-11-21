@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 import 'core/app_info.dart';
 import 'core/store_scope.dart';
 import 'core/theme.dart';
+import 'services/py_runtime.dart';
 import 'services/runtime_paths.dart';
 import 'services/spider_session.dart';
 import 'services/store.dart';
@@ -26,24 +27,37 @@ Future<void> main() async {
   // Wire the catvod runtime when node.exe + cat_host.js are present, so search
   // and detail reach the real source. Absent binaries leave nothing to answer
   // spider requests, and the pages report that instead of showing samples.
-  final runtime = RuntimePaths.resolve(
-    executableDir: File(Platform.resolvedExecutable).parent.path,
-  );
+  final sep = Platform.pathSeparator;
+  final executableDir = File(Platform.resolvedExecutable).parent.path;
+  final appData = Platform.environment['APPDATA'];
+  final dataRoot = appData != null && appData.isNotEmpty
+      ? '$appData${sep}LaiCuiBa${sep}LaiCuiBa'
+      : '${Directory.systemTemp.path}${sep}lcb_data';
+
+  final runtime = RuntimePaths.resolve(executableDir: executableDir);
   if (runtime != null && runtime.available) {
-    final appData = Platform.environment['APPDATA'];
-    final catRoot = appData != null && appData.isNotEmpty
-        ? '$appData${Platform.pathSeparator}LaiCuiBa'
-              '${Platform.pathSeparator}LaiCuiBa'
-              '${Platform.pathSeparator}cat'
-        : '${Directory.systemTemp.path}${Platform.pathSeparator}lcb_cat';
     store.spider = SpiderSession(
       nodePath: runtime.node,
       hostScript: runtime.hostScript,
-      bundleRoot: Directory(catRoot),
+      bundleRoot: Directory('$dataRoot${sep}cat'),
     );
     debugPrint('LcbSpider: runtime ready (${runtime.node})');
   } else {
     debugPrint('LcbSpider: runtime absent, spider features unavailable');
+  }
+
+  // The TVBox (Python) runtime: same rule, a separate interpreter. Sources
+  // pulled from a config are fetched once and kept under `pysrc/`.
+  final pyPaths = PyRuntimePaths.resolve(executableDir: executableDir);
+  if (pyPaths.available) {
+    store.python = PyRuntime(
+      pythonPath: pyPaths.python,
+      hostScript: pyPaths.hostScript,
+      cacheDir: Directory('$dataRoot${sep}pysrc'),
+    );
+    debugPrint('LcbPy: runtime ready (${pyPaths.python})');
+  } else {
+    debugPrint('LcbPy: runtime absent, TVBox sources unavailable');
   }
 
   const options = WindowOptions(

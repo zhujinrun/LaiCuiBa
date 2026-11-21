@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -10,7 +11,11 @@ import 'emby_client.dart';
 import 'source_catalogue.dart';
 import 'source_probe.dart';
 import 'media_mount.dart';
+import 'play_target.dart';
+import 'py_runtime.dart';
 import 'spider_client.dart' show SpiderClass;
+import 'tvbox_catalogue.dart';
+import 'tvbox_source.dart';
 import 'webdav_client.dart';
 import 'spider_session.dart';
 
@@ -43,6 +48,11 @@ class AppStore extends ChangeNotifier {
   /// in which case nothing can answer a spider request, and the pages say so
   /// rather than filling in fixtures.
   SpiderSession? spider;
+
+  /// The TVBox (Python) runtime, also wired up lazily. Null when the embedded
+  /// interpreter is absent -- the same rule as [spider]: no runtime, no answer,
+  /// and the pages say so.
+  PySources? python;
 
   /// Test seam: when set, [searchRealStream] answers from here instead of the
   /// cat host. The search page is worth exercising without node.exe, and a stub
@@ -508,6 +518,121 @@ class AppStore extends ChangeNotifier {
     return (source.id, url);
   }
 
+  // -------------------------------------------------------------------------
+  // Python (TVBox) sources
+  //
+  // Two shapes reach the Python host: an imported `main.py` (type `py`, its url
+  // is the file) and a TVBox config whose sites each point at one (`api` ends
+  // in `.py`, possibly remote). Both are expressed as [SiteInfo] so everything
+  // above this line -- routing, detail, play -- has one shape to reason about.
+  // -------------------------------------------------------------------------
+
+  /// True when [api] names a Python source rather than a catvod bundle.
+  ///
+  /// Only the extension is checked, because the two runtimes address their
+  /// sources the same way otherwise (`http(s)://…/main.py` is a normal TVBox
+  /// api, and a config written on Windows may carry a backslash path).
+  static bool _isPyApi(String api) {
+    final address = api.trim().toLowerCase();
+    if (address.isEmpty) return false;
+    final path = address.split('?').first;
+    return path.endsWith('.py');
+  }
+
+  /// The sites of [source] the Python host can run.
+  ///
+  /// A `py` source is one site that happens to be a single file: its own id is
+  /// used as the site key, which keeps history rows and detail lookups stable
+  /// without inventing a site that the user never saw.
+  List<SiteInfo> pySitesOf(SourceInfo? source) {
+    if (source == null) return const [];
+    if (source.type == 'py') {
+      if (!_isPyApi(source.url)) return const [];
+      return [
+        SiteInfo(key: source.id, name: source.name, api: source.url),
+      ];
+    }
+    if (source.type == 'tvbox') {
+      return [
+        for (final site in source.sites)
+          if (_isPyApi(site.api)) site,
+      ];
+    }
+    return const [];
+  }
+
+  /// The site the home page should draw from: the one the config nominated,
+  /// else the first enabled Python site.
+  SiteInfo? pyHomeSiteOf(SourceInfo? source) {
+    final sites = pySitesOf(source);
+    if (sites.isEmpty) return null;
+    final wanted = source?.homeSite ?? '';
+    for (final site in sites) {
+      if (site.key == wanted && site.enabled) return site;
+    }
+    for (final site in sites) {
+      if (site.enabled) return site;
+    }
+    return sites.first;
+  }
+
+  /// True when the active source answers the home screen through the Python
+  /// host.
+  bool get hasPyHome {
+    final source = currentSource;
+    return python != null && source != null && pyHomeSiteOf(source) != null;
+  }
+
+  /// True when the player must ask the source for its final URL instead of
+  /// playing the address the detail handed out.
+  ///
+  /// TVBox's `playerContent` is what turns a `play_url` entry into an actual
+  /// stream (and attaches the headers some CDNs require); playing the raw entry
+  /// works only for the sources that already point at an m3u8.
+  bool get resolvesPlayUrl {
+    final source = currentSource;
+    return python != null && pySitesOf(source).isNotEmpty;
+  }
+
+  /// The active source's home rails through the Python host, or null when it
+  /// does not run there.
+  Future<CatalogueFeed?> pyCatalogue() async {
+    final runtime = python;
+    final source = currentSource;
+    if (runtime == null || source == null) return null;
+    final site = pyHomeSiteOf(source);
+    if (site == null) return null;
+    final client = await runtime.sourceFor(source: source, site: site);
+    if (client == null) {
+      return CatalogueFeed.failure(
+        runtime.lastError ?? 'Python 宿主没有启动',
+        siteName: site.name,
+      );
+    }
+    return TvBoxCatalogue(client, siteName: site.name).load();
+  }
+
+  /// The Python client behind one [site] of the active source.
+  Future<TvBoxSource?> _pyClientFor(SourceInfo source, SiteInfo site) async {
+    final runtime = python;
+    if (runtime == null) return null;
+    return runtime.sourceFor(source: source, site: site);
+  }
+
+  /// The site an item came back from. A `py` source has exactly one, so an
+  /// untagged row (a favourite carried across a re-import, say) still resolves.
+  SiteInfo? _pySiteOf(SourceInfo source, MediaItem item) {
+    final sites = pySitesOf(source);
+    if (sites.isEmpty) return null;
+    final key = item.siteKey;
+    if (key != null) {
+      for (final site in sites) {
+        if (site.key == key) return site;
+      }
+    }
+    return sites.first;
+  }
+
   /// Whether [source] is a media mount (Emby / Jellyfin) rather than a scraper.
   ///
   /// Kept as one predicate because three call sites must agree on it: which
@@ -570,7 +695,8 @@ class AppStore extends ChangeNotifier {
   bool get canSearchReal =>
       searchStub != null ||
       (spider != null && _jsSource() != null) ||
-      mountClientOf(currentSource) != null;
+      mountClientOf(currentSource) != null ||
+      (python != null && pySitesOf(currentSource).isNotEmpty);
 
   /// The active mount's library, newest first, for the home rails.
   ///
@@ -631,7 +757,7 @@ class AppStore extends ChangeNotifier {
     final mount = mountClientOf(currentSource);
     if (mount != null) {
       try {
-        final items = _filterMountHits(await mount.search(keyword), strict, keyword);
+        final items = _applyStrict(await mount.search(keyword), strict, keyword);
         return SpiderSearch(
           groups: [
             SpiderSearchSite(site: currentSource!.name, items: items),
@@ -674,6 +800,11 @@ class AppStore extends ChangeNotifier {
     final mount = mountClientOf(currentSource);
     if (mount != null) return _mountSearchStream(mount, keyword, strict);
 
+    final pySites = pySitesOf(currentSource);
+    if (python != null && pySites.isNotEmpty) {
+      return _pySearchStream(currentSource!, pySites, keyword, strict);
+    }
+
     final session = spider;
     final js = _jsSource();
     if (session == null || js == null) return null;
@@ -697,7 +828,7 @@ class AppStore extends ChangeNotifier {
     bool strict,
   ) async* {
     try {
-      final hits = _filterMountHits(await client.search(keyword), strict, keyword);
+      final hits = _applyStrict(await client.search(keyword), strict, keyword);
       // Always one group, even when it is empty: an empty group says "your
       // library has nothing matching", which is a different statement from
       // "the search never ran".
@@ -710,11 +841,12 @@ class AppStore extends ChangeNotifier {
     }
   }
 
-  /// Applies 严格 to a mount's hits. Emby's `SearchTerm` is a fuzzy contains
-  /// match, so strict has to be applied here or the toggle would do nothing on
-  /// an Emby source. Comparison ignores spaces and case, because a library
-  /// titled `流浪 地球` should still be an exact hit for `流浪地球`.
-  List<MediaItem> _filterMountHits(
+  /// Applies 严格 to hits the server matched fuzzily. Emby's `SearchTerm` and a
+  /// TVBox source's `searchContent` both return contains-matches, so strict has
+  /// to be applied here or the toggle would do nothing on those sources.
+  /// Comparison ignores spaces and case, because a library titled `流浪 地球`
+  /// should still be an exact hit for `流浪地球`.
+  List<MediaItem> _applyStrict(
     List<MediaItem> items,
     bool strict,
     String keyword,
@@ -729,6 +861,55 @@ class AppStore extends ChangeNotifier {
               wanted,
         )
         .toList(growable: false);
+  }
+
+  /// One group per Python site, emitted as each answers -- the same contract as
+  /// the 猫源 stream, so the search page does not care which runtime produced
+  /// the rows. A site that fails contributes no group (a dead site is not a
+  /// statement that the title does not exist); cancel by unsubscribing, which
+  /// closes the controller and stops waiting for the stragglers.
+  Stream<SpiderSearchSite> _pySearchStream(
+    SourceInfo source,
+    List<SiteInfo> sites,
+    String keyword,
+    bool strict,
+  ) {
+    final controller = StreamController<SpiderSearchSite>();
+    controller.onCancel = () {
+      if (!controller.isClosed) controller.close();
+    };
+    Future<void>(() async {
+      await Future.wait([
+        for (final site in sites)
+          _searchOnePySite(source, site, keyword, strict, controller),
+      ]);
+      if (!controller.isClosed) await controller.close();
+    });
+    return controller.stream;
+  }
+
+  Future<void> _searchOnePySite(
+    SourceInfo source,
+    SiteInfo site,
+    String keyword,
+    bool strict,
+    StreamController<SpiderSearchSite> sink,
+  ) async {
+    try {
+      final client = await _pyClientFor(source, site);
+      if (client == null) return;
+      final page = await client.search(keyword);
+      if (sink.isClosed) return;
+      sink.add(
+        SpiderSearchSite(
+          site: site.name,
+          items: _applyStrict(page.items, strict, keyword),
+        ),
+      );
+    } on Object {
+      // A source that raises is a source with nothing to show here; the other
+      // sites' results still arrive.
+    }
   }
 
   /// Fetches the full record for [item] from its site. Returns null when the
@@ -747,6 +928,22 @@ class AppStore extends ChangeNotifier {
         return null;
       } finally {
         mount.close();
+      }
+    }
+
+    final pySites = pySitesOf(currentSource);
+    if (python != null && pySites.isNotEmpty) {
+      final source = currentSource!;
+      final site = _pySiteOf(source, item);
+      if (site == null) return null;
+      try {
+        final client = await _pyClientFor(source, site);
+        if (client == null) return null;
+        return await client.detail(item);
+      } on Object {
+        // A TVBox source that cannot answer leaves the row on screen; the
+        // player then says the URL is missing rather than the page dying.
+        return null;
       }
     }
 
@@ -776,6 +973,22 @@ class AppStore extends ChangeNotifier {
     String? flag,
     int? nid,
   }) async {
+    final target = await playTargetReal(item, flag: flag, nid: nid);
+    return target?.url;
+  }
+
+  /// The URL **and** the headers the player must send to open one episode.
+  ///
+  /// Headers matter for two of the three source kinds and are empty for the
+  /// third: a WebDAV share needs Basic auth, a TVBox source may demand the
+  /// referer it scraped with, and an Emby stream carries its token in the URL.
+  /// Returning them together is what lets the caller open the player once
+  /// instead of resolving, then discovering a second answer.
+  Future<PlayTarget?> playTargetReal(
+    MediaItem item, {
+    String? flag,
+    int? nid,
+  }) async {
     final mount = mountClientOf(currentSource);
     if (mount != null) {
       try {
@@ -786,13 +999,19 @@ class AppStore extends ChangeNotifier {
           for (final line in item.playLines) ...line.episodes,
         ];
         final index = nid ?? 0;
-        if (index >= 0 && index < episodes.length) {
-          return episodes[index].url;
-        }
-        return mount.streamUrl(item.id);
+        final url = (index >= 0 && index < episodes.length)
+            ? episodes[index].url
+            : mount.streamUrl(item.id);
+        if (url.isEmpty) return null;
+        return PlayTarget(url: url, headers: mount.playbackHeaders);
       } finally {
         mount.close();
       }
+    }
+
+    final pySites = pySitesOf(currentSource);
+    if (python != null && pySites.isNotEmpty) {
+      return _pyPlayTarget(currentSource!, item, flag: flag, nid: nid);
     }
 
     final session = spider;
@@ -803,7 +1022,7 @@ class AppStore extends ChangeNotifier {
     if (site == null) return null;
     final vodId = item.id;
     if (vodId.isEmpty) return null;
-    return session.play(
+    final url = await session.play(
       sourceId: js.$1,
       md5Url: js.$2,
       site: site,
@@ -811,6 +1030,49 @@ class AppStore extends ChangeNotifier {
       flag: flag,
       nid: nid,
     );
+    if (url == null || url.isEmpty) return null;
+    return PlayTarget(url: url);
+  }
+
+  /// Asks a TVBox source's `playerContent` about one episode.
+  ///
+  /// The id passed along is the episode's own address from the play line, which
+  /// is what the source's `playerContent(flag, id, vipFlags)` expects -- its
+  /// site key already rode along on the item, so no lookup is needed here.
+  Future<PlayTarget?> _pyPlayTarget(
+    SourceInfo source,
+    MediaItem item, {
+    String? flag,
+    int? nid,
+  }) async {
+    final site = _pySiteOf(source, item);
+    if (site == null) return null;
+    final lines = item.playLines;
+    PlayLine? line;
+    if (flag != null) {
+      for (final candidate in lines) {
+        if (candidate.name == flag) {
+          line = candidate;
+          break;
+        }
+      }
+    }
+    line ??= lines.isEmpty ? null : lines.first;
+    if (line == null || line.episodes.isEmpty) return null;
+    final index = (nid ?? 0).clamp(0, line.episodes.length - 1);
+    final id = line.episodes[index].url;
+    if (id.isEmpty) return null;
+    try {
+      final client = await _pyClientFor(source, site);
+      if (client == null) return null;
+      final answer = await client.playTarget(flag: line.name, id: id);
+      if (answer == null || answer.url.isEmpty) return null;
+      return PlayTarget(url: answer.url, headers: answer.headers);
+    } on Object {
+      // A source that cannot answer leaves the player closed; the page already
+      // owns the "cannot play this" wording.
+      return null;
+    }
   }
 
   /// The saved position for [item], for 续播, together with the duration it was
@@ -1067,6 +1329,23 @@ class AppStore extends ChangeNotifier {
       } finally {
         mount.close();
       }
+    }
+
+    final pySites = pySitesOf(source);
+    final runtime = python;
+    if (runtime != null && pySites.isNotEmpty) {
+      final site = pyHomeSiteOf(source) ?? pySites.first;
+      final client = await runtime.sourceFor(source: source, site: site);
+      if (client == null) {
+        final failed = ProbeReport.failure(
+          runtime.lastError ?? 'Python 宿主没有启动',
+        );
+        await applyProbe(source.id, failed);
+        return failed;
+      }
+      final report = await client.probe(siteCount: pySites.length);
+      await applyProbe(source.id, report);
+      return report;
     }
 
     final session = spider;

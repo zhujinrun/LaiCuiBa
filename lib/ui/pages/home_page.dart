@@ -57,7 +57,7 @@ class _HomePageState extends State<HomePage> {
   /// the home screen itself. The store notifies on selection and source edits,
   /// so this runs on every change that could matter.
   void _syncFeed(AppStore store) {
-    final answers = store.hasMount || store.hasSpiderHome;
+    final answers = store.hasMount || store.hasSpiderHome || store.hasPyHome;
     final id = answers ? store.currentSource?.id : null;
     if (id == _askedId) return;
     setState(() {
@@ -82,7 +82,11 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    final feed = await store.spiderCatalogue();
+    // Either real runtime can answer the front page; which one is the source's
+    // business, not the page's. Both return null when the source is not theirs.
+    final feed = store.hasPyHome
+        ? await store.pyCatalogue()
+        : await store.spiderCatalogue();
     if (!mounted || _askedId != id) return;
     setState(() {
       if (feed == null || !feed.ok) {
@@ -90,7 +94,7 @@ class _HomePageState extends State<HomePage> {
         // and it made a dead source look exactly like a working one -- the whole
         // reason the fixtures are off.
         _failed = true;
-        _feedError = feed?.error ?? '宿主没有返回片单';
+        _feedError = feed?.error ?? '源没有返回片单';
         return;
       }
       _sections = feed.sections;

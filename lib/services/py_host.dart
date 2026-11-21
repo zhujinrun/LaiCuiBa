@@ -123,8 +123,19 @@ class PyHost {
 
   /// Asks the source to answer a `/proxy?do=…` request. The body comes back
   /// base64 so binary content (playlists, images, segments) survives the pipe.
-  Future<PyProxyResponse> proxy(Map<String, dynamic> params) async {
-    final reply = await _send('proxy', {'params': jsonEncode(params)});
+  ///
+  /// [timeout] is separate from [callTimeout] because a proxy hop usually means
+  /// the source is fetching a remote object first, which costs more time than
+  /// parsing its own JSON.
+  Future<PyProxyResponse> proxy(
+    Map<String, dynamic> params, {
+    Duration? timeout,
+  }) async {
+    final reply = await _send(
+      'proxy',
+      {'params': jsonEncode(params)},
+      timeout: timeout,
+    );
     final result = reply['result'];
     if (result is! Map) {
       throw const PyHostException('代理返回了非对象结果');

@@ -17,6 +17,8 @@ import 'package:lai_cui_ba/services/spider_session.dart';
 import 'package:lai_cui_ba/services/store.dart';
 import 'package:lai_cui_ba/ui/shell.dart';
 
+import 'support/fake_py_host.dart';
+
 /// Stands in for the cat host's detail action: fills in the fields a result row
 /// cannot carry (episode list, cast, genres) the way a source does. The detail
 /// page has to render a real record, and the fixtures that used to supply one
@@ -704,6 +706,47 @@ void main() {
     // says whose empty library this is instead.
     expect(find.text(demo.homeSections.first.title), findsNothing);
     expect(find.text('客厅 Emby 的影片库里还没有内容'), findsOneWidget);
+  });
+
+  testWidgets('a Python source owns 首页 and draws its own rails', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+    final host = FakePyHost(
+      bodies: {
+        'home': (_) => '{"class":[{"type_id":"1","type_name":"纪录片"}]}',
+        'category': (_) =>
+            '{"list":[{"vod_id":"1001","vod_name":"夹具电影",'
+                '"vod_pic":"http://example.invalid/m.jpg","vod_remarks":"HD"}]}',
+      },
+    );
+    store.python = FakePySources(host);
+    await store.addSource(
+      const SourceInfo(
+        id: 'py-home',
+        type: 'py',
+        name: '本地 Python 源',
+        url: r'D://sources//main.py',
+      ),
+    );
+    await store.selectSource('py-home');
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // The rail header is the category the source declared, and the card is the
+    // title it answered with -- not a fixture that happens to look similar.
+    expect(find.text('纪录片'), findsWidgets);
+    expect(find.text('夹具电影'), findsWidgets);
+    // The bundled rails are off; their first title would give them away.
+    expect(find.text(demo.homeSections.first.items.first.title), findsNothing);
   });
 
   testWidgets('a 猫源 that cannot answer says so on 首页', (

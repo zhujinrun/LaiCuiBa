@@ -29,7 +29,7 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
 | --- | --- |
 | Phase 0 — 界面骨架 | ✅ 完成 |
 | Phase 1 — 数据层与页面闭环 | ✅ 完成（详情页 + 搜索页都已落地） |
-| Phase 2 — 源接入（灵魂） | 🔶 大部分（源→站点→联网拉取→猫源宿主→搜索/详情/播放/首页片单已通；Emby/Jellyfin 与 WebDAV/AList 挂载已通；**Python(TVBox) 宿主与客户端已通、未接进 store**） |
+| Phase 2 — 源接入（灵魂） | 🔶 大部分（源→站点→联网拉取→猫源宿主→搜索/详情/播放/首页片单已通；Emby/Jellyfin 与 WebDAV/AList 挂载已通；**Python(TVBox) 宿主、客户端与 store 接入全通**） |
 | Phase 3 — 播放链路 | 🔶 核心（播放时钟 + 续播校验 + 位置可信度已落地；跳片头等数据、休眠锁未接） |
 | Phase 4 — 外设模块 | ⬜ 未开始 |
 | Phase 5 — 多端 | ⬜ 未开始 |
@@ -91,8 +91,13 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
 - **Python（TVBox）源宿主**：`assets/runtime/pyhost/py_host.py`（行-JSON 协议、每请求一线程、
   stdout 只给协议）+ `base/spider.py`（按契约重写）+ `services/py_host.dart`（进程 + id 配对）
   + `services/tvbox_source.dart`（home/category/search/detail/play → 模型）；
-  `test/py_host_e2e_test.dart` 真起 `python.exe` 跑夹具源 17 项断言。**还没接进 store**
-  （`tvbox` 类型、`/proxy` 与 `/cache` 端点）。**240 个测试全绿**。
+  `test/py_host_e2e_test.dart` 真起 `python.exe` 跑夹具源 17 项断言（**当轮还没接进 store**）。
+  **240 个测试全绿**。
+- **TVBox 接进界面**：`services/py_runtime.dart`（懒启动 + 远端 api 下载缓存）、
+  `services/local_proxy.dart`（`/proxy` + `/cache` 只绑回环）、`services/tvbox_catalogue.dart`
+  （首页片单）；store 的首页/搜索/详情/播放/检测五条路径都分流到 `TvBoxSource`；`py` 卡片
+  走真检测。真机截图确认首页画出夹具源的 hero 与「电影」分区。
+  e2e 加到 `py_runtime_e2e_test.dart`（含 store 串联）。**271 个测试全绿**。
 - **播放时钟落地（Phase 3 核心）**：`services/playback_clock.dart` 收口所有 seek，进度条在时长未知时
   不可拖动，续播位置带 `totalMs` 由播放器用真实时长复核（跨时间轴拒绝、漂移不落盘）；
   新增 `tool/verify_clock_live.dart` 真起 libmpv 自检 9 项；音量/倍速也随关闭持久化。
@@ -242,9 +247,8 @@ lib/
 - 老数据迁移：`flutter.sources` 里无 `sites` 的演示源在 load 时补种（有回归测试）
 
 **未完成**
-- TVBox：CPython + JS spider（参考原版 `py_host`/`spider_channel`）——需要原版 `python/` 二进制
-- 本地 spider 文件直接执行（需要站点 key/type，纯文件路径给不出来）
-- ⚠️ 以上都依赖原版包 `node/`、`python/` 二进制 + 联网，**不适合无人值守推进**
+- TVBox 聚合源（`SITES` 展开 / `wrap`）与 `api` 是 `.js` 的站点
+- 本地 js spider 直接执行（猫源宿主只认订阅目录，不认单个文件）
 
 **已完成（Emby / Jellyfin 挂载，2026-11-21）**
 
@@ -424,7 +428,7 @@ TV 焦点导航（原版 `ui/tv/*` 9 个文件）、Android 适配、AI 辅助�
 cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
-flutter test                    # 冒烟测试（当前 240 个全绿）
+flutter test                    # 冒烟测试（当前 271 个全绿）
 flutter analyze                 # 静态检查（当前零问题）
 dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 
@@ -436,8 +440,8 @@ bash tool/sync_runtime.sh
 dart run tool/verify_clock_live.dart /path/to/clip.mp4
 ```
 
-`tool/sync_runtime.sh` 现在同时同步 node.exe 与整份 CPython（39MB，git-ignored）到
-`assets/runtime/` 与 build 产物旁；宿主脚本在 `assets/runtime/pyhost/`（入库）。
+`tool/sync_runtime.sh` 同步 node.exe、整份 CPython（39MB，git-ignored）与 `pyhost/`
+宿主脚本到 `assets/runtime/` 与 build 产物旁；运行时二进制不进 git。
 
 环境约束：
 - Flutter/Dart 版本锁在 `.fvmrc`、`.flutter-version`、`pubspec.yaml` 三处，勿升级。
@@ -458,6 +462,25 @@ dart run tool/verify_clock_live.dart /path/to/clip.mp4
    LaiCuiBa 目前还没到发版阶段，暂无版本号同步需求）。
 4. 像素测量一律走 `.probe/measure.py`，强制窗口 1920×1040。
 
+**已完成（Python / TVBox 接入，2026-11-21）**
+
+- `SourceInfo` 不需要新类型：导入的 `main.py` 早就以 `type: 'py'` 存着，配置里的站点
+  也带着 `api`。缺的是「谁来跑它」——`pySitesOf()` 把两种形状统一成 `SiteInfo`
+  （`py` 源 = 一个站点，key 用源 id），之后所有链路只认站点。
+- `PyRuntime.sourceFor(source, site)`：首次用到才起 `python.exe` + 回环代理端口；
+  api 是本地路径就直接用，是 http 地址就下载到 `<appdata>/LaiCuiBa/LaiCuiBa/pysrc/<md5>.py`
+  （同址只下一次）。
+- `LocalProxyServer`：`/proxy` 原样转发给源的 `localProxy(params)`（海报、m3u8 都靠它），
+  `/cache` 实现 `get+set+del`；只绑 127.0.0.1，转发响应时剔掉 `content-length` 等框架头。
+- 首页：`TvBoxCatalogue` 取分类 → 并发取前 5 个分类第一页 → 空分类丢掉；都没片单时说
+  「××的 N 个分类下暂时没有片单」。
+- 搜索：按站点并发，各出一组（名 = 站点名），`严格` 在本地按标题精确过滤（源是模糊匹配）；
+  失败站点不出组。详情：item 上的 `siteKey` 找回同一个 api。播放：**一定**过
+  `playerContent`（`store.resolvesPlayUrl`），URL 与 `header` 一起拿回，交给播放器。
+- 检测：`TvBoxSource.probe()` 真跑一次，写回分类数与首页片数；`py` 卡片从
+  「待宿主执行」变成实测数字。
+- 缺口：聚合源、`.js` 站点、本地 js spider 仍未接（会得到真实错误，不是空列表）。
+
 ---
 
 ## 九、下一步建议
@@ -473,9 +496,9 @@ dart run tool/verify_clock_live.dart /path/to/clip.mp4
      与账号，能连上才保存；保存后首页画目录、详情画选集。
 2. 验收无误后由**用户自己**推送（AI 不 push）：`git push -u origin master`。
 3. 下一步自然顺序：
-   - **TVBox/CPython 源宿主**（饭太硬等 json 源），需要原版 `python/` 二进制，属打包工程；
-   - **跳片头 / 倍速与音量记忆 / 防休眠**（Phase 3 剩下的）：跳片头等源站给片头时间点，
-     `PlaybackClock` 的闸门已留好；后两项是纯本地活；
+   - **TVBox 聚合源 / `.js` 站点**：`SITES` 展开与 `wrap` 形态，以及把 `.js` 站点桥到猫源宿主；
+   - **跳片头 / 防休眠**（Phase 3 剩下的）：跳片头等源站给片头时间点，`PlaybackClock`
+     的闸门已留好；防休眠要引入 `wakelock_plus`；
    - 或纯本地收尾：设置页「媒体徽章」子页（**Phase 1 唯一剩下的一项**，现在是死控件）。
 
 ---

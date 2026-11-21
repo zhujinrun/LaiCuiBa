@@ -43,15 +43,22 @@ for target in \
   fi
 done
 
-# Python 运行时也要落到产物旁边，RuntimePaths 从 exe 目录找。
-for target in \
-  "$HERE/build/windows/x64/runner/Debug/runtime/python" \
-  "$HERE/build/windows/x64/runner/Release/runtime/python"; do
-  if [ -d "$(dirname "$(dirname "$target")")" ] && [ -d "$HERE/assets/runtime/python" ]; then
-    mkdir -p "$target"
-    cp -r "$HERE/assets/runtime/python/." "$target/"
-    echo "已同步 $target"
+# Python 运行时也要落到产物旁边，RuntimePaths 从 exe 目录找。宿主脚本
+# `pyhost/` 同样要在，否则解释器在、协议没人说。
+for root in \
+  "$HERE/build/windows/x64/runner/Debug/runtime" \
+  "$HERE/build/windows/x64/runner/Release/runtime"; do
+  if [ ! -d "$(dirname "$root")" ]; then
+    continue
   fi
+  if [ -d "$HERE/assets/runtime/python" ]; then
+    mkdir -p "$root/python"
+    cp -r "$HERE/assets/runtime/python/." "$root/python/"
+    echo "已同步 $root/python"
+  fi
+  mkdir -p "$root/pyhost"
+  cp -r "$HERE/assets/runtime/pyhost/." "$root/pyhost/"
+  echo "已同步 $root/pyhost"
 done
 
 echo "完成。node.exe / python 已就位（不提交到 git）。"

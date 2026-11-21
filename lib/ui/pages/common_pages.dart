@@ -155,9 +155,11 @@ class _SourceCard extends StatelessWidget {
         }
         return '直播地址 · 待联网解析';
       case 'py':
+        // A Python source is one file that is its own site; 检测 runs it.
+        return _measuredLine;
       case 'php':
-        // A spider file declares its sites only when something runs it.
-        return '本地 spider 文件 · 待宿主执行';
+        // No PHP runtime in this build, so the file is kept but never run.
+        return '本地 spider 文件 · 无 PHP 运行时';
       case 'js':
         // A js source is either a local spider file or a subscription address;
         // only the latter can be booted, so only the latter can be measured.

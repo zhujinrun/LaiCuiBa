@@ -164,6 +164,27 @@ class _ShellState extends State<Shell> {
         : (lines.isNotEmpty ? lines.first : null);
     final eps = line?.episodes ?? const <PlayEpisode>[];
 
+    // A TVBox source's play_url entries are inputs to its playerContent, not
+    // final addresses: only playerContent knows the real stream, and some CDNs
+    // only serve it to the referer the source scraped with. Resolve through the
+    // source even though the row already carries a URL.
+    if (_store.resolvesPlayUrl) {
+      _store
+          .playTargetReal(item, flag: line?.name, nid: episodeIndex)
+          .then((target) {
+            if (!mounted || target == null || target.url.isEmpty) return;
+            if (_detail?.id != item.id) return; // user navigated away
+            _showPlayer(
+              item,
+              episodeIndex,
+              lineIndex,
+              target.url,
+              extraHeaders: target.headers,
+            );
+          });
+      return;
+    }
+
     String? url;
     if (eps.isNotEmpty) {
       final i = (episodeIndex ?? 0).clamp(0, eps.length - 1);
@@ -189,8 +210,9 @@ class _ShellState extends State<Shell> {
     MediaItem item,
     int? episodeIndex,
     int lineIndex,
-    String url,
-  ) {
+    String url, {
+    Map<String, String> extraHeaders = const {},
+  }) {
     // Resume from the saved position, but only when the requested episode is
     // the one the history row recorded (a fresh episode starts from zero). The
     // row's total rides along: the player rejects the position if the stream it
@@ -202,7 +224,7 @@ class _ShellState extends State<Shell> {
       _player = _PlayerSession(
         title: item.title,
         url: url,
-        headers: _store.playbackHeaders,
+        headers: {..._store.playbackHeaders, ...extraHeaders},
         subtitle: StoreScope.of(context).siteNameOfKey(
           item.siteKey,
           fallback: item.sourceName ?? '',

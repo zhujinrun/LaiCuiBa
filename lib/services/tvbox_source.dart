@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../models/models.dart';
 import 'py_host.dart';
+import 'source_probe.dart';
 import 'spider_client.dart';
 
 /// One TVBox (Python) source, spoken to through [PyHost].
@@ -22,6 +23,7 @@ class TvBoxSource {
     required this.key,
     required this.path,
     this.ext = '',
+    this.siteKey,
   });
 
   final PyHost host;
@@ -35,6 +37,11 @@ class TvBoxSource {
 
   /// The `extend` string TVBox passes to `init`.
   final String ext;
+
+  /// The site these rows belong to, when the source came out of a config with
+  /// several of them. Every [MediaItem] this class produces is tagged with it,
+  /// because detail and play need to come back to the same site's api.
+  final String? siteKey;
 
   /// `home` → categories. Filters are dropped: the original's 筛选 panel is
   /// not built yet, and inventing a UI for them would be a guess.
@@ -73,24 +80,27 @@ class TvBoxSource {
       if (raw is! Map) continue;
       final full = SpiderClient.vodToItem(
         Map<String, dynamic>.from(raw),
-        item.siteKey,
+        item.siteKey ?? siteKey,
       );
       // Play lines are the point of this call; a body without them means the
       // source knows the title but cannot play it, which is worth surfacing as
       // "no result" rather than an empty player.
       if (full.playLines.isEmpty) continue;
-      return full.withSiteKey(item.siteKey);
+      return full.withSiteKey(item.siteKey ?? siteKey);
     }
     return null;
   }
 
-  /// `playerContent` → a direct URL, or null when the source wants a browser
-  /// parser instead (`parse: 1`, i.e. a vip/jx URL we cannot resolve).
+  /// `playerContent` → a playable URL plus the headers it asked for, or null
+  /// when the source wants a browser parser instead (`parse: 1`, i.e. a vip/jx
+  /// URL we cannot resolve).
   ///
   /// Most TVBox sources answer `parse: 0` with a playable `url`; anything else
   /// needs a jx parser the app does not have yet, so it says so by returning
-  /// null instead of handing the player an unusable address.
-  Future<String?> play({
+  /// null instead of handing the player an unusable address. One call answers
+  /// both questions -- asking twice per play would run the source's own
+  /// resolution twice, and some of those cost a network round-trip.
+  Future<TvBoxPlay?> playTarget({
     required String flag,
     required String id,
     List<String> vipFlags = const [],
@@ -100,9 +110,18 @@ class TvBoxSource {
     final parse = json['parse'];
     final parseFlag = parse is num ? parse.toInt() : int.tryParse('$parse') ?? 0;
     final url = '${json['url'] ?? ''}'.trim();
-    if (url.isEmpty) return null;
-    if (parseFlag != 0) return null;
-    return url;
+    if (url.isEmpty || parseFlag != 0) return null;
+    return TvBoxPlay(url: url, headers: _headersOf(json['header']));
+  }
+
+  /// The URL alone, for callers that do not need the headers.
+  Future<String?> play({
+    required String flag,
+    required String id,
+    List<String> vipFlags = const [],
+  }) async {
+    final target = await playTarget(flag: flag, id: id, vipFlags: vipFlags);
+    return target?.url;
   }
 
   /// Request headers the source attached to the play URL (`header`).
@@ -111,12 +130,41 @@ class TvBoxSource {
     required String id,
     List<String> vipFlags = const [],
   }) async {
-    final json = await _map('player', [flag, id, vipFlags]);
-    final header = json?['header'];
-    if (header is! Map) return const {};
+    final target = await playTarget(flag: flag, id: id, vipFlags: vipFlags);
+    return target?.headers ?? const {};
+  }
+
+  static Map<String, String> _headersOf(Object? raw) {
+    if (raw is! Map) return const {};
     return {
-      for (final entry in header.entries) '${entry.key}': '${entry.value}',
+      for (final entry in raw.entries) '${entry.key}': '${entry.value}',
     };
+  }
+
+  /// Boots the source and reads enough of it to answer 检测: how many
+  /// categories it declares and how many titles its first one holds.
+  ///
+  /// Same shape as [SourceProbe]'s answer for a 猫源 -- a first-screen count, not
+  /// a library total -- so the card reads the same whichever runtime served it.
+  Future<ProbeReport> probe({int siteCount = 0}) async {
+    final watch = Stopwatch()..start();
+    try {
+      final classes = await home();
+      var count = 0;
+      if (classes.isNotEmpty) {
+        final page = await category(classes.first.typeId);
+        count = page.items.map((item) => item.id).toSet().length;
+      }
+      return ProbeReport(
+        latencyMs: watch.elapsedMilliseconds,
+        movieCount: count,
+        showCount: classes.length,
+        siteCount: siteCount,
+        note: classes.isEmpty ? '源没有返回分类' : null,
+      );
+    } on Object catch (e) {
+      return ProbeReport.failure('$e', latencyMs: watch.elapsedMilliseconds);
+    }
   }
 
   Future<SpiderList> _list(String method, List<Object?> args) async {
@@ -126,7 +174,7 @@ class TvBoxSource {
     for (final row in raw) {
       if (row is! Map) continue;
       items.add(
-        SpiderClient.vodToItem(Map<String, dynamic>.from(row), null),
+        SpiderClient.vodToItem(Map<String, dynamic>.from(row), siteKey),
       );
     }
     return SpiderList(
@@ -158,4 +206,12 @@ class TvBoxSource {
       return null;
     }
   }
+}
+
+/// One `playerContent` answer: where to play from, and what to send with it.
+class TvBoxPlay {
+  const TvBoxPlay({required this.url, this.headers = const {}});
+
+  final String url;
+  final Map<String, String> headers;
 }

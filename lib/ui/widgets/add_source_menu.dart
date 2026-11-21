@@ -80,7 +80,7 @@ void _run(BuildContext context, AddSourceAction action) {
           title: 'TVBox 影视源',
           nameHint: '名称（如：某某接口）',
           urlHint: '配置地址，例如 https://example.com/config.json',
-          note: '地址会先存下来。拉取配置需要联网，本版暂不发起请求。',
+          note: '地址会先存下来；点「检测」联网拉取站点，站点是 Python 源的会自动跑起来。',
         ),
       );
     case AddSourceAction.liveUrl:

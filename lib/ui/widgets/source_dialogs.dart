@@ -129,6 +129,36 @@ Future<void> _recheckSource(
     return;
   }
 
+  // A TVBox source is checked by *running* it, exactly like a 猫源: the
+  // config document says which sites exist, not whether any of them answers.
+  if (store.pySitesOf(source).isNotEmpty) {
+    if (store.python == null) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('这个源要由 Python 宿主执行，当前没有可用的运行时'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('正在启动 Python 源并读取首页…'),
+        duration: Duration(seconds: 30),
+      ),
+    );
+    final report = await store.probeSource(source, '');
+    if (!context.mounted) return;
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(_probeSummary(report)),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+    return;
+  }
+
   if (source.url.trim().isEmpty) {
     messenger.showSnackBar(
       const SnackBar(
@@ -213,10 +243,13 @@ String _probeSummary(ProbeReport report, {bool mount = false}) {
   return '${parts.join('，')}$note';
 }
 
-/// A spider shipped as a local file: it has an address, but not one the host
-/// can be pointed at yet (that needs a subscription, not a path).
+/// A 猫源 shipped as a local file: it has a path, but the cat host is pointed at
+/// a subscription (a directory with `index.js`), not at one loose file.
+///
+/// Python sources are not in this group: a TVBox source *is* one file, so the
+/// Python host runs it in place.
 bool _isLocalSpider(SourceInfo source) {
-  const kinds = {'js', 'py', 'php'};
+  const kinds = {'js', 'php'};
   return kinds.contains(source.type) && !source.url.startsWith('http');
 }
 

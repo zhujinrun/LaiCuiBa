@@ -273,7 +273,10 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
 | 宿主 | `assets/runtime/pyhost/py_host.py` | 一行 JSON 进一行 JSON 出；每请求一线程；stdout 只给协议，源自己的 print 全部改到 stderr |
 | 源契约 | `assets/runtime/pyhost/base/spider.py` | 按 `base.spider` 契约**重写**（fetch/post/html/regStr/cleanText/getProxyUrl/getCache…），不是搬运原版 |
 | Dart 客户端 | `services/py_host.dart` | `Process.start` + 行解码 + id 配对；`call`/`proxy`/`release`/`ping`，每次调用有超时 |
-| 源封装 | `services/tvbox_source.dart` | `home/category/search/detail/play` → 模型；`parse!=0`（要浏览器解析）如实回 null |
+| 源封装 | `services/tvbox_source.dart` | `home/category/search/detail/playTarget` → 模型；`parse!=0`（要浏览器解析）如实回 null |
+| 运行时管理 | `services/py_runtime.dart` | 懒启动解释器 + 代理监听；`sourceFor(source, site)` 解析 api（本地文件或远端下载缓存），按 `source\|site` 复用实例 |
+| 应用侧 HTTP | `services/local_proxy.dart` | `/proxy` 转给源的 `localProxy()`；`/cache` 实现 `getCache/setCache/delCache`；只绑 127.0.0.1 随机端口 |
+| 首页片单 | `services/tvbox_catalogue.dart` | `home` 的分类 → 并发取前 5 个分类第一页，空分类丢掉；没有片单时说清是谁没有 |
 
 几个刻意的选择：
 
@@ -288,20 +291,36 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
 - 聚合源（`SITES` 展开 / `wrap`）**还没接**，遇到会得到一句「源没有实现 homeContent」
   这样的真实错误，而不是空列表。
 
-**独立验证**：`test/py_host_e2e_test.dart` 真起 `python.exe`，用
-`test/fixtures/py_source/main.py`（原创夹具，覆盖两个线路、`parse=1`、空结果、故意抛异常）
-跑 17 项断言：协议、参数裁剪、port 握手（`getProxyUrl()` 指向应用侧端口）、
-base64 代理回传、异常透传、`release` 后重新 init，以及 `TvBoxSource` 的四条映射。
+**独立验证**分三层，全部真起 `python.exe`，夹具是原创的
+`test/fixtures/py_source/main.py`（两个线路、`parse=1`、空结果、故意抛异常）：
 
-**还没接**：`SourceInfo` 里还没有 `tvbox` 类型，所以资源页加不进这类源、搜索/首页/详情
-还没走它；`/proxy` 与 `/cache` 这两条应用侧 HTTP 端点同样没起（宿主的 port 已经能下发，
-但没人监听）。这三块是下一段。
+- `test/py_host_e2e_test.dart`（17 项）：行-JSON 协议、参数裁剪、port 握手、
+  base64 代理回传、异常透传、`release` 后重新 init、`TvBoxSource` 的四条映射；
+- `test/py_runtime_e2e_test.dart`（6 项）：本地源启动、`/proxy` 真的打到源的
+  `localProxy`、远端 api 只下载一次、**store 的四条链路串联**（首页 → 搜索 → 详情 → 播放）；
+- `test/local_proxy_test.dart`（6 项）+ `test/py_store_test.dart`（18 项）：不依赖解释器，
+  覆盖 HTTP 端点契约与 store 的分流/严格过滤/检测写回。
+
+**已经接进 store**（`855620f` + 本次）：
+
+- 站点形状只有一种：`pySitesOf()` 把「导入的 `main.py`」展开成 `SiteInfo(key: 源 id)`
+  （一个文件就是一个站点），把「配置里的站点」筛出 `api` 以 `.py` 结尾的那些。之后
+  跳转、详情、播放都按站点走，不再区分源是哪种类型。
+- 首页 / 搜索 / 详情 / 播放四条链路都分流到 `TvBoxSource`：首页走 `TvBoxCatalogue`，
+  搜索按站点并发各自出一组（失败的站点不出组，和猫源一致），详情用 item 上的
+  `siteKey` 回到同一个 api，播放**一定**过 `playerContent`（`resolvesPlayUrl`）——
+  因为 `vod_play_url` 只是它的入参，真实地址和 Referer 只有它知道。
+- 资源页「检测」对这类源是**真跑一次**（`TvBoxSource.probe`），把分类数与首页片数写回卡片；
+  `py` 卡片的状态行因此从「待宿主执行」变成实测数字。
+- 远端 `api`（配置里常见）由 `PyRuntime` 下载到 `<appdata>/LaiCuiBa/LaiCuiBa/pysrc/<md5>.py`，
+  同一个地址只用下一次；换地址就是换 hash，自然重下。
+- `tvbox` 配置源本身仍靠「检测」联网拉站点：拉回来之后如果站点是 `.py`，下一次检测/打开
+  首页就会真的跑起来。
 
 #### 还没做的（真正的灵魂部分）
-- TVBox 接进 store：`SourceInfo` 加 `tvbox` 类型 + 地址（`.py` 路径或配置 JSON 里的
-  `api`）、`/proxy` 与 `/cache` 两个应用侧端点、搜索/首页/详情/播放改走 `TvBoxSource`
-- 本地 spider 文件直接执行（现在必须有订阅地址；文件路径无从得知站点 key/type）
-- 挂载：WebDAV / AList / 网盘（Emby / Jellyfin 已完成，见上）
+- 聚合源（`SITES` 展开 / `wrap` 形态）：现在会如实报「源没有实现 homeContent」
+- 配置里的 js 站点（`api` 以 `.js` 结尾的 TVBox 站点）：还没有通往猫源宿主的桥
+- 本地 js spider 直接执行（猫源宿主只认订阅目录，不认单个文件）
 - 挂载令牌失效后的**重新登录入口**（目前提示「删掉这个源重新添加」）
 
 
