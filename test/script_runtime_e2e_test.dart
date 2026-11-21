@@ -7,7 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:lai_cui_ba/models/models.dart';
-import 'package:lai_cui_ba/services/py_runtime.dart';
+import 'package:lai_cui_ba/services/script_runtime.dart';
 import 'package:lai_cui_ba/services/runtime_paths.dart';
 import 'package:lai_cui_ba/services/store.dart';
 
@@ -29,14 +29,14 @@ void main() {
     'Python 运行时（真起 python）',
     () {
       late Directory cacheDir;
-      late PyRuntime runtime;
+      late ScriptRuntime runtime;
 
       const source = SourceInfo(id: 'py-1', type: 'py', name: '夹具源', url: '');
       const site = SiteInfo(key: 'py-1', name: '夹具源', api: '');
 
       setUp(() async {
         cacheDir = await Directory.systemTemp.createTemp('lcb_py_');
-        runtime = PyRuntime(
+        runtime = ScriptRuntime(
           pythonPath: paths.python,
           hostScript: paths.hostScript,
           cacheDir: cacheDir,
@@ -207,24 +207,24 @@ void main() {
     skip: ready ? false : '没有 python 运行时（先跑 tool/sync_runtime.sh）',
   );
 
-  // The same chain the pages use: store → PyRuntime → py_host → fixture. Each
+  // The same chain the pages use: store → ScriptRuntime → py_host → fixture. Each
   // piece has its own test; this is the one that proves they are plugged into
   // each other, with no fake anywhere between the page's question and Python.
   group('store + 真 Python 源', () {
     late Directory cacheDir;
-    late PyRuntime runtime;
+    late ScriptRuntime runtime;
     late AppStore store;
 
     setUp(() async {
       cacheDir = await Directory.systemTemp.createTemp('lcb_py_store_');
-      runtime = PyRuntime(
+      runtime = ScriptRuntime(
         pythonPath: paths.python,
         hostScript: paths.hostScript,
         cacheDir: cacheDir,
       );
       SharedPreferences.setMockInitialValues({});
       store = await AppStore.load();
-      store.python = runtime;
+      store.scripts = runtime;
       await store.addSource(
         SourceInfo(
           id: 'py-1',
@@ -242,9 +242,9 @@ void main() {
     });
 
     test('首页、搜索、详情、播放都走真的 Python 源', () async {
-      expect(store.hasPyHome, isTrue);
+      expect(store.hasScriptHome, isTrue);
 
-      final feed = await store.pyCatalogue();
+      final feed = await store.scriptCatalogue();
       expect(feed, isNotNull, reason: runtime.lastError);
       expect(feed!.sections.first.title, '电影');
       final card = feed.sections.first.items.first;
@@ -287,9 +287,9 @@ void main() {
 
       final expanded = store.currentSource!;
       expect(expanded.sites.map((s) => s.name).toList(), ['甲平台', '乙平台']);
-      expect(store.pyHomeSiteOf(expanded)!.key, 'alpha');
+      expect(store.scriptHomeSiteOf(expanded)!.key, 'alpha');
 
-      final feed = await store.pyCatalogue();
+      final feed = await store.scriptCatalogue();
       expect(feed, isNotNull, reason: runtime.lastError);
       expect(feed!.sections.first.title, 'alpha分区');
       final card = feed.sections.first.items.first;
@@ -312,4 +312,145 @@ void main() {
       expect(store.currentSource!.sites, hasLength(2));
     });
   }, skip: ready ? false : '没有 python 运行时（先跑 tool/sync_runtime.sh）');
+
+  // The js side, end to end: an `api` that ends in `.js` has to leave the
+  // Python runtime, boot `node.exe`, and answer the same four questions. The
+  // fixture is a TVBox-style file (synchronous `req` + `pdfh`), so this is the
+  // only test that proves the store can tell the two runtimes apart.
+  final nodePaths = RuntimePaths.resolve();
+  final jsFixture = File(
+    p.join(Directory.current.path, 'test', 'fixtures', 'js_source', 'main.js'),
+  ).absolute;
+  final jsReady =
+      nodePaths != null && nodePaths.jsAvailable && jsFixture.existsSync();
+
+  group('store + 真 js 源', () {
+    late Directory cacheDir;
+    late ScriptRuntime runtime;
+    late AppStore store;
+    late HttpServer server;
+    late String base;
+
+    setUp(() async {
+      cacheDir = await Directory.systemTemp.createTemp('lcb_js_store_');
+      runtime = ScriptRuntime(
+        pythonPath: paths.python,
+        hostScript: paths.hostScript,
+        cacheDir: cacheDir,
+        nodePath: nodePaths!.node,
+        jsHostScript: nodePaths.jsSiteHost,
+        jsDataDir: p.join(cacheDir.path, 'jsdata'),
+      );
+      // A small site for the fixture to scrape: the point is that `req` and the
+      // selectors really run, not that the JSON was canned.
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      base = 'http://127.0.0.1:${server.port}';
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.html;
+        switch (request.uri.path) {
+          case '/home':
+            request.response.write(
+              '<html><body><ul class="nav">'
+              '<li><a data-id="1" href="/list?tid=1">电影</a></li>'
+              '</ul></body></html>',
+            );
+          case '/list':
+            request.response.write(
+              '<html><body><div class="item">'
+              '<a data-id="101" href="/detail?id=101">三体</a>'
+              '<img data-original="http://img.invalid/1.jpg">'
+              '<span class="remark">全30集</span></div></body></html>',
+            );
+          case '/search':
+            request.response.write(
+              '<html><body><div class="item">'
+              '<a data-id="101" href="/detail?id=101">三体</a>'
+              '</div></body></html>',
+            );
+          case '/detail':
+            request.response.write(
+              '<html><body><h1>三体</h1>'
+              '<img class="poster" src="http://img.invalid/p.jpg">'
+              '<p class="desc">科幻小说改编</p>'
+              '<ul class="eps">'
+              '<li><a data-url="http://cdn.invalid/1.m3u8">第1集</a></li>'
+              '<li><a data-url="http://cdn.invalid/2.m3u8">第2集</a></li>'
+              '</ul></body></html>',
+            );
+          default:
+            request.response.statusCode = 404;
+        }
+        await request.response.close();
+      });
+
+      SharedPreferences.setMockInitialValues({});
+      store = await AppStore.load();
+      store.scripts = runtime;
+      await store.addSource(
+        SourceInfo(
+          id: 'js-1',
+          type: 'tvbox',
+          name: '配置源',
+          url: '',
+          sites: [
+            SiteInfo(key: 'js-a', name: 'JS 甲', api: jsFixture.path, ext: base),
+          ],
+        ),
+      );
+      await store.selectSource('js-1');
+    });
+
+    tearDown(() async {
+      await runtime.dispose();
+      await server.close(force: true);
+      if (cacheDir.existsSync()) cacheDir.deleteSync(recursive: true);
+    });
+
+    test('首页、搜索、详情、播放都走真的 node + 夹具 js 源', () async {
+      expect(store.hasScriptHome, isTrue);
+      expect(store.resolvesPlayUrl, isTrue);
+
+      final feed = await store.scriptCatalogue();
+      expect(feed, isNotNull, reason: runtime.lastError);
+      expect(feed!.sections.first.title, '电影');
+      final card = feed.sections.first.items.first;
+      expect(card.title, '三体');
+      expect(card.siteKey, 'js-a');
+
+      final groups = await store.searchRealStream('三体')!.toList();
+      expect(groups, hasLength(1));
+      expect(groups.single.site, 'JS 甲');
+      expect(groups.single.items.first.title, '三体');
+
+      final full = await store.detailReal(card);
+      expect(full, isNotNull, reason: runtime.lastError);
+      expect(full!.title, '三体');
+      expect(full.episodes, ['第1集', '第2集']);
+
+      final target = await store.playTargetReal(
+        full,
+        flag: full.playLines.first.name,
+        nid: 1,
+      );
+      expect(target, isNotNull);
+      expect(target!.url, endsWith('.m3u8'));
+      expect(target.headers['Referer'], '$base/');
+    });
+
+    test('没有 Node 运行时的时候，js 站点说的是缺什么', () async {
+      final pyOnly = ScriptRuntime(
+        pythonPath: paths.python,
+        hostScript: paths.hostScript,
+        cacheDir: cacheDir,
+      );
+      addTearDown(pyOnly.dispose);
+      final client = await pyOnly.sourceFor(
+        source: const SourceInfo(id: 'js-1', type: 'tvbox', name: '配置源', url: ''),
+        site: SiteInfo(key: 'js-a', name: 'JS 甲', api: jsFixture.path),
+      );
+      expect(client, isNull);
+      expect(pyOnly.lastError, contains('js'));
+      expect(pyOnly.lastError, contains('Node'));
+    });
+  }, skip: jsReady ? false : '缺少 node 运行时（先跑 tool/sync_runtime.sh）');
 }

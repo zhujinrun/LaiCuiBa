@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:lai_cui_ba/models/models.dart';
 import 'package:lai_cui_ba/services/py_host.dart';
+import 'package:lai_cui_ba/services/script_runtime.dart';
 import 'package:lai_cui_ba/services/store.dart';
 
 import 'support/fake_py_host.dart';
@@ -18,7 +19,7 @@ import 'support/fake_py_host.dart';
 /// protocol is covered by `py_host_e2e_test.dart` and `py_runtime_e2e_test.dart`.
 void main() {
   late FakePyHost host;
-  late FakePySources runtime;
+  late FakeScriptSources runtime;
   late AppStore store;
 
   const film = (
@@ -74,10 +75,10 @@ void main() {
         },
       },
     );
-    runtime = FakePySources(host);
+    runtime = FakeScriptSources(host);
     SharedPreferences.setMockInitialValues({});
     store = await AppStore.load();
-    store.python = runtime;
+    store.scripts = runtime;
   });
 
   /// One imported `main.py`. Its url is the file itself, and its own id doubles
@@ -102,15 +103,15 @@ void main() {
         name: '本地 Python 源',
         url: r'D:\sources\main.py',
       );
-      final sites = store.pySitesOf(source);
+      final sites = store.scriptSitesOf(source);
       expect(sites, hasLength(1));
       expect(sites.single.key, 'py-1');
       expect(sites.single.name, '本地 Python 源');
       expect(sites.single.api, r'D:\sources\main.py');
-      expect(store.pyHomeSiteOf(source)?.key, 'py-1');
+      expect(store.scriptHomeSiteOf(source)?.key, 'py-1');
     });
 
-    test('a config contributes only the sites whose api is a .py', () {
+    test('a config contributes only the sites a script host can run', () {
       const source = SourceInfo(
         id: 'cfg-1',
         type: 'tvbox',
@@ -121,12 +122,46 @@ void main() {
           SiteInfo(key: 'cat', name: '猫源站点', api: 'https://x.invalid/index.js'),
           SiteInfo(key: 'py-a', name: 'PY 甲', api: 'https://x.invalid/a.py'),
           SiteInfo(key: 'py-b', name: 'PY 乙', api: 'https://x.invalid/b.py'),
+          SiteInfo(key: 'js-a', name: 'JS 甲', api: 'https://x.invalid/spider.js'),
         ],
       );
-      final sites = store.pySitesOf(source);
-      expect(sites.map((s) => s.key).toList(), ['py-a', 'py-b']);
-      // homeSite names a cat site, so the first Python one takes the front page.
-      expect(store.pyHomeSiteOf(source)?.key, 'py-a');
+      final sites = store.scriptSitesOf(source);
+      // `…/index.js` 是猫源 bundle 的入口，不是单文件 js 站点，所以它留在这里。
+      expect(sites.map((s) => s.key).toList(), ['py-a', 'py-b', 'js-a']);
+      // homeSite names a cat site, so the first script one takes the front page.
+      expect(store.scriptHomeSiteOf(source)?.key, 'py-a');
+    });
+
+    test('一个本地 .js 单文件就是一个脚本站点', () {
+      const source = SourceInfo(
+        id: 'js-1',
+        type: 'js',
+        name: '本地 js 源',
+        url: r'D://src//spider.js',
+      );
+      final sites = store.scriptSitesOf(source);
+      expect(sites, hasLength(1));
+      expect(sites.single.key, 'js-1');
+      expect(sites.single.api, r'D://src//spider.js');
+      expect(store.scriptHomeSiteOf(source)?.key, 'js-1');
+
+      // 一个指向猫源 bundle 的 type=js 源不归脚本宿主管。
+      const bundle = SourceInfo(
+        id: 'cat-1',
+        type: 'js',
+        name: '猫源',
+        url: 'https://x.invalid/douer/index.js',
+      );
+      expect(store.scriptSitesOf(bundle), isEmpty);
+    });
+
+    test('.js is a script site but …/index.js stays with the 猫源 host', () {
+      expect(isJsApi('https://x.invalid/spider.js'), isTrue);
+      expect(isJsApi('https://x.invalid/douer/index.js'), isFalse);
+      expect(isJsApi(r'D://src//main.js'), isTrue);
+      expect(isScriptApi('https://x.invalid/a.py'), isTrue);
+      expect(isScriptApi('https://x.invalid/index.js'), isFalse);
+      expect(isScriptApi('csp_SomeSite'), isFalse);
     });
 
     test('a .py with a query string still counts', () {
@@ -136,7 +171,7 @@ void main() {
         name: '带参数',
         url: 'https://x.invalid/main.py?v=2',
       );
-      expect(store.pySitesOf(source), hasLength(1));
+      expect(store.scriptSitesOf(source), hasLength(1));
     });
 
     test('an unrelated source has no Python site', () {
@@ -146,20 +181,20 @@ void main() {
         name: 'Emby',
         url: 'http://192.168.1.2:8096',
       );
-      expect(store.pySitesOf(mount), isEmpty);
-      expect(store.pySitesOf(null), isEmpty);
+      expect(store.scriptSitesOf(mount), isEmpty);
+      expect(store.scriptSitesOf(null), isEmpty);
     });
   });
 
   group('home', () {
     test('a py source answers 首页 with its categories as rails', () async {
       await addPySource();
-      expect(store.hasPyHome, isTrue);
+      expect(store.hasScriptHome, isTrue);
       // It is not a cat source, even though it draws a home screen.
       expect(store.hasSpiderHome, isFalse);
       expect(store.hasMount, isFalse);
 
-      final feed = await store.pyCatalogue();
+      final feed = await store.scriptCatalogue();
       expect(feed, isNotNull);
       expect(feed!.ok, isTrue);
       expect(feed.siteName, '本地 Python 源');
@@ -174,11 +209,11 @@ void main() {
       'a source with no categories says so instead of drawing a blank page',
       () async {
         host = FakePyHost(bodies: {'home': (_) => '{"class":[]}'});
-        runtime = FakePySources(host);
-        store.python = runtime;
+        runtime = FakeScriptSources(host);
+        store.scripts = runtime;
         await addPySource();
 
-        final feed = await store.pyCatalogue();
+        final feed = await store.scriptCatalogue();
         expect(feed!.ok, isFalse);
         expect(feed.error, contains('没有返回分类'));
         expect(feed.sections, isEmpty);
@@ -186,7 +221,7 @@ void main() {
     );
 
     test('no Python runtime means 首页 is not claimed by the source', () async {
-      store.python = null;
+      store.scripts = null;
       await store.addSource(
         const SourceInfo(
           id: 'py-1',
@@ -196,8 +231,8 @@ void main() {
         ),
       );
       await store.selectSource('py-1');
-      expect(store.hasPyHome, isFalse);
-      expect(store.pyCatalogue(), completion(isNull));
+      expect(store.hasScriptHome, isFalse);
+      expect(store.scriptCatalogue(), completion(isNull));
     });
   });
 
@@ -232,8 +267,8 @@ void main() {
         host = FakePyHost(
           bodies: {'search': (_) => throw const PyHostException('站点炸了')},
         );
-        runtime = FakePySources(host);
-        store.python = runtime;
+        runtime = FakeScriptSources(host);
+        store.scripts = runtime;
         await addPySource();
 
         final groups = await store.searchRealStream('随便')!.toList();
@@ -260,8 +295,8 @@ void main() {
 
     test('detailReal reports "no such title" as null', () async {
       host = FakePyHost(bodies: {'detail': (_) => '{"list":[]}'});
-      runtime = FakePySources(host);
-      store.python = runtime;
+      runtime = FakeScriptSources(host);
+      store.scripts = runtime;
       await addPySource();
       expect(
         await store.detailReal(const MediaItem(id: 'x', title: '没有')),
@@ -340,7 +375,7 @@ void main() {
     });
 
     test('a source that cannot start keeps its counts at zero', () async {
-      store.python = null;
+      store.scripts = null;
       await store.addSource(
         const SourceInfo(
           id: 'py-1',

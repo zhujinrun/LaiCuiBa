@@ -4,7 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
-import 'py_host.dart';
+import 'source_host.dart';
 
 /// The app's own HTTP corner, i.e. the two addresses a Python source can reach
 /// that are not the open internet.
@@ -14,7 +14,7 @@ import 'py_host.dart';
 ///
 ///   * `/proxy` — the address `self.getProxyUrl()` returns. Sources paste it
 ///     into image and playlist URLs, and every request that lands here is handed
-///     to that source's own `localProxy(params)` (see [PyHost.proxy]). This is
+///     to that source's own `localProxy(params)` (see [SourceHost.proxy]). This is
 ///     where a referer-guarded m3u8, a signed image URL or a decrypted playlist
 ///     gets resolved.
 ///   * `/cache` — `getCache` / `setCache` / `delCache` in `base/spider.py`, a
@@ -28,7 +28,7 @@ class LocalProxyServer {
   /// Resolved per request rather than captured: the port has to be known before
   /// the host can be started, and a host that failed to start must leave the
   /// server answering 502 instead of holding a dead reference.
-  final PyHost Function() hostProvider;
+  final SourceHost Function() hostProvider;
 
   HttpServer? _server;
 
@@ -109,7 +109,7 @@ class LocalProxyServer {
         answer.body,
         headers: answer.headers,
       );
-    } on PyHostException catch (e) {
+    } on SourceHostException catch (e) {
       await _write(
         request,
         502,

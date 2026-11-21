@@ -1,11 +1,15 @@
 import 'dart:convert';
 
 import '../models/models.dart';
-import 'py_host.dart';
+import 'source_host.dart';
 import 'source_probe.dart';
 import 'spider_client.dart';
 
-/// One TVBox (Python) source, spoken to through [PyHost].
+/// One TVBox **script** source, spoken to through [SourceHost].
+///
+/// The same class drives a Python `main.py` and a TVBox-style `main.js`: both
+/// runtimes answer the same protocol and both ecosystems use catvod's field
+/// names, so there is one mapping instead of two drifting apart.
 ///
 /// A TVBox `json` source is just an address pointing at a `main.py`; the module
 /// exposes `homeContent / categoryContent / detailContent / searchContent /
@@ -15,7 +19,7 @@ import 'spider_client.dart';
 /// second implementation drifting apart.
 ///
 /// The host hands back the source's raw body as a string; this class is what
-/// turns that into models, which keeps [PyHost] free of model knowledge and
+/// turns that into models, which keeps [SourceHost] free of model knowledge and
 /// makes the JSON contract testable on its own.
 class TvBoxSource {
   TvBoxSource({
@@ -26,13 +30,13 @@ class TvBoxSource {
     this.siteKey,
   });
 
-  final PyHost host;
+  final SourceHost host;
 
   /// Stable id for this source; the host keys its loaded instances on it, so
   /// changing it means `init()` runs again.
   final String key;
 
-  /// Absolute path to the source's `.py`.
+  /// Absolute path to the source file (`.py` or `.js`).
   final String path;
 
   /// The `extend` string TVBox passes to `init`.

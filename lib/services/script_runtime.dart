@@ -5,27 +5,53 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/models.dart';
+import 'js_host.dart';
 import 'local_proxy.dart';
 import 'py_host.dart';
+import 'source_host.dart';
 import 'tvbox_source.dart';
 
 /// True when [api] names a Python source rather than a catvod bundle.
 ///
-/// Only the extension is checked, because both runtimes address their sources
+/// Only the extension is checked, because every runtime addresses its sources
 /// the same way otherwise (`http(s)://…/main.py` is a normal TVBox api, and a
 /// config written on Windows may carry a backslash path).
-bool isPyApi(String api) {
-  final address = api.trim().toLowerCase();
-  if (address.isEmpty) return false;
-  final path = address.split('?').first;
-  return path.endsWith('.py');
+bool isPyApi(String api) => _extensionOf(api) == '.py';
+
+/// True when [api] names a TVBox-style `.js` source.
+///
+/// This is *not* a 猫源: a catvod bundle is a directory exported through
+/// `start(config)`, while a `.js` site is a single file of synchronous global
+/// functions (`homeContent`, `req`, `pdfh`, …). See `assets/runtime/node/
+/// js_site_host.js`.
+///
+/// `…/index.js` is excluded on purpose: that is the entry file of a catvod
+/// bundle, not a single-file site. The two look identical by extension and mean
+/// opposite things, and the 猫源 host already knows how to load the former.
+bool isJsApi(String api) {
+  if (_extensionOf(api) != '.js') return false;
+  final path = api.trim().toLowerCase().split('?').first;
+  return !path.endsWith('/index.js') && !path.endsWith(r'\index.js');
 }
 
-/// What the rest of the app asks of the Python side.
+/// True when [api] is handled by a script runtime at all (Python or js), i.e.
+/// not by the 猫源 host and not a jar.
+bool isScriptApi(String api) => isPyApi(api) || isJsApi(api);
+
+String _extensionOf(String api) {
+  final address = api.trim().toLowerCase();
+  if (address.isEmpty) return '';
+  final path = address.split('?').first;
+  if (path.endsWith('.py')) return '.py';
+  if (path.endsWith('.js')) return '.js';
+  return '';
+}
+
+/// What the rest of the app asks of the script runtimes.
 ///
-/// Kept as an interface so the store can be tested without an interpreter: a
-/// test hands in a fake that returns a [TvBoxSource] over a canned [PyHost].
-abstract class PySources {
+/// Kept as an interface so the store can be tested without either runtime: a
+/// test hands in a fake that returns a [TvBoxSource] over a canned host.
+abstract class ScriptSources {
   /// A source ready to answer `home` / `category` / `search` / `detail` /
   /// `player` for one site of [source], or null when it cannot be started.
   Future<TvBoxSource?> sourceFor({
@@ -44,23 +70,29 @@ abstract class PySources {
   Future<void> dispose();
 }
 
-/// Owns the CPython child, the app-side proxy listener, and the sources that
-/// run on top of them.
+/// Owns the script runtimes (CPython and, when configured, Node), the app-side
+/// proxy listener, and the sources that run on top of them.
 ///
 /// Everything is lazy: a build that never opens a TVBox source never starts an
 /// interpreter. The listener has to come up first because the port is part of
-/// the host's contract (`self.getProxyUrl()` points at it), which is why the two
-/// are created together rather than independently.
+/// the host's contract (`self.getProxyUrl()` / `getProxyUrl()` point at it),
+/// which is why the two are created together rather than independently.
 ///
-/// [site]'s `api` is either a local `.py` path (an imported source) or an
-/// `http(s)` URL (a site inside a TVBox config). Remote files are fetched once
-/// and kept in [cacheDir] under a hash of their URL, so the second launch costs
-/// no download; editing the URL yields a different hash and a fresh copy.
-class PyRuntime implements PySources {
-  PyRuntime({
+/// [site]'s `api` decides which runtime serves it: a `.py` file goes to
+/// [PyHost], a `.js` file to [JsHost]. Both answer the same line-JSON protocol,
+/// so everything downstream sees one kind of source.
+///
+/// A remote file is fetched once and kept in [cacheDir] under a hash of its URL
+/// (plus its own extension), so the second launch costs no download; editing
+/// the URL yields a different hash and a fresh copy.
+class ScriptRuntime implements ScriptSources {
+  ScriptRuntime({
     required this.pythonPath,
     required this.hostScript,
     required this.cacheDir,
+    this.nodePath,
+    this.jsHostScript,
+    this.jsDataDir,
     this.hostFactory,
   });
 
@@ -68,23 +100,37 @@ class PyRuntime implements PySources {
   final String hostScript;
   final Directory cacheDir;
 
-  /// Overrides how the child is built, for tests that drive a fake host. Null
-  /// means a real [PyHost] over [pythonPath] / [hostScript].
-  final PyHost Function()? hostFactory;
+  /// `node.exe`, `js_site_host.js` and the directory the js `local` store may
+  /// write to. All three are needed before a `.js` site can run; a build that
+  /// only synced the Python side says so instead of failing obscurely.
+  final String? nodePath;
+  final String? jsHostScript;
+  final String? jsDataDir;
+
+  /// Overrides how a child is built, for tests that drive a fake host. Null
+  /// means the real host for the requested runtime.
+  final SourceHost Function()? hostFactory;
 
   /// A source file larger than this is not a source. Bounded so a URL that
   /// points at a video cannot fill the disk.
   static const maxSourceBytes = 8 * 1024 * 1024;
 
   /// How long a failed start is remembered before it is worth retrying. Booting
-  /// an interpreter that is missing fails the same way every time, and a search
-  /// page fires a call per keystroke.
+  /// a runtime that is missing fails the same way every time, and a search page
+  /// fires a call per keystroke.
   static const _retryAfter = Duration(seconds: 5);
 
-  PyHost? _host;
+  /// One host per runtime (`py` / `js`), started on first use.
+  final Map<String, SourceHost> _hosts = {};
+  final Map<String, Future<SourceHost?>> _starting = {};
+  final Map<String, DateTime> _failedAt = {};
+
+  /// The host that served the most recent [sourceFor]; `/proxy` hands requests
+  /// to it so a source's `localProxy` is reached without inventing a routing
+  /// table the source cannot fill in.
+  SourceHost? _activeHost;
+
   LocalProxyServer? _server;
-  Future<PyHost?>? _starting;
-  DateTime? _failedAt;
   String? _lastError;
 
   /// One [TvBoxSource] per `source|site`, so the host keeps its loaded module
@@ -97,24 +143,36 @@ class PyRuntime implements PySources {
   /// The port the source sees as `127.0.0.1:<port>`. 0 when not running.
   int get port => _server?.port ?? 0;
 
-  bool get isRunning => _host != null;
+  bool get isRunning => _hosts.isNotEmpty;
+
+  /// Whether a `.js` site can run at all.
+  bool get supportsJs =>
+      nodePath != null && jsHostScript != null && jsDataDir != null;
 
   @override
   Future<TvBoxSource?> sourceFor({
     required SourceInfo source,
     required SiteInfo site,
   }) async {
+    final kind = isJsApi(site.api) ? 'js' : 'py';
+    if (kind == 'js' && !supportsJs) {
+      _lastError = '这个源是 js 站点，但内置的 Node 运行时没有同步进来';
+      return null;
+    }
     final path = await _localFileFor(site.api);
     if (path == null) return null;
-    final host = await _ensureHost();
+    final host = await _ensureHost(kind);
     if (host == null) return null;
 
     final key = '${source.id}|${site.key}';
     final existing = _sources[key];
-    if (existing != null && existing.path == path) return existing;
+    if (existing != null && existing.path == path) {
+      _activeHost = host;
+      return existing;
+    }
     // The api changed under the same key: the loaded module is the old file, so
     // drop it before the next call re-runs init.
-    if (existing != null) await host.release(key);
+    if (existing != null) await existing.host.release(key);
 
     final created = TvBoxSource(
       host: host,
@@ -124,6 +182,7 @@ class PyRuntime implements PySources {
       siteKey: site.key,
     );
     _sources[key] = created;
+    _activeHost = host;
     _lastError = null;
     return created;
   }
@@ -164,15 +223,20 @@ class PyRuntime implements PySources {
   /// The platforms [site]'s file declares, or null when it is not an aggregate
   /// source (or cannot be read, in which case 检测 reports the real failure).
   ///
+  /// Python only. A `.js` site's `SITES` would need the js host to forward calls
+  /// per platform the way `py_host.py` does for `spider.call()`, and TVBox's js
+  /// ecosystem does not even agree on what `SITES` means — expanding one there
+  /// would promise routing we cannot deliver, so it stays a single site.
+  ///
   /// A site already carrying `__aggregatePlatform` is one of its own children:
   /// asking again would expand it forever.
-  Future<List<PySubSite>?> _platformsOf(SiteInfo site) async {
+  Future<List<SourceSubSite>?> _platformsOf(SiteInfo site) async {
     if (!isPyApi(site.api)) return null;
     if (_aggregatePlatform(site.ext) != null) return null;
     if (!_injectableExt(site.ext)) return null;
     final path = await _localFileFor(site.api);
     if (path == null) return null;
-    final host = await _ensureHost();
+    final host = await _ensureHost('py');
     if (host == null) return null;
     try {
       final platforms = await host.sites(path: path);
@@ -184,7 +248,7 @@ class PyRuntime implements PySources {
 
   /// The `ext` a child platform is called with: the site's own parameters plus
   /// the platform selector, plus whatever `SITES` attached to that platform.
-  static String _platformExt(String ext, PySubSite platform) {
+  static String _platformExt(String ext, SourceSubSite platform) {
     final base = <String, dynamic>{};
     final raw = ext.trim();
     if (raw.startsWith('{')) {
@@ -246,54 +310,69 @@ class PyRuntime implements PySources {
     final key = '$sourceId|$siteKey';
     final source = _sources.remove(key);
     if (source == null) return;
-    final host = _host;
-    if (host != null) await host.release(key);
+    await source.host.release(key);
   }
 
-  /// Restarts the interpreter. Called by 检测, which is the user saying "I fixed
+  /// Restarts the runtimes. Called by 检测, which is the user saying "I fixed
   /// something, try again" after a failure was remembered.
   Future<void> restart() async {
     await dispose();
-    _failedAt = null;
+    _failedAt.clear();
     _lastError = null;
   }
 
-  Future<PyHost?> _ensureHost() async {
-    final running = _host;
+  Future<SourceHost?> _ensureHost(String kind) async {
+    final running = _hosts[kind];
     if (running != null) return running;
-    final failedAt = _failedAt;
+    final failedAt = _failedAt[kind];
     if (failedAt != null && DateTime.now().difference(failedAt) < _retryAfter) {
       return null;
     }
-    return _starting ??= _startHost();
+    return _starting[kind] ??= _startHost(kind);
   }
 
-  Future<PyHost?> _startHost() async {
+  Future<SourceHost?> _startHost(String kind) async {
     LocalProxyServer? server;
-    PyHost? host;
+    SourceHost? host;
     try {
-      host =
-          hostFactory?.call() ??
-          PyHost(pythonPath: pythonPath, hostScript: hostScript);
+      host = hostFactory?.call() ?? _buildHost(kind);
+      if (host == null) {
+        _lastError = '没有可用的 ${kind == 'js' ? 'Node' : 'Python'} 运行时';
+        _failedAt[kind] = DateTime.now();
+        _starting.remove(kind);
+        return null;
+      }
+      final created = host;
       // The listener must be up before the host is told its port; a source that
       // caches `getProxyUrl()` during `init` would otherwise keep a dead one.
-      server = LocalProxyServer(hostProvider: () => host!);
+      server = LocalProxyServer(hostProvider: () => _activeHost ?? created);
       final port = await server.start();
       _server = server;
-      _host = host;
-      await host.start(dartPort: port);
-      _failedAt = null;
-      return host;
+      _hosts[kind] = created;
+      await created.start(dartPort: port);
+      _failedAt.remove(kind);
+      return created;
     } on Object catch (e) {
       _lastError = '$e';
-      _failedAt = DateTime.now();
-      _host = null;
+      _failedAt[kind] = DateTime.now();
+      _hosts.remove(kind);
       await host?.stop();
       await server?.stop();
       if (identical(_server, server)) _server = null;
-      _starting = null;
+      _starting.remove(kind);
       return null;
     }
+  }
+
+  SourceHost? _buildHost(String kind) {
+    if (kind == 'js') {
+      final node = nodePath;
+      final script = jsHostScript;
+      final data = jsDataDir;
+      if (node == null || script == null || data == null) return null;
+      return JsHost(nodePath: node, hostScript: script, dataDir: data);
+    }
+    return PyHost(pythonPath: pythonPath, hostScript: hostScript);
   }
 
   /// Resolves a site's `api` to a file on disk, downloading a remote one once.
@@ -311,7 +390,10 @@ class PyRuntime implements PySources {
     }
 
     final digest = md5.convert(utf8.encode(address)).toString();
-    final target = File(p.join(cacheDir.path, '$digest.py'));
+    // The extension is kept because both runtimes pick their child by it, and a
+    // downloaded `.js` stored as `.py` would be handed to the interpreter.
+    final extension = isJsApi(address) ? 'js' : 'py';
+    final target = File(p.join(cacheDir.path, '$digest.$extension'));
     if (target.existsSync() && target.lengthSync() > 0) return target.path;
     return _download(address, target);
   }
@@ -381,12 +463,15 @@ class PyRuntime implements PySources {
   @override
   Future<void> dispose() async {
     _sources.clear();
-    final host = _host;
+    final hosts = _hosts.values.toList();
     final server = _server;
-    _host = null;
+    _hosts.clear();
+    _starting.clear();
     _server = null;
-    _starting = null;
-    await host?.stop();
+    _activeHost = null;
+    for (final host in hosts) {
+      await host.stop();
+    }
     await server?.stop();
   }
 }

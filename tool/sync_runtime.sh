@@ -39,6 +39,9 @@ for target in \
     mkdir -p "$target"
     cp "$HERE/assets/runtime/node/node.exe" "$target/node.exe"
     cp "$HERE/assets/runtime/node/cat_host.js" "$target/cat_host.js"
+    # 单文件 js 站点（TVBox `api: …/x.js`）用的是另一个宿主，外加它要的 DOM。
+    cp "$HERE/assets/runtime/node/js_site_host.js" "$target/js_site_host.js"
+    cp "$HERE/assets/runtime/node/linkedom.js" "$target/linkedom.js"
     echo "已同步 $target"
   fi
 done

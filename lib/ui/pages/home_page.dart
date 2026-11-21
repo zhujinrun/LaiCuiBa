@@ -57,7 +57,7 @@ class _HomePageState extends State<HomePage> {
   /// the home screen itself. The store notifies on selection and source edits,
   /// so this runs on every change that could matter.
   void _syncFeed(AppStore store) {
-    final answers = store.hasMount || store.hasSpiderHome || store.hasPyHome;
+    final answers = store.hasMount || store.hasSpiderHome || store.hasScriptHome;
     final id = answers ? store.currentSource?.id : null;
     if (id == _askedId) return;
     setState(() {
@@ -84,8 +84,8 @@ class _HomePageState extends State<HomePage> {
 
     // Either real runtime can answer the front page; which one is the source's
     // business, not the page's. Both return null when the source is not theirs.
-    final feed = store.hasPyHome
-        ? await store.pyCatalogue()
+    final feed = store.hasScriptHome
+        ? await store.scriptCatalogue()
         : await store.spiderCatalogue();
     if (!mounted || _askedId != id) return;
     setState(() {

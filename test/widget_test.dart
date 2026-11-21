@@ -726,7 +726,7 @@ void main() {
                 '"vod_pic":"http://example.invalid/m.jpg","vod_remarks":"HD"}]}',
       },
     );
-    store.python = FakePySources(host);
+    store.scripts = FakeScriptSources(host);
     await store.addSource(
       const SourceInfo(
         id: 'py-home',

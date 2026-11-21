@@ -52,6 +52,12 @@ lib/
     site_parser.dart     TVBox / catvod 配置 -> SiteInfo（纯本地 JSON）
     demo_data.dart       演示片单 + detailDemo 详情夹具
     search.dart          搜索结果模型 + searchCatalogue()（按站点 fan-out）
+    # 三个运行时，三条路，互不混用：
+    spider_session.dart  猫源：node + cat_host.js + 订阅 bundle（start(config)）
+    source_host.dart     脚本源协议层（行-JSON）；py_host / js_host 只是指名二进制
+    script_runtime.dart  脚本源运行时：按 api 后缀分流、懒启动、远端下载缓存
+    tvbox_source.dart    脚本源响应体 -> MediaItem / SpiderList（两套生态共用）
+    local_proxy.dart     /proxy 与 /cache，只绑 127.0.0.1
   ui/
     shell.dart           侧栏 + 顶栏 + 页面切换（含详情页 / 搜索态顶栏）
     pages/detail_page.dart 详情页（hero / 选集 / 演员阵容 / 分类）
@@ -261,30 +267,41 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
 - 判定用严格的 `spiderAddressOf`（http + `.md5`/`index.js`）：答应接管首页是个承诺，
   配置类 TVBox 地址跑不起来，答应下来只会得到一屏空白。
 
-#### Python（TVBox）源宿主（宿主与客户端已通，2026-11-21）
+#### 脚本源宿主：Python 与 TVBox 的 `.js`（2026-11-21）
 
-猫源是 js，TVBox 那批「饭太硬」是 Python：源就是一个 `main.py`，里面
-`from base.spider import Spider` 再重写五个 `*Content`。原版为此带了一份 CPython
-3.11.9（`python/`，39MB，`requests`/`lxml`/`bs4`/`pyquery` 都在 `Lib/site-packages`）。
+TVBox 生态里的「源」其实是两种完全不同的东西，这里两种都跑：
+
+- **Python 源**：一个 `main.py`，`from base.spider import Spider` 再重写五个
+  `*Content`，靠 `requests`/`lxml`/`bs4`/`pyquery` 干活。原版为此带了一份 CPython
+  3.11.9（`python/`，39MB，都在 `Lib/site-packages`）。
+- **TVBox js 站点**：`api` 以 `.js` 结尾的单文件，文件顶层直接写
+  `function homeContent(filter){ var html = req(HOST); ... }`。它是**同步**风格，
+  依赖宿主注入 `req` / `pdfh` / `pdfa` / `joinUrl` / `local` 这些全局。
+  注意它**不是猫源**：猫源是 bundle 目录、导出 `start(config)`、由
+  `assets/runtime/node/cat_host.js` 跑；`…/index.js` 属于猫源，其余 `.js` 才是这种站点。
+
+两者共用一层协议，所以 Dart 侧只有一份客户端：
 
 | 部件 | 位置 | 说明 |
 | --- | --- | --- |
 | 运行时 | `assets/runtime/python/` | 原版包整份拷进来（**git-ignored**），`tool/sync_runtime.sh` 同步到 assets 与 build 产物 |
 | 宿主 | `assets/runtime/pyhost/py_host.py` | 一行 JSON 进一行 JSON 出；每请求一线程；stdout 只给协议，源自己的 print 全部改到 stderr |
 | 源契约 | `assets/runtime/pyhost/base/spider.py` | 按 `base.spider` 契约**重写**（fetch/post/html/regStr/cleanText/getProxyUrl/getCache…），不是搬运原版 |
-| Dart 客户端 | `services/py_host.dart` | `Process.start` + 行解码 + id 配对；`call`/`proxy`/`release`/`ping`，每次调用有超时 |
+| js 宿主 | `assets/runtime/node/js_site_host.js` | 实现 `req`/`pdfh`/`pdfa`/`local`… 并把五个 `*Content` 调出去；链表 `linkedom.js`（MIT）提供真实 DOM |
+| 协议层 | `services/source_host.dart` | `Process.start` + 行解码 + id 配对；`call`/`sites`/`proxy`/`release`/`ping`，每次调用有超时 |
+| 两个入口 | `services/py_host.dart` / `services/js_host.dart` | 只负责指名二进制与桥脚本；`label` 决定报错里写「Python」还是「js」 |
 | 源封装 | `services/tvbox_source.dart` | `home/category/search/detail/playTarget` → 模型；`parse!=0`（要浏览器解析）如实回 null |
-| 运行时管理 | `services/py_runtime.dart` | 懒启动解释器 + 代理监听；`sourceFor(source, site)` 解析 api（本地文件或远端下载缓存），按 `source\|site` 复用实例 |
+| 运行时管理 | `services/script_runtime.dart` | 懒启动两个运行时（各一个子进程）+ 代理监听；`sourceFor(source, site)` 按 api 后缀选宿主、解析 api（本地文件或远端下载缓存），按 `source\|site` 复用实例 |
 | 应用侧 HTTP | `services/local_proxy.dart` | `/proxy` 转给源的 `localProxy()`；`/cache` 实现 `getCache/setCache/delCache`；只绑 127.0.0.1 随机端口 |
 | 首页片单 | `services/tvbox_catalogue.dart` | `home` 的分类 → 并发取前 5 个分类第一页，空分类丢掉；没有片单时说清是谁没有 |
-| 聚合源 | `py_host.py` 的 `sites` op + `py_runtime.expandSites` | 读出顶层 `SITES` 展开成平台站点；调用按 `ext.__aggregatePlatform` 转发给 `site_home` / `call`+`wrap` |
+| 聚合源 | `py_host.py` 的 `sites` op + `script_runtime.expandSites` | 读出顶层 `SITES` 展开成平台站点；调用按 `ext.__aggregatePlatform` 转发给 `site_home` / `call`+`wrap`（仅 Python） |
 
 几个刻意的选择：
 
 - **没有控制端口**。猫源用 HTTP + token，因为 node 侧本来就起了个服务；Python 侧
   协议就是管道，多开一个端口只会多一处要守的边界。
 - **`call` 返回字符串**，正是 TVBox 的原始响应体。宿主不解析业务 JSON，Dart 才解析，
-  于是「JSON 契约」可以单独测，`PyHost` 也不必认识 `MediaItem`。
+  于是「JSON 契约」可以单独测，`SourceHost` 也不必认识 `MediaItem`。
 - **vod 行复用 `SpiderClient.vodToItem`**（已转公开）：catvod 的字段名就是从 TVBox
   继承的，两套解析各写一份只会慢慢漂移。
 - **`init` 的参数裁剪**：`inspect.signature` 数一下源实际要几个参数，多的截掉 ——
@@ -294,7 +311,7 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
   | 环节 | 契约 |
   | --- | --- |
   | 声明 | 文件顶层 `SITES`（list of dict / dict / list of str），`sites` op 只加载模块、不 `init` |
-  | 选择 | 站点 `ext` 里带 `{"__aggregatePlatform": "<平台>"}`；`py_runtime.expandSites` 把文件展开成每个平台一个 `SiteInfo`，`ext` 合并 `SITES` 项自己的参数 |
+  | 选择 | 站点 `ext` 里带 `{"__aggregatePlatform": "<平台>"}`；`script_runtime.expandSites` 把文件展开成每个平台一个 `SiteInfo`，`ext` 合并 `SITES` 项自己的参数 |
   | 转发 | `home → site_home(平台)`；`category/search/homeVideo → call(平台, *Content)` 再 `wrap(平台, list)` |
   | 路由 | `wrap` 把 id 改成 `平台@@id`，`detail`/`player` 走标准入口，聚合器自己按前缀路由 |
   | 兜底 | 声明了 `SITES` 却没带平台 → 明确报「这是聚合源，要先选平台」，不是回一屏空白 |
@@ -303,23 +320,56 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
   展开发生在「检测」时（唯一需要真跑一次的地方），结果写回 `sites`，第二次检测看到的
   已是带 `__aggregatePlatform` 的站点，不会重复展开。
 
-**独立验证**分三层，全部真起 `python.exe`，夹具是原创的
-`test/fixtures/py_source/main.py`（两个线路、`parse=1`、空结果、故意抛异常）与
-`aggregate.py`（`SITES` + 两个平台 + `wrap` 前缀）：
+- **`.js` 的判断比后缀多一步**：`…/index.js` 是猫源 bundle 的入口，其余 `.js` 才是
+  单文件站点。两者后缀相同、语义相反，判错一边就是「源没有实现 homeContent」这种
+  莫名其妙的失败。判定写在 `script_runtime.dart` 的 `isJsApi()` 里，有单测钉住。
+
+js 宿主有两处绕不过去的工程问题，都不是「加个分支」能解决的：
+
+1. **源是同步写法，Node 没有同步 HTTP**。TVBox 的 js 源整篇都是
+   `var html = req(url).content`，`req` 返回 Promise 会全线崩。做法是一个常驻
+   `worker_threads` 干活、主线程 `Atomics.wait` 等结果：请求与响应都放在一块
+   `SharedArrayBuffer` 里（`flag` 头部 + 请求区 + 响应区），带 generation 号，
+   迟到的应答不会被下一个请求认领；worker 回到等待前先 `setImmediate`，事件循环
+   才能跑 HTTP 回调。实测一次往返约 60ms（含冷启动）。
+2. **`pdfh` / `pdfa` 要有真 DOM**。它们吃的是 `选择器&&属性` 的链式规则
+   （`div.item&&a&&href`、`body&&Text`、`:eq(n)`、相对地址补全），没有 DOM 就是
+   空手。因此把原版包里的 `linkedom.js`（MIT，单文件 CJS）同步进来，`pdfh/pdfa/pd`
+   在这个 DOM 上实现；`Text/Html/Tag/!Text` 与任意属性名都认，`href/src` 会按 base 补全。
+
+注入的全局：`req`（method/headers/body/timeout/buffer + 跟随重定向 + gzip/br）、
+`joinUrl`、`base64Encode/Decode`、`md5`、`local`（落脚在 `<appdata>/…/jssrc/js-local.json`）、
+`getProxyUrl()`（拼应用自己的 `/proxy?siteKey=…`）、`setCache/getCache/delCache`、
+`print` 与 `console.*`（全部改到 stderr —— 源里一句 `console.log` 把协议冲掉是这类
+宿主最典型的翻车方式）。
+
+**不做的**（如实报错，不装作支持）：js 源的 `SITES` 聚合不展开（TVBox 的 js 生态对
+`SITES` 语义并不统一，展开后无法保证路由回得来），依赖额外运行时的语法（例如
+`html2map`）会得到「源没有实现 xxx」或具体的 JS 异常。
+
+**独立验证**分四层，两个运行时都真起（`python.exe` / `node.exe`），夹具是原创的
+`test/fixtures/py_source/main.py`（两个线路、`parse=1`、空结果、故意抛异常）、
+`aggregate.py`（`SITES` + 两个平台 + `wrap` 前缀）与
+`test/fixtures/js_source/main.js`（真 `req` + `pdfh` 拉一个测试里现起的站点）：
 
 - `test/py_host_e2e_test.dart`（23 项）：行-JSON 协议、参数裁剪、port 握手、
   base64 代理回传、异常透传、`release` 后重新 init、`TvBoxSource` 的四条映射，
   以及聚合源的 `sites` / `site_home` / `call`+`wrap` / `平台@@id` 回路由；
-- `test/py_runtime_e2e_test.dart`（9 项）：本地源启动、`/proxy` 真的打到源的
-  `localProxy`、远端 api 只下载一次、`expandSites` 展开与去重、**store 的四条链路串联**
-  （首页 → 搜索 → 详情 → 播放），以及「检测展开聚合源后四条链路落在选中的平台上」；
-- `test/local_proxy_test.dart`（6 项）+ `test/py_store_test.dart`（18 项）：不依赖解释器，
-  覆盖 HTTP 端点契约与 store 的分流/严格过滤/检测写回。
+- `test/js_host_e2e_test.dart`（7 项）：真 node 跑 `.js` 夹具，验证同步 `req` 与
+  `pdfh`/`pdfa` 把真实 HTML 解析成 home/category/search/detail/player、异常原样回传、
+  未实现的方法如实报错、`localProxy` 字节回传、`release` 后重新 init；
+- `test/script_runtime_e2e_test.dart`（10 项）：本地源启动、`/proxy` 真的打到源的
+  `localProxy`、远端 api 只下载一次（且按后缀存成 `.py`/`.js`）、`expandSites` 展开与去重、
+  **store 的四条链路串联**（首页 → 搜索 → 详情 → 播放）、「检测展开聚合源后四条链路
+  落在选中的平台上」、「`.js` 站点走 node 而不是 Python」、「没有 node 时如实说缺什么」；
+- `test/local_proxy_test.dart`（6 项）+ `test/py_store_test.dart`（20 项）：不依赖运行时，
+  覆盖 HTTP 端点契约、store 的分流/严格过滤/检测写回，以及 `.js` 与 `…/index.js` 的判别。
 
 **已经接进 store**（`855620f` + 本次）：
 
-- 站点形状只有一种：`pySitesOf()` 把「导入的 `main.py`」展开成 `SiteInfo(key: 源 id)`
-  （一个文件就是一个站点），把「配置里的站点」筛出 `api` 以 `.py` 结尾的那些。之后
+- 站点形状只有一种：`scriptSitesOf()` 把「导入的 `main.py` / `main.js`」展开成
+  `SiteInfo(key: 源 id)`（一个文件就是一个站点），把「配置里的站点」筛出 `api` 以
+  `.py` / `.js` 结尾的那些（`…/index.js` 除外，那是猫源入口）。之后
   跳转、详情、播放都按站点走，不再区分源是哪种类型。
 - 首页 / 搜索 / 详情 / 播放四条链路都分流到 `TvBoxSource`：首页走 `TvBoxCatalogue`，
   搜索按站点并发各自出一组（失败的站点不出组，和猫源一致），详情用 item 上的
@@ -327,18 +377,21 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
   因为 `vod_play_url` 只是它的入参，真实地址和 Referer 只有它知道。
 - 资源页「检测」对这类源是**真跑一次**（`TvBoxSource.probe`），把分类数与首页片数写回卡片；
   `py` 卡片的状态行因此从「待宿主执行」变成实测数字。
-- 远端 `api`（配置里常见）由 `PyRuntime` 下载到 `<appdata>/LaiCuiBa/LaiCuiBa/pysrc/<md5>.py`，
-  同一个地址只用下一次；换地址就是换 hash，自然重下。
+- 远端 `api`（配置里常见）由 `ScriptRuntime` 下载到
+  `<appdata>/LaiCuiBa/LaiCuiBa/pysrc/<md5>.<后缀>`，同一个地址只用下一次；换地址就是换
+  hash，自然重下。后缀必须保留：两个运行时靠它选子进程，`.js` 存成 `.py` 就会被送去
+  解释器。
 - `tvbox` 配置源本身仍靠「检测」联网拉站点：拉回来之后如果站点是 `.py`，下一次检测/打开
   首页就会真的跑起来。
-- **聚合源**：`pySitesOf()` 对已展开的 `py` 源直接读 `sites`；检测先 `expandSites` 再跑
+- **聚合源**：`scriptSitesOf()` 对已展开的 `py` 源直接读 `sites`；检测先 `expandSites` 再跑
   probe，展开结果（每个平台一个 `SiteInfo`，`api` 都指向同一个文件、`ext` 带平台选择器）
   写回源并持久化。首页/搜索/详情/播放因此看不出它和普通多站点配置的区别。
   真机自证：夹具聚合源在真实 exe 上画出「甲平台」chip 与 `alpha分区` 片单。
 
-#### 还没做的（真正的灵魂部分）
-- 配置里的 js 站点（`api` 以 `.js` 结尾的 TVBox 站点）：还没有通往猫源宿主的桥
-- 本地 js spider 直接执行（猫源宿主只认订阅目录，不认单个文件）
+#### 还没做的
+- js 宿主的覆盖率仍取决于源用了什么：`pdfh/pdfa` 的常见语法都实现了，但 `html2map`、
+  `aes` 之类额外全局没有，遇到会报具体错误而不是装作成功
+- 猫源宿主仍只认订阅目录，不能直接跑一个随源下发的 `.js` 单文件（那是 js 宿主的活）
 - 挂载令牌失效后的**重新登录入口**（目前提示「删掉这个源重新添加」）
 
 

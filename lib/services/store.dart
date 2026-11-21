@@ -12,7 +12,7 @@ import 'source_catalogue.dart';
 import 'source_probe.dart';
 import 'media_mount.dart';
 import 'play_target.dart';
-import 'py_runtime.dart';
+import 'script_runtime.dart';
 import 'spider_client.dart' show SpiderClass;
 import 'tvbox_catalogue.dart';
 import 'tvbox_source.dart';
@@ -49,10 +49,10 @@ class AppStore extends ChangeNotifier {
   /// rather than filling in fixtures.
   SpiderSession? spider;
 
-  /// The TVBox (Python) runtime, also wired up lazily. Null when the embedded
-  /// interpreter is absent -- the same rule as [spider]: no runtime, no answer,
-  /// and the pages say so.
-  PySources? python;
+  /// The TVBox script runtimes (Python and js), also wired up lazily. Null when
+  /// neither binary is present -- the same rule as [spider]: no runtime, no
+  /// answer, and the pages say so.
+  ScriptSources? scripts;
 
   /// Test seam: when set, [searchRealStream] answers from here instead of the
   /// cat host. The search page is worth exercising without node.exe, and a stub
@@ -519,25 +519,27 @@ class AppStore extends ChangeNotifier {
   }
 
   // -------------------------------------------------------------------------
-  // Python (TVBox) sources
+  // Script (TVBox) sources
   //
-  // Two shapes reach the Python host: an imported `main.py` (type `py`, its url
-  // is the file) and a TVBox config whose sites each point at one (`api` ends
-  // in `.py`, possibly remote). Both are expressed as [SiteInfo] so everything
-  // above this line -- routing, detail, play -- has one shape to reason about.
+  // Three shapes reach a script runtime: an imported `main.py` / `main.js`
+  // (type `py` / `js`, its url is the file), a TVBox config whose sites point at
+  // a `.py` or `.js` file (possibly remote), and the platforms an aggregate
+  // Python file expands into. All of them are expressed as [SiteInfo] so
+  // everything above this line -- routing, detail, play -- has one shape to
+  // reason about; which runtime serves a site is decided by its api suffix.
   // -------------------------------------------------------------------------
 
-  /// The sites of [source] the Python host can run.
+  /// The sites of [source] a script host can run (`.py` or `.js`).
   ///
   /// A `py` source is one site that happens to be a single file: its own id is
   /// used as the site key, which keeps history rows and detail lookups stable
   /// without inventing a site that the user never saw. Once 检测 expands an
   /// aggregate file, the platforms it declares are stored as its sites and win.
-  List<SiteInfo> pySitesOf(SourceInfo? source) {
+  List<SiteInfo> scriptSitesOf(SourceInfo? source) {
     if (source == null) return const [];
-    if (source.type == 'py') {
+    if (source.type == 'py' || source.type == 'js') {
       if (source.sites.isNotEmpty) return source.sites;
-      if (!isPyApi(source.url)) return const [];
+      if (!isScriptApi(source.url)) return const [];
       return [
         SiteInfo(key: source.id, name: source.name, api: source.url),
       ];
@@ -545,16 +547,16 @@ class AppStore extends ChangeNotifier {
     if (source.type == 'tvbox') {
       return [
         for (final site in source.sites)
-          if (isPyApi(site.api)) site,
+          if (isScriptApi(site.api)) site,
       ];
     }
     return const [];
   }
 
   /// The site the home page should draw from: the one the config nominated,
-  /// else the first enabled Python site.
-  SiteInfo? pyHomeSiteOf(SourceInfo? source) {
-    final sites = pySitesOf(source);
+  /// else the first enabled script site.
+  SiteInfo? scriptHomeSiteOf(SourceInfo? source) {
+    final sites = scriptSitesOf(source);
     if (sites.isEmpty) return null;
     final wanted = source?.homeSite ?? '';
     for (final site in sites) {
@@ -566,11 +568,10 @@ class AppStore extends ChangeNotifier {
     return sites.first;
   }
 
-  /// True when the active source answers the home screen through the Python
-  /// host.
-  bool get hasPyHome {
+  /// True when the active source answers the home screen through a script host.
+  bool get hasScriptHome {
     final source = currentSource;
-    return python != null && source != null && pyHomeSiteOf(source) != null;
+    return scripts != null && source != null && scriptHomeSiteOf(source) != null;
   }
 
   /// True when the player must ask the source for its final URL instead of
@@ -581,38 +582,38 @@ class AppStore extends ChangeNotifier {
   /// works only for the sources that already point at an m3u8.
   bool get resolvesPlayUrl {
     final source = currentSource;
-    return python != null && pySitesOf(source).isNotEmpty;
+    return scripts != null && scriptSitesOf(source).isNotEmpty;
   }
 
-  /// The active source's home rails through the Python host, or null when it
+  /// The active source's home rails through its script host, or null when it
   /// does not run there.
-  Future<CatalogueFeed?> pyCatalogue() async {
-    final runtime = python;
+  Future<CatalogueFeed?> scriptCatalogue() async {
+    final runtime = scripts;
     final source = currentSource;
     if (runtime == null || source == null) return null;
-    final site = pyHomeSiteOf(source);
+    final site = scriptHomeSiteOf(source);
     if (site == null) return null;
     final client = await runtime.sourceFor(source: source, site: site);
     if (client == null) {
       return CatalogueFeed.failure(
-        runtime.lastError ?? 'Python 宿主没有启动',
+        runtime.lastError ?? '脚本宿主没有启动',
         siteName: site.name,
       );
     }
     return TvBoxCatalogue(client, siteName: site.name).load();
   }
 
-  /// The Python client behind one [site] of the active source.
-  Future<TvBoxSource?> _pyClientFor(SourceInfo source, SiteInfo site) async {
-    final runtime = python;
+  /// The script client behind one [site] of the active source.
+  Future<TvBoxSource?> _scriptClientFor(SourceInfo source, SiteInfo site) async {
+    final runtime = scripts;
     if (runtime == null) return null;
     return runtime.sourceFor(source: source, site: site);
   }
 
   /// The site an item came back from. A `py` source has exactly one, so an
   /// untagged row (a favourite carried across a re-import, say) still resolves.
-  SiteInfo? _pySiteOf(SourceInfo source, MediaItem item) {
-    final sites = pySitesOf(source);
+  SiteInfo? _scriptSiteOf(SourceInfo source, MediaItem item) {
+    final sites = scriptSitesOf(source);
     if (sites.isEmpty) return null;
     final key = item.siteKey;
     if (key != null) {
@@ -686,7 +687,7 @@ class AppStore extends ChangeNotifier {
       searchStub != null ||
       (spider != null && _jsSource() != null) ||
       mountClientOf(currentSource) != null ||
-      (python != null && pySitesOf(currentSource).isNotEmpty);
+      (scripts != null && scriptSitesOf(currentSource).isNotEmpty);
 
   /// The active mount's library, newest first, for the home rails.
   ///
@@ -790,9 +791,9 @@ class AppStore extends ChangeNotifier {
     final mount = mountClientOf(currentSource);
     if (mount != null) return _mountSearchStream(mount, keyword, strict);
 
-    final pySites = pySitesOf(currentSource);
-    if (python != null && pySites.isNotEmpty) {
-      return _pySearchStream(currentSource!, pySites, keyword, strict);
+    final pySites = scriptSitesOf(currentSource);
+    if (scripts != null && pySites.isNotEmpty) {
+      return _scriptSearchStream(currentSource!, pySites, keyword, strict);
     }
 
     final session = spider;
@@ -853,12 +854,12 @@ class AppStore extends ChangeNotifier {
         .toList(growable: false);
   }
 
-  /// One group per Python site, emitted as each answers -- the same contract as
+  /// One group per script site, emitted as each answers -- the same contract as
   /// the 猫源 stream, so the search page does not care which runtime produced
   /// the rows. A site that fails contributes no group (a dead site is not a
   /// statement that the title does not exist); cancel by unsubscribing, which
   /// closes the controller and stops waiting for the stragglers.
-  Stream<SpiderSearchSite> _pySearchStream(
+  Stream<SpiderSearchSite> _scriptSearchStream(
     SourceInfo source,
     List<SiteInfo> sites,
     String keyword,
@@ -871,14 +872,14 @@ class AppStore extends ChangeNotifier {
     Future<void>(() async {
       await Future.wait([
         for (final site in sites)
-          _searchOnePySite(source, site, keyword, strict, controller),
+          _searchOneScriptSite(source, site, keyword, strict, controller),
       ]);
       if (!controller.isClosed) await controller.close();
     });
     return controller.stream;
   }
 
-  Future<void> _searchOnePySite(
+  Future<void> _searchOneScriptSite(
     SourceInfo source,
     SiteInfo site,
     String keyword,
@@ -886,7 +887,7 @@ class AppStore extends ChangeNotifier {
     StreamController<SpiderSearchSite> sink,
   ) async {
     try {
-      final client = await _pyClientFor(source, site);
+      final client = await _scriptClientFor(source, site);
       if (client == null) return;
       final page = await client.search(keyword);
       if (sink.isClosed) return;
@@ -921,13 +922,13 @@ class AppStore extends ChangeNotifier {
       }
     }
 
-    final pySites = pySitesOf(currentSource);
-    if (python != null && pySites.isNotEmpty) {
+    final pySites = scriptSitesOf(currentSource);
+    if (scripts != null && pySites.isNotEmpty) {
       final source = currentSource!;
-      final site = _pySiteOf(source, item);
+      final site = _scriptSiteOf(source, item);
       if (site == null) return null;
       try {
-        final client = await _pyClientFor(source, site);
+        final client = await _scriptClientFor(source, site);
         if (client == null) return null;
         return await client.detail(item);
       } on Object {
@@ -999,9 +1000,9 @@ class AppStore extends ChangeNotifier {
       }
     }
 
-    final pySites = pySitesOf(currentSource);
-    if (python != null && pySites.isNotEmpty) {
-      return _pyPlayTarget(currentSource!, item, flag: flag, nid: nid);
+    final pySites = scriptSitesOf(currentSource);
+    if (scripts != null && pySites.isNotEmpty) {
+      return _scriptPlayTarget(currentSource!, item, flag: flag, nid: nid);
     }
 
     final session = spider;
@@ -1029,13 +1030,13 @@ class AppStore extends ChangeNotifier {
   /// The id passed along is the episode's own address from the play line, which
   /// is what the source's `playerContent(flag, id, vipFlags)` expects -- its
   /// site key already rode along on the item, so no lookup is needed here.
-  Future<PlayTarget?> _pyPlayTarget(
+  Future<PlayTarget?> _scriptPlayTarget(
     SourceInfo source,
     MediaItem item, {
     String? flag,
     int? nid,
   }) async {
-    final site = _pySiteOf(source, item);
+    final site = _scriptSiteOf(source, item);
     if (site == null) return null;
     final lines = item.playLines;
     PlayLine? line;
@@ -1053,7 +1054,7 @@ class AppStore extends ChangeNotifier {
     final id = line.episodes[index].url;
     if (id.isEmpty) return null;
     try {
-      final client = await _pyClientFor(source, site);
+      final client = await _scriptClientFor(source, site);
       if (client == null) return null;
       final answer = await client.playTarget(flag: line.name, id: id);
       if (answer == null || answer.url.isEmpty) return null;
@@ -1321,18 +1322,18 @@ class AppStore extends ChangeNotifier {
       }
     }
 
-    final runtime = python;
-    if (runtime != null && pySitesOf(source).isNotEmpty) {
+    final runtime = scripts;
+    if (runtime != null && scriptSitesOf(source).isNotEmpty) {
       // 检测是「这个源到底能给我什么」的唯一时机，也正好是展开聚合源的时机：
       // 一个 main.py 声明的平台只有跑起来才知道，展开后写回，站点 chip 与
       // 首页/搜索/详情才对得上。
       final effective = await _expandPySites(source);
-      final sites = pySitesOf(effective);
-      final site = pyHomeSiteOf(effective) ?? sites.first;
+      final sites = scriptSitesOf(effective);
+      final site = scriptHomeSiteOf(effective) ?? sites.first;
       final client = await runtime.sourceFor(source: effective, site: site);
       if (client == null) {
         final failed = ProbeReport.failure(
-          runtime.lastError ?? 'Python 宿主没有启动',
+          runtime.lastError ?? '脚本宿主没有启动',
         );
         await applyProbe(source.id, failed);
         return failed;
@@ -1361,7 +1362,7 @@ class AppStore extends ChangeNotifier {
   /// be started right now) returns [source] unchanged -- 检测 then fails on its
   /// own terms instead of reporting a second, unrelated problem.
   Future<SourceInfo> _expandPySites(SourceInfo source) async {
-    final runtime = python;
+    final runtime = scripts;
     if (runtime == null) return source;
     final sites = await runtime.expandSites(source);
     if (sites == null || sites.isEmpty) return source;
@@ -1369,11 +1370,11 @@ class AppStore extends ChangeNotifier {
     if (index < 0) return source;
     // A home site that pointed at the file which just expanded no longer
     // exists; fall back to its first platform. An empty home site stays empty
-    // -- [pyHomeSiteOf] already knows how to pick one.
+    // -- [scriptHomeSiteOf] already knows how to pick one.
     final home = _sources[index].homeSite;
     final kept = home.isEmpty || sites.any((site) => site.key == home)
         ? home
-        : _firstPyKey(sites) ?? home;
+        : _firstScriptKey(sites) ?? home;
     final updated = _sources[index].copyWith(sites: sites, homeSite: kept);
     _sources[index] = updated;
     await _persistSources();
@@ -1381,9 +1382,9 @@ class AppStore extends ChangeNotifier {
     return updated;
   }
 
-  static String? _firstPyKey(List<SiteInfo> sites) {
+  static String? _firstScriptKey(List<SiteInfo> sites) {
     for (final site in sites) {
-      if (isPyApi(site.api)) return site.key;
+      if (isScriptApi(site.api)) return site.key;
     }
     return null;
   }

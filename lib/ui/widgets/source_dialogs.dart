@@ -5,6 +5,7 @@ import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../services/config_fetcher.dart';
+import '../../services/script_runtime.dart';
 import '../../services/site_parser.dart';
 import '../../services/source_probe.dart';
 import '../../services/store.dart';
@@ -131,11 +132,11 @@ Future<void> _recheckSource(
 
   // A TVBox source is checked by *running* it, exactly like a 猫源: the
   // config document says which sites exist, not whether any of them answers.
-  if (store.pySitesOf(source).isNotEmpty) {
-    if (store.python == null) {
+  if (store.scriptSitesOf(source).isNotEmpty) {
+    if (store.scripts == null) {
       messenger.showSnackBar(
         const SnackBar(
-          content: Text('这个源要由 Python 宿主执行，当前没有可用的运行时'),
+          content: Text('这个源要由脚本宿主执行，当前没有可用的运行时'),
           duration: Duration(seconds: 3),
         ),
       );
@@ -246,11 +247,14 @@ String _probeSummary(ProbeReport report, {bool mount = false}) {
 /// A 猫源 shipped as a local file: it has a path, but the cat host is pointed at
 /// a subscription (a directory with `index.js`), not at one loose file.
 ///
-/// Python sources are not in this group: a TVBox source *is* one file, so the
-/// Python host runs it in place.
+/// Script sources are not in this group: a TVBox source *is* one file, so a
+/// script host runs it in place (`services/script_runtime.dart`). What is left
+/// here is a catvod bundle on disk, which needs a directory, not a file.
 bool _isLocalSpider(SourceInfo source) {
   const kinds = {'js', 'php'};
-  return kinds.contains(source.type) && !source.url.startsWith('http');
+  if (!kinds.contains(source.type)) return false;
+  if (source.url.startsWith('http')) return false;
+  return !isScriptApi(source.url);
 }
 
 Future<void> showEditSourceDialog(BuildContext context, SourceInfo source) {

@@ -7,7 +7,7 @@ import 'package:window_manager/window_manager.dart';
 import 'core/app_info.dart';
 import 'core/store_scope.dart';
 import 'core/theme.dart';
-import 'services/py_runtime.dart';
+import 'services/script_runtime.dart';
 import 'services/runtime_paths.dart';
 import 'services/spider_session.dart';
 import 'services/store.dart';
@@ -46,18 +46,25 @@ Future<void> main() async {
     debugPrint('LcbSpider: runtime absent, spider features unavailable');
   }
 
-  // The TVBox (Python) runtime: same rule, a separate interpreter. Sources
-  // pulled from a config are fetched once and kept under `pysrc/`.
+  // The TVBox script runtimes: CPython serves `.py` sites, Node serves `.js`
+  // sites. Either can be missing without disabling the other. Sources pulled
+  // from a config are fetched once and kept under `pysrc/`.
   final pyPaths = PyRuntimePaths.resolve(executableDir: executableDir);
-  if (pyPaths.available) {
-    store.python = PyRuntime(
+  final jsAvailable = runtime != null && runtime.jsAvailable;
+  if (pyPaths.available || jsAvailable) {
+    store.scripts = ScriptRuntime(
       pythonPath: pyPaths.python,
       hostScript: pyPaths.hostScript,
       cacheDir: Directory('$dataRoot${sep}pysrc'),
+      nodePath: jsAvailable ? runtime.node : null,
+      jsHostScript: jsAvailable ? runtime.jsSiteHost : null,
+      jsDataDir: jsAvailable ? '$dataRoot${sep}jssrc' : null,
     );
-    debugPrint('LcbPy: runtime ready (${pyPaths.python})');
+    debugPrint(
+      'LcbScript: python=${pyPaths.available} js=$jsAvailable',
+    );
   } else {
-    debugPrint('LcbPy: runtime absent, TVBox sources unavailable');
+    debugPrint('LcbScript: runtime absent, TVBox sources unavailable');
   }
 
   const options = WindowOptions(

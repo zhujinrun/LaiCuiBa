@@ -1,6 +1,6 @@
 import 'package:lai_cui_ba/models/models.dart';
 import 'package:lai_cui_ba/services/py_host.dart';
-import 'package:lai_cui_ba/services/py_runtime.dart';
+import 'package:lai_cui_ba/services/script_runtime.dart';
 import 'package:lai_cui_ba/services/tvbox_source.dart';
 
 /// A [PyHost] that answers from a table instead of an interpreter.
@@ -60,10 +60,10 @@ class FakePyHost extends PyHost {
   }
 }
 
-/// The [PySources] seam: hands back a [TvBoxSource] over [host] for every site,
+/// The [ScriptSources] seam: hands back a [TvBoxSource] over [host] for every site,
 /// as if the interpreter were up and the file already on disk.
-class FakePySources implements PySources {
-  FakePySources(this.host);
+class FakeScriptSources implements ScriptSources {
+  FakeScriptSources(this.host);
 
   final PyHost host;
 
