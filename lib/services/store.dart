@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import 'catalog_sites.dart';
 import 'demo_data.dart' as demo;
+import 'source_probe.dart';
 import 'spider_client.dart' show SpiderClass;
 import 'spider_session.dart';
 
@@ -371,14 +372,45 @@ class AppStore extends ChangeNotifier {
   // rather than throwing.
   // -------------------------------------------------------------------------
 
-  /// The current `js`-type source and its subscription URL, or null when the
-  /// active source is not a 猫源 (Emby / live / file / tvbox-without-bundle).
+  /// The subscription address a source can be booted from, or null when this
+  /// source cannot run in the cat host at all.
+  ///
+  /// Strict on purpose: a catvod subscription is a directory holding
+  /// `index.js` + `index.config.js`, addressed as `.../index.js.md5` or
+  /// `.../index.js` -- exactly the two shapes [CatBundle] knows how to resolve.
+  /// A TVBox config URL (`.../config.json`), an Emby mount, a live list and a
+  /// local spider file are all addressed differently, and booting them as a
+  /// bundle would only produce a download failure that reads like "source is
+  /// broken" instead of "this kind of source is checked another way".
+  String? spiderAddressOf(SourceInfo source) {
+    if (source.type != 'js' && source.type != 'tvbox') return null;
+    final url = source.url.trim();
+    if (url.isEmpty) return null;
+    final lower = url.toLowerCase();
+    if (!lower.startsWith('http://') && !lower.startsWith('https://')) {
+      return null;
+    }
+    if (!lower.endsWith('.md5') && !lower.endsWith('/index.js')) return null;
+    return url;
+  }
+
+  /// The current source's id and subscription address, or null when the active
+  /// source does not run in the cat host.
+  ///
+  /// Deliberately looser than [spiderAddressOf]: search is worth attempting for
+  /// any `js`/`tvbox` source with a remote address, and a bundle that fails to
+  /// resolve already degrades to the demo catalogue.
   (String, String)? _jsSource() {
     final source = currentSource;
     if (source == null) return null;
     if (source.type != 'js' && source.type != 'tvbox') return null;
-    if (source.url.trim().isEmpty) return null;
-    return (source.id, source.url);
+    final url = source.url.trim();
+    if (url.isEmpty) return null;
+    final lower = url.toLowerCase();
+    if (!lower.startsWith('http://') && !lower.startsWith('https://')) {
+      return null;
+    }
+    return (source.id, url);
   }
 
   /// Whether a real spider search is possible right now.
@@ -697,6 +729,41 @@ class AppStore extends ChangeNotifier {
     final index = _sources.indexWhere((source) => source.id == sourceId);
     if (index < 0) return;
     _sources[index] = _sources[index].copyWith(sites: sites);
+    await _persistSources();
+    notifyListeners();
+  }
+
+  /// Runs 检测 against a spider source: boots it in the host, reads its home
+  /// screen, writes the numbers back onto the source and returns the report so
+  /// the caller can say what happened. Inert: a dead source comes back as a
+  /// failed report, never an exception.
+  Future<ProbeReport> probeSource(SourceInfo source, String md5Url) async {
+    final session = spider;
+    if (session == null) {
+      return const ProbeReport.failure('没有可用的源运行时，先加载源文件');
+    }
+    final report = await SourceProbe(session).run(
+      source: source,
+      md5Url: md5Url,
+    );
+    await applyProbe(source.id, report);
+    return report;
+  }
+
+  /// Writes a 检测 result onto one source and persists it.
+  ///
+  /// A failed check keeps whatever latency it measured -- the user waited that
+  /// long -- but drops the counts: leaving a stale `58 部` on a source that just
+  /// failed is exactly the borrowed number the card must not show.
+  Future<void> applyProbe(String sourceId, ProbeReport report) async {
+    final index = _sources.indexWhere((source) => source.id == sourceId);
+    if (index < 0) return;
+    _sources[index] = _sources[index].copyWith(
+      latencyMs: report.latencyMs,
+      movieCount: report.ok ? report.movieCount : 0,
+      showCount: report.ok ? report.showCount : 0,
+      checkedAt: DateTime.now().millisecondsSinceEpoch,
+    );
     await _persistSources();
     notifyListeners();
   }

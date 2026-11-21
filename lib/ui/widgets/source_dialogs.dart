@@ -5,8 +5,9 @@ import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../services/config_fetcher.dart';
-import '../../services/store.dart';
 import '../../services/site_parser.dart';
+import '../../services/source_probe.dart';
+import '../../services/store.dart';
 
 /// Source management dialogs.
 ///
@@ -55,17 +56,61 @@ Future<void> showSourceMenu(BuildContext context, SourceInfo source) async {
 
 /// Pulls the source's config address and writes what it found back onto the
 /// source. Pasted sources have no address, so they say so instead of guessing.
+///
+/// A source that runs in the cat host is checked by *running* it -- the config
+/// document alone says nothing about whether the site answers today, and a
+/// subscription address is a `.md5` file that no config parser can read. Every
+/// other source is checked by pulling its document.
 Future<void> _recheckSource(
   BuildContext context,
   AppStore store,
   SourceInfo source,
 ) async {
   final messenger = ScaffoldMessenger.of(context);
+
+  final address = store.spiderAddressOf(source);
+  if (address != null) {
+    if (store.spider == null) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('这个源要由宿主执行，当前没有可用的运行时'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('正在启动源并读取首页…'),
+        duration: Duration(seconds: 30),
+      ),
+    );
+    final report = await store.probeSource(source, address);
+    if (!context.mounted) return;
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(_probeSummary(report)),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+    return;
+  }
+
   if (source.url.trim().isEmpty) {
     messenger.showSnackBar(
       const SnackBar(
         content: Text('这个源没有配置地址，拉不了；可以粘贴配置或改地址'),
         duration: Duration(seconds: 3),
+      ),
+    );
+    return;
+  }
+  if (_isLocalSpider(source)) {
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('本地 spider 文件还不能直接执行，检测需要一个订阅地址'),
+        duration: Duration(seconds: 4),
       ),
     );
     return;
@@ -112,6 +157,30 @@ Future<void> _recheckSource(
   messenger.showSnackBar(
     SnackBar(content: Text(reason), duration: const Duration(seconds: 4)),
   );
+}
+
+/// One line for the toast: what the check measured, or why it failed.
+String _probeSummary(ProbeReport report) {
+  if (!report.ok) {
+    final reason = report.error!;
+    return report.latencyMs > 0
+        ? '$reason（用时 ${report.latencyMs} ms）'
+        : reason;
+  }
+  final parts = <String>[
+    if (report.showCount > 0) '${report.showCount} 个分类',
+    '首页 ${report.movieCount} 部',
+    '用时 ${report.latencyMs} ms',
+  ];
+  final note = report.note == null ? '' : '（${report.note}）';
+  return '${parts.join('，')}$note';
+}
+
+/// A spider shipped as a local file: it has an address, but not one the host
+/// can be pointed at yet (that needs a subscription, not a path).
+bool _isLocalSpider(SourceInfo source) {
+  const kinds = {'js', 'py', 'php'};
+  return kinds.contains(source.type) && !source.url.startsWith('http');
 }
 
 Future<void> showEditSourceDialog(BuildContext context, SourceInfo source) {

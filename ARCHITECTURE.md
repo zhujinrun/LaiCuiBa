@@ -219,11 +219,28 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
 | `tool/verify_host.js` | node 侧端到端自检，17 项断言（含 bundle 更新后重载、卸载后端口关闭） |
 | `test/cat_host_e2e_test.dart` | Dart 侧真起 `node.exe` 的集成测试，6 项；无运行时二进制时自动 skip |
 
+#### 可用性度量（已完成，2026-11-21）
+
+「配置解析成功」不等于「源今天能用」。`lib/services/source_probe.dart` 把检测改成**真跑一遍**：
+
+- `SourceProbe.run()` 强制重解析 bundle → 起 Worker → 取首页分类 → 按分类翻第一页 →
+  统计去重片名数，全程计时。`latencyMs` 是用户真正等的那段（含 bundle 与 Worker 启动），
+  不是单次 HTTP 往返。
+- 写回 `SourceInfo.latencyMs / movieCount / showCount / checkedAt`（`AppStore.applyProbe`）。
+  检测失败时**清掉旧计数、保留实测耗时**——死的源上留着上个月的「58 部」是最坏的谎。
+- `重新检测` 按源类型分流：能进宿主的源（`http(s)` 订阅地址）走真跑；配置类源仍走拉文档。
+  本地 `.js/.py/.php` 文件明确回「还不能直接执行」，不再假装 `CatBundle` 能读本地路径。
+- 资源卡片 `当前使用 · N 部` 只在有真实计数时显示，否则退回「N 个站点 / 未解析」。
+
 #### 还没做的（真正的灵魂部分）
-- `js2p://_WEB_` 协议（网页类源的内部 webview 打开）
 - TVBox：CPython + JS spider，参考原版 `py_host` / `spider_channel`
+  （需要打包一份便携 Python + `requests`/`lxml`，属打包工程，不是代码工程）
+- 本地 spider 文件直接执行（现在必须有订阅地址；文件路径无从得知站点 key/type）
 - 挂载：Emby / WebDAV / AList / 网盘
-- 可用性度量：不只判 `supported`，补 `latencyMs` / `movieCount` / `checkedAt`
+- 首页真实片单（等源站 `category` 稳定）
+
+> `js2p://_WEB_` 已核对过：它不是应用侧缺口。该 scheme 由**源自带的 ext 服务**在自己的
+> 进程里重写成 `http://127.0.0.1:<源端口>`，宿主与播放器都不需要认识它。
 
 ### Phase 3 — 播放链路
 `media_kit` + libmpv。**必须规避原版的三类 bug**，见下节。

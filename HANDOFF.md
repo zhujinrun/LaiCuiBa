@@ -234,7 +234,7 @@ lib/
 **未完成**
 - TVBox：CPython + JS spider（参考原版 `py_host`/`spider_channel`）
 - 挂载：Emby/WebDAV/AList/网盘
-- 可用性度量：不只判 `supported`，补 `latencyMs`/`movieCount`/`checkedAt`
+- 本地 spider 文件直接执行（需要站点 key/type，纯文件路径给不出来）
 - 首页 hero/分区的真实片单（`category` 接口实测返回空，源站分类数据不稳定）
 - ⚠️ 以上都依赖原版包 `node/`、`python/` 二进制 + 联网，**不适合无人值守推进**
 
@@ -282,6 +282,24 @@ lib/
 > 宿主只负责 `listen` 与端口回传。夹具源用 node 原生 `http` 实现同一协议，正是为了
 > 证明「宿主不关心源用什么框架」。
 
+**已完成（可用性度量 / 检测，2026-11-21）**
+
+「配置解析成功」被当成「源可用」是假的：`SourceInfo` 里 `latencyMs/movieCount/showCount/checkedAt`
+四个字段一直存在，却从来没人写。这一轮补上生产者：
+
+- `lib/services/source_probe.dart`：`SourceProbe.run()` = 强制重解析 bundle → 起 Worker →
+  取首页分类 → 每类翻第一页 → 去重片名计数，**全程计时**。`latencyMs` 含 bundle 与 Worker
+  启动，是用户真正等的那段。惰性：死源回 `ProbeReport.failure`，不抛异常。
+- `AppStore.applyProbe` 写回四个字段；**失败时清计数、留实测耗时**，不让死源挂着旧「58 部」。
+- `重新检测` 分流：`spiderAddressOf(source) != null`（`js`/`tvbox` + `http(s)` 地址）→ 真跑检测；
+  其它源仍走拉配置文档。本地 `.js/.py/.php` 文件回「还不能直接执行」，不再让 `CatBundle`
+  去 `Uri.parse` 一个 Windows 路径然后报下载失败。
+- `spiderAddressOf` 同时收紧了 `_jsSource()`：本地文件不再谎称 `canSearchReal == true`。
+- 资源卡片：有真实计数就显示 `当前使用 · N 部`（原版就是这个形状），否则退回「N 个站点 / 未解析」。
+- 验证：`test/source_probe_test.dart` 用**本地 HTTP 服务把夹具源当成订阅**（`index.js.md5` +
+  `index.js` + `index.config.js`），真起 `node.exe` 跑一遍，断言 2 分类 / 2 部 / 耗时 > 0；
+  外加 `spiderAddressOf`、`applyProbe`（含跨重启持久化）纯逻辑用例。
+
 ### 🟡 Phase 3 — 播放链路（未开始）
 - `media_kit` + 原版 `libmpv-2.dll`
 - 必须规避原版三类 bug（详见 ARCHITECTURE.md 第五节）：
@@ -303,7 +321,7 @@ TV 焦点导航（原版 `ui/tv/*` 9 个文件）、Android 适配、AI 辅助�
 cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
-flutter test                    # 冒烟测试（当前 138 个全绿）
+flutter test                    # 冒烟测试（当前 147 个全绿）
 flutter analyze                 # 静态检查（当前零问题）
 dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 

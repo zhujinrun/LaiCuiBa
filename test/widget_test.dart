@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:lai_cui_ba/main.dart';
 import 'package:lai_cui_ba/services/backup.dart';
+import 'package:lai_cui_ba/services/source_probe.dart';
 import 'package:lai_cui_ba/services/store.dart';
 import 'package:lai_cui_ba/ui/shell.dart';
 
@@ -579,6 +580,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('当前使用 · 待联网拉取'), findsOneWidget);
     expect(store.activeSites, isEmpty);
+  });
+
+  testWidgets('the source card shows the measured title count', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('资源').last);
+    await tester.pumpAndSettle();
+
+    // The seeded source carries the original's cached figure, so the card
+    // prints 部 rather than the 59 sites the config declares.
+    expect(find.text('当前使用 · 58 部'), findsOneWidget);
+
+    // A check that measured something else takes over without a relaunch.
+    await store.applyProbe(
+      store.sources.first.id,
+      const ProbeReport(latencyMs: 700, movieCount: 12, showCount: 3, siteCount: 59),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('当前使用 · 12 部'), findsOneWidget);
+    expect(find.text('0.7s'), findsOneWidget);
   });
 
   testWidgets('the Emby form keeps address and user, never the password', (

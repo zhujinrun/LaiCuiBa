@@ -144,9 +144,9 @@ class _SourceCard extends StatelessWidget {
   /// What the card says under the name.
   ///
   /// The original shows a title count ("当前使用 · 58 部") because it has fetched
-  /// the source's catalogue. This rebuild only knows the sites the config
-  /// declared, so it reports those; with no config parsed there is nothing
-  /// honest to show, and a borrowed number would just be wrong.
+  /// the source's catalogue. This rebuild prints that count once 检测 has
+  /// actually measured it ([SourceInfo.movieCount]); before that it reports the
+  /// sites the config declared, and a borrowed number would just be wrong.
   String get _status {
     switch (source.type) {
       case 'live':
@@ -156,9 +156,12 @@ class _SourceCard extends StatelessWidget {
         return '直播地址 · 待联网解析';
       case 'py':
       case 'php':
-      case 'js':
         // A spider file declares its sites only when something runs it.
         return '本地 spider 文件 · 待宿主执行';
+      case 'js':
+        // A js source is either a local spider file or a subscription address;
+        // only the latter can be booted, so only the latter can be measured.
+        return _remote ? _measuredLine : '本地 spider 文件 · 待宿主执行';
       case 'emby':
       case 'jellyfin':
         return source.username.isEmpty
@@ -173,8 +176,22 @@ class _SourceCard extends StatelessWidget {
           return selected ? '当前使用 · 待联网拉取' : '未使用 · 地址待拉取';
         }
         if (!selected) return '未使用';
+        if (source.movieCount > 0) return '当前使用 · ${source.movieCount} 部';
         return sites > 0 ? '当前使用 · $sites 个站点' : '当前使用 · 未解析';
     }
+  }
+
+  /// A subscription address can be booted; a local file cannot (yet).
+  bool get _remote => source.url.trimLeft().toLowerCase().startsWith('http');
+
+  /// The line a runnable spider shows: the measured title count when 检测 has
+  /// produced one, the declared site count before that.
+  String get _measuredLine {
+    final prefix = selected ? '当前使用 · ' : '';
+    if (source.movieCount > 0) return '$prefix${source.movieCount} 部';
+    final sites = source.searchableSites.length;
+    if (sites > 0) return '$prefix$sites 个站点';
+    return selected ? '当前使用 · 待检测' : '未使用 · 待检测';
   }
 
   String get _latency {
