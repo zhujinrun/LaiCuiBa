@@ -29,7 +29,7 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
 | --- | --- |
 | Phase 0 — 界面骨架 | ✅ 完成 |
 | Phase 1 — 数据层与页面闭环 | ✅ 完成（详情页 + 搜索页都已落地） |
-| Phase 2 — 源接入（灵魂） | 🔶 大部分（源→站点→联网拉取→spider 宿主→搜索/详情/播放/首页片单已通；TVBox python 宿主未做） |
+| Phase 2 — 源接入（灵魂） | 🔶 大部分（源→站点→联网拉取→spider 宿主→搜索/详情/播放/首页片单已通；Emby/Jellyfin 与 WebDAV/AList 挂载已通；TVBox python 宿主未做） |
 | Phase 3 — 播放链路 | ⬜ 未开始 |
 | Phase 4 — 外设模块 | ⬜ 未开始 |
 | Phase 5 — 多端 | ⬜ 未开始 |
@@ -87,6 +87,7 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
 - **104 个测试全绿**、`flutter analyze` 零问题
 - **114 个测试全绿**（C2 真实数据接入后，含 `spider_session` 5 例 + `spider_client` 5 例）、
   `flutter analyze` 零问题
+- **201 个测试全绿**（夹具全关 + 首页并发探测 + WebDAV 挂载之后）、`flutter analyze` 零问题
 
 ---
 
@@ -232,8 +233,7 @@ lib/
 - 老数据迁移：`flutter.sources` 里无 `sites` 的演示源在 load 时补种（有回归测试）
 
 **未完成**
-- TVBox：CPython + JS spider（参考原版 `py_host`/`spider_channel`）
-- 挂载：WebDAV/AList/网盘（Emby/Jellyfin 已完成，见下节）
+- TVBox：CPython + JS spider（参考原版 `py_host`/`spider_channel`）——需要原版 `python/` 二进制
 - 本地 spider 文件直接执行（需要站点 key/type，纯文件路径给不出来）
 - ⚠️ 以上都依赖原版包 `node/`、`python/` 二进制 + 联网，**不适合无人值守推进**
 
@@ -264,6 +264,46 @@ lib/
   15 例覆盖登录/登录失败/连不上、行映射、剧集与电影详情、直链、检测计数、store 分流与严格模式；
   `widget_test` 新增 3 例（挂载源替换首页 demo 片单、表单未登录不保存、缺账号密码先拦下）。
 
+**已完成（夹具全关，2026-11-21）**
+
+用户要求：「demo 调试阶段不要 demo 了，都分不清是不是真实数据。」于是所有夹具出口统一关掉
+（`lcbDemoCatalogue` / `lcbSeedSampleUserData`，都是 `false`）：
+
+- `heroItems` / `homeSections` / `detailOf` / `searchCatalogue` / `suggestionsFor` 全部经开关；
+  关闭时返回空，**任何页面都不会再拿夹具顶替真实回答**。
+- 首页四态：无源 → 引导去资源页；请求中 → spinner；失败 → 「×× 没有答上来」+ 原因 + 重试；
+  成功但空 → 「×× 的首页没有取到片单」。
+- 搜索新增 `LcbSearch.canSearch`：没有猫源运行时显示「暂时无法搜索」，而不是假装"没结果"。
+- 首次启动只 seed 一个可用源，不再 seed 样本历史/收藏；老安装里海报以 `assets/demo/`
+  开头的历史/收藏会被一次性清掉（`purgedFixtureRows` 标记）。
+- 测试用三个 seam 保持覆盖：`AppStore.seedSampleUserData`、`store.searchStub`、
+  `store.detailStub`。
+
+**已完成（WebDAV / AList 挂载，2026-11-21）**
+
+共享目录没有"库 API"，只有一棵文件树，所以形态是**推断**出来的：目录 = 一部作品（里面的
+视频是选集），散落的视频文件 = 正片，文件名里解析年份与集数。仍然**零外部源**可自证
+（假 WebDAV 跑在 localhost，真的应答 PROPFIND）。
+
+- `services/media_mount.dart`：`MediaMount` 抽象（library / search / detail / probe /
+  streamUrl / playbackHeaders / close）。`EmbyClient` 实现它，store 与页面不再认具体客户端。
+- `services/webdav_client.dart`：每层一次 `PROPFIND Depth: 1`（**不遍历整棵树**，AList 根目录
+  可能有几千条）；`multistatus` 用正则解析（不引 xml 包，命名空间前缀任意）；选集按自然序
+  （第1 / 第2 / 第10）；`@eaDir`/`#recycle`/缩略图目录与字幕、图片、nfo 全部过滤；标题去掉
+  `2160p`/`x265`/`WEB-DL` 这类发布标记；403/404/401 与传输异常统一成中文 `MountException`。
+- **一个目录里放多部不同电影时不是"第1集/第2集"**：每个文件保留自己的片名进选集；单文件目录
+  才叫「正片」。这条是踩过的坑：早期一律按集号排，结果"电影"目录里出现"第2集"。
+- 播放：共享目录没有令牌可塞进 URL，所以 `playbackHeaders` 带 Basic auth，`PlayerPage`
+  把它并到 UA 之上；目录型条目播之前先取 detail（否则会把目录 URL 丢给播放器）。
+- store：`webdav` 进 `isMountSource`，首页 / 搜索 / 详情 / 检测**原路走挂载分支**；读不到时
+  画空库而不是把异常抛进页面；检测把数量（或拒绝原因）写回卡片副标题
+  （`N 部` / `N 个目录` / `未使用 · 待检测`）。
+- 添加资源加「WebDAV / AList 网盘」：**先 PROPFIND 验证再保存**，失败不关表单；
+  密码存在源记录里（本地 prefs），因为 WebDAV 没有换取令牌的机制。
+- 验证：`test/support/fake_webdav.dart` 起真 `HttpServer` 应答 PROPFIND（含鉴权），
+  `test/webdav_client_test.dart` 13 例 + `test/webdav_store_test.dart` 8 例。
+  真机（本地假共享）首页画出 电影 / 剧集 / 散装片，无任何夹具参与。
+
 **已完成（猫源首页片单，2026-11-21）**
 
 搜索/详情/播放早已走真实源，只有首页还挂着 demo——最后一块「真实源」与「用户看到的」不一致
@@ -274,9 +314,13 @@ lib/
 - 站点轮换：`homeSite` 优先，失败再试后面两个（最多试 3 个）——猫源包里几十个站点，
   被指定的那个死掉是常态。
 - hero 跨分区取片：按 vod_id 去重、有海报的优先（hero 是全幅背景）、上限 5 张。
-- 首页策略：**先照旧显示 demo，真片单到了再替换**；订阅下载失败/源没起来就**静默留 demo**
-  （一次网络抖动不该把首屏变成错误页），只有源**明确回答空**才说「××的首页没有取到片单」。
-  挂载源保持「占位 → 库内容」，因为它是用户显式添加的，demo 一定不对。
+- 首页策略（**2026-11-21 已改**：夹具全关，不再有 demo 兜底）：请求中出占位 spinner；
+  成功出片单；源明确回答空 → 「×× 的首页没有取到片单」；没源 → 引导去资源页；
+  请求失败 → 「×× 没有答上来 + 原因 + 重试」。见「夹具全关」一节。
+- **站点探测是并发的**（关键修复）：实测豆儿源 59 个站点里只有 19 个能出 category，而
+  `homeSite` 指的「直」荐片不在其中——原来串行试 3 个必然落空。现在每轮并发：先所有候选答
+  `home`，再所有活着的同时答第一个分类，两轮延迟内出结果；候选上限 8；单站点 6s 超时；
+  本轮成功的站点在进程内记住（不落盘，隔夜死掉的站不能一直被信任）。
 - 判定用严格的 `spiderAddressOf`：答应接管首页是个承诺，配置类 TVBox 地址跑不起来。
 - 验证：`test/source_catalogue_test.dart` 11 例（hero 挑片 4、`hasSpiderHome` 4、真起 node
   的夹具订阅 3，含「homeSite 指到死站仍能轮到下一个」）；`widget_test` 新增 1 例锁
@@ -365,7 +409,7 @@ TV 焦点导航（原版 `ui/tv/*` 9 个文件）、Android 适配、AI 辅助�
 cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
-flutter test                    # 冒烟测试（当前 176 个全绿）
+flutter test                    # 冒烟测试（当前 201 个全绿）
 flutter analyze                 # 静态检查（当前零问题）
 dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 
@@ -397,21 +441,21 @@ bash tool/sync_runtime.sh
 
 ## 九、下一步建议
 
-1. **让用户验收这一轮**（C2 真实搜索/详情已落地）：
+1. **让用户验收这一轮**：
    - 先跑 `bash tool/sync_runtime.sh` 同步 node.exe 到 assets 与 build 产物，再
-     `flutter run -d windows`（或 `flutter build windows --debug` 后运行 exe）；
+     `flutter build windows --debug` 后运行 exe（构建前先 `taskkill //IM LaiCuiBa.exe //F`）；
    - 启动日志应出现 `LcbSpider: runtime ready (...)`；
-   - 首页右上搜索框输入关键词（如「尚公主」）回车，结果应先秒出 demo、随后替换成
-     真实片单（来自 荐片，带「荐片」站点 chip + 真实海报网络图）；点卡片进详情能看到
-     真实简介/演员/地区；
-   - 断网/无 node.exe 时回退 demo 片单，页面不白屏。
+   - **首页**：默认源会先转圈（首轮要 load 9MB 的 index.js + 探测站点），几秒后出真实分区；
+     若失败会写明原因并给「重试」——这是真实回答，不是 bug；
+   - **搜索**：输入关键词回车，结果按站点分组，来自真实源；
+   - **网盘**：添加资源 → 「WebDAV / AList 网盘」，填 AList 的 `http://IP:5244/dav`
+     与账号，能连上才保存；保存后首页画目录、详情画选集。
 2. 验收无误后由**用户自己**推送（AI 不 push）：`git push -u origin master`。
 3. 下一步自然顺序：
-   - 真机验收**猫源首页**：默认源（豆儿猫源）启动后应先出 demo，1–3 秒后换成真实分区；
-     断网时应保持 demo（不是空白/错误页），可对照「资源 → 重新检测」的数字；
-   - 或 **TVBox/CPython 源宿主**（饭太硬等 json 源），需要原版 `python/` 二进制；
-   - 或 **WebDAV / AList 挂载**（纯 HTTP，可像 Emby 一样用假服务器自证）；
-   - 或纯本地收尾：设置页「媒体徽章」子页、HistoryEntry 字段保真。
+   - **TVBox/CPython 源宿主**（饭太硬等 json 源），需要原版 `python/` 二进制，属打包工程；
+   - **播放链路细节**（Phase 3 剩下的）：跳片头 / 广告段 / 续播争抢的串行化，见
+     `ARCHITECTURE.md` 第五节；目前播放器是"直开 + 续播 seek"，三条规避还没落地；
+   - 或纯本地收尾：设置页「媒体徽章」子页（**Phase 1 唯一剩下的一项**，现在是死控件）。
 
 ---
 
