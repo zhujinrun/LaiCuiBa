@@ -243,4 +243,150 @@ void main() {
       );
     });
   }, skip: ready ? false : '缺少 python 运行时（先跑 tool/sync_runtime.sh）');
+
+  // -------------------------------------------------------------------------
+  // 聚合源：一个文件声明多个平台，ext 里的 __aggregatePlatform 选中其中一个。
+  // -------------------------------------------------------------------------
+  group('Python 聚合源（夹具，真起 python）', () {
+    late PyHost host;
+    late String path;
+
+    String ext(String platform) => jsonEncode({'__aggregatePlatform': platform});
+
+    TvBoxSource sourceOf(String platform) => TvBoxSource(
+      host: host,
+      key: 'agg|$platform',
+      path: path,
+      ext: ext(platform),
+      siteKey: platform,
+    );
+
+    setUpAll(() async {
+      path = File(
+        p.join(Directory.current.path, 'test', 'fixtures', 'py_source',
+            'aggregate.py'),
+      ).absolute.path;
+      host = PyHost(
+        pythonPath: runtime.python,
+        hostScript: runtime.hostScript,
+      );
+      await host.start();
+    });
+
+    tearDownAll(() async {
+      await host.stop();
+    });
+
+    test('sites 列出文件声明的平台，普通源返回空', () async {
+      final platforms = await host.sites(path: path);
+      expect(platforms.map((p) => p.key).toList(), ['alpha', 'beta']);
+      expect(platforms.map((p) => p.name).toList(), ['甲平台', '乙平台']);
+      expect(platforms.last.ext, {'note': 'beta'});
+
+      final plain = File(
+        p.join(Directory.current.path, 'test', 'fixtures', 'py_source',
+            'main.py'),
+      ).absolute.path;
+      expect(await host.sites(path: plain), isEmpty);
+    });
+
+    test('home 转到 site_home，只交回分类与筛选', () async {
+      final body = await host.call(
+        key: 'agg|alpha',
+        path: path,
+        ext: ext('alpha'),
+        method: 'home',
+        args: [true],
+      );
+      final json = jsonDecode(body) as Map<String, dynamic>;
+      final classes = json['class'] as List;
+      expect((classes.first as Map)['type_name'], 'alpha分区');
+      expect(json['filters'], isEmpty);
+    });
+
+    test('category 与 search 的列表被 wrap 成 平台@@id', () async {
+      final body = await host.call(
+        key: 'agg|beta',
+        path: path,
+        ext: ext('beta'),
+        method: 'category',
+        args: ['beta-1', '2', true, <String, dynamic>{}],
+      );
+      final json = jsonDecode(body) as Map<String, dynamic>;
+      final first = (json['list'] as List).first as Map;
+      expect(first['vod_id'], 'beta@@cat');
+      expect(json['page'], 2);
+
+      final hits = await host.call(
+        key: 'agg|beta',
+        path: path,
+        ext: ext('beta'),
+        method: 'search',
+        args: ['关键词', false, '1'],
+      );
+      expect(
+        ((jsonDecode(hits) as Map)['list'] as List).first['vod_id'],
+        'beta@@hit',
+      );
+    });
+
+    test('详情与播放在标准路径上按 平台@@id 回到聚合器', () async {
+      final body = await host.call(
+        key: 'agg|alpha',
+        path: path,
+        ext: ext('alpha'),
+        method: 'detail',
+        args: ['alpha@@cat'],
+      );
+      final vod = ((jsonDecode(body) as Map)['list'] as List).first as Map;
+      expect(vod['vod_play_url'], '第1集\$alpha@@cat');
+
+      final play = await host.call(
+        key: 'agg|alpha',
+        path: path,
+        ext: ext('alpha'),
+        method: 'player',
+        args: ['线路一', 'alpha@@cat', <String>[]],
+      );
+      final json = jsonDecode(play) as Map<String, dynamic>;
+      expect(json['url'], 'http://example.invalid/alpha/alpha@@cat.m3u8');
+      expect((json['header'] as Map)['Referer'], 'http://example.invalid/');
+    });
+
+    test('TvBoxSource 带着站点 key 出模型', () async {
+      final source = sourceOf('beta');
+      final page = await source.category('beta-1');
+      expect(page.items.first.id, 'beta@@cat');
+      expect(page.items.first.siteKey, 'beta');
+
+      final full = await source.detail(
+        const MediaItem(id: 'beta@@cat', title: '乙平台分类片', siteKey: 'beta'),
+      );
+      expect(full, isNotNull);
+      expect(full!.playLines.single.name, '线路一');
+      final target = await source.playTarget(
+        flag: '线路一',
+        id: full.playLines.single.episodes.single.url,
+      );
+      expect(target?.headers['Referer'], 'http://example.invalid/');
+    });
+
+    test('聚合源没带平台时报的是看得懂的话', () async {
+      await expectLater(
+        host.call(
+          key: 'agg|plain',
+          path: path,
+          method: 'home',
+          args: [true],
+        ),
+        throwsA(
+          isA<PyHostException>().having(
+            (e) => e.message,
+            'message',
+            contains('聚合源'),
+          ),
+        ),
+      );
+    });
+  }, skip: ready ? false : '缺少 python 运行时（先跑 tool/sync_runtime.sh）');
 }

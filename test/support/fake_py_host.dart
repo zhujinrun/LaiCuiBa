@@ -70,8 +70,14 @@ class FakePySources implements PySources {
   /// Sites asked for, in order.
   final List<SiteInfo> asked = [];
 
+  /// What [expandSites] answers. Null means "nothing expanded", the default.
+  List<SiteInfo>? expansion;
+
   @override
   String? lastError;
+
+  @override
+  Future<List<SiteInfo>?> expandSites(SourceInfo source) async => expansion;
 
   @override
   Future<TvBoxSource?> sourceFor({

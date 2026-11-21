@@ -527,27 +527,17 @@ class AppStore extends ChangeNotifier {
   // above this line -- routing, detail, play -- has one shape to reason about.
   // -------------------------------------------------------------------------
 
-  /// True when [api] names a Python source rather than a catvod bundle.
-  ///
-  /// Only the extension is checked, because the two runtimes address their
-  /// sources the same way otherwise (`http(s)://…/main.py` is a normal TVBox
-  /// api, and a config written on Windows may carry a backslash path).
-  static bool _isPyApi(String api) {
-    final address = api.trim().toLowerCase();
-    if (address.isEmpty) return false;
-    final path = address.split('?').first;
-    return path.endsWith('.py');
-  }
-
   /// The sites of [source] the Python host can run.
   ///
   /// A `py` source is one site that happens to be a single file: its own id is
   /// used as the site key, which keeps history rows and detail lookups stable
-  /// without inventing a site that the user never saw.
+  /// without inventing a site that the user never saw. Once 检测 expands an
+  /// aggregate file, the platforms it declares are stored as its sites and win.
   List<SiteInfo> pySitesOf(SourceInfo? source) {
     if (source == null) return const [];
     if (source.type == 'py') {
-      if (!_isPyApi(source.url)) return const [];
+      if (source.sites.isNotEmpty) return source.sites;
+      if (!isPyApi(source.url)) return const [];
       return [
         SiteInfo(key: source.id, name: source.name, api: source.url),
       ];
@@ -555,7 +545,7 @@ class AppStore extends ChangeNotifier {
     if (source.type == 'tvbox') {
       return [
         for (final site in source.sites)
-          if (_isPyApi(site.api)) site,
+          if (isPyApi(site.api)) site,
       ];
     }
     return const [];
@@ -1331,11 +1321,15 @@ class AppStore extends ChangeNotifier {
       }
     }
 
-    final pySites = pySitesOf(source);
     final runtime = python;
-    if (runtime != null && pySites.isNotEmpty) {
-      final site = pyHomeSiteOf(source) ?? pySites.first;
-      final client = await runtime.sourceFor(source: source, site: site);
+    if (runtime != null && pySitesOf(source).isNotEmpty) {
+      // 检测是「这个源到底能给我什么」的唯一时机，也正好是展开聚合源的时机：
+      // 一个 main.py 声明的平台只有跑起来才知道，展开后写回，站点 chip 与
+      // 首页/搜索/详情才对得上。
+      final effective = await _expandPySites(source);
+      final sites = pySitesOf(effective);
+      final site = pyHomeSiteOf(effective) ?? sites.first;
+      final client = await runtime.sourceFor(source: effective, site: site);
       if (client == null) {
         final failed = ProbeReport.failure(
           runtime.lastError ?? 'Python 宿主没有启动',
@@ -1343,7 +1337,7 @@ class AppStore extends ChangeNotifier {
         await applyProbe(source.id, failed);
         return failed;
       }
-      final report = await client.probe(siteCount: pySites.length);
+      final report = await client.probe(siteCount: sites.length);
       await applyProbe(source.id, report);
       return report;
     }
@@ -1360,8 +1354,41 @@ class AppStore extends ChangeNotifier {
     return report;
   }
 
-  /// Writes a 检测 result onto one source and persists it.
+  /// Expands an aggregate Python file into the platforms it declares and writes
+  /// the result back, returning the source to use from here on.
   ///
+  /// Nothing to expand (an ordinary single-site file, or a runtime that cannot
+  /// be started right now) returns [source] unchanged -- 检测 then fails on its
+  /// own terms instead of reporting a second, unrelated problem.
+  Future<SourceInfo> _expandPySites(SourceInfo source) async {
+    final runtime = python;
+    if (runtime == null) return source;
+    final sites = await runtime.expandSites(source);
+    if (sites == null || sites.isEmpty) return source;
+    final index = _sources.indexWhere((existing) => existing.id == source.id);
+    if (index < 0) return source;
+    // A home site that pointed at the file which just expanded no longer
+    // exists; fall back to its first platform. An empty home site stays empty
+    // -- [pyHomeSiteOf] already knows how to pick one.
+    final home = _sources[index].homeSite;
+    final kept = home.isEmpty || sites.any((site) => site.key == home)
+        ? home
+        : _firstPyKey(sites) ?? home;
+    final updated = _sources[index].copyWith(sites: sites, homeSite: kept);
+    _sources[index] = updated;
+    await _persistSources();
+    notifyListeners();
+    return updated;
+  }
+
+  static String? _firstPyKey(List<SiteInfo> sites) {
+    for (final site in sites) {
+      if (isPyApi(site.api)) return site.key;
+    }
+    return null;
+  }
+
+  /// Writes a 检测 result onto one source and persists it.  ///
   /// A failed check keeps whatever latency it measured -- the user waited that
   /// long -- but drops the counts: leaving a stale `58 部` on a source that just
   /// failed is exactly the borrowed number the card must not show.

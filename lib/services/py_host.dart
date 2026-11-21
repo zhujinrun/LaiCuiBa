@@ -121,6 +121,31 @@ class PyHost {
     return result is String ? result : (result == null ? '' : '$result');
   }
 
+  /// Lists the platforms a Python file declares in its module-level `SITES`.
+  ///
+  /// An aggregate source is one file that fronts several platforms; each one is
+  /// selected at call time through `ext`, so the config has to know their names
+  /// before anything can be played. An empty list means "this is an ordinary
+  /// single-site source", not an error.
+  Future<List<PySubSite>> sites({required String path}) async {
+    final reply = await _send(
+      'sites',
+      {'path': path},
+      timeout: const Duration(seconds: 20),
+    );
+    final result = reply['result'];
+    if (result is! List) return const [];
+    return [
+      for (final raw in result)
+        if (raw is Map && '${raw['key'] ?? ''}'.trim().isNotEmpty)
+          PySubSite(
+            key: '${raw['key']}'.trim(),
+            name: '${raw['name'] ?? raw['key']}'.trim(),
+            ext: raw['ext'],
+          ),
+    ];
+  }
+
   /// Asks the source to answer a `/proxy?do=…` request. The body comes back
   /// base64 so binary content (playlists, images, segments) survives the pipe.
   ///
@@ -241,6 +266,18 @@ class PyHost {
     }
     return const {};
   }
+}
+
+/// One platform an aggregate Python source declares in `SITES`.
+class PySubSite {
+  const PySubSite({required this.key, required this.name, this.ext});
+
+  /// The platform id the source itself uses (`spider.call(platform, …)`).
+  final String key;
+  final String name;
+
+  /// Extra per-platform `init` parameters, when `SITES` carries them.
+  final Object? ext;
 }
 
 /// One `/proxy` answer: what the source wants the player (or an image view) to

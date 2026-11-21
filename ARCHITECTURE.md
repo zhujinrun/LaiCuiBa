@@ -277,6 +277,7 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
 | 运行时管理 | `services/py_runtime.dart` | 懒启动解释器 + 代理监听；`sourceFor(source, site)` 解析 api（本地文件或远端下载缓存），按 `source\|site` 复用实例 |
 | 应用侧 HTTP | `services/local_proxy.dart` | `/proxy` 转给源的 `localProxy()`；`/cache` 实现 `getCache/setCache/delCache`；只绑 127.0.0.1 随机端口 |
 | 首页片单 | `services/tvbox_catalogue.dart` | `home` 的分类 → 并发取前 5 个分类第一页，空分类丢掉；没有片单时说清是谁没有 |
+| 聚合源 | `py_host.py` 的 `sites` op + `py_runtime.expandSites` | 读出顶层 `SITES` 展开成平台站点；调用按 `ext.__aggregatePlatform` 转发给 `site_home` / `call`+`wrap` |
 
 几个刻意的选择：
 
@@ -288,16 +289,30 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
   继承的，两套解析各写一份只会慢慢漂移。
 - **`init` 的参数裁剪**：`inspect.signature` 数一下源实际要几个参数，多的截掉 ——
   老源少写一个参数是常态，硬传会 `TypeError`。
-- 聚合源（`SITES` 展开 / `wrap`）**还没接**，遇到会得到一句「源没有实现 homeContent」
-  这样的真实错误，而不是空列表。
+- **聚合源（`SITES` 展开 / `wrap`）按原版的契约实现**，不是自创协议：
+
+  | 环节 | 契约 |
+  | --- | --- |
+  | 声明 | 文件顶层 `SITES`（list of dict / dict / list of str），`sites` op 只加载模块、不 `init` |
+  | 选择 | 站点 `ext` 里带 `{"__aggregatePlatform": "<平台>"}`；`py_runtime.expandSites` 把文件展开成每个平台一个 `SiteInfo`，`ext` 合并 `SITES` 项自己的参数 |
+  | 转发 | `home → site_home(平台)`；`category/search/homeVideo → call(平台, *Content)` 再 `wrap(平台, list)` |
+  | 路由 | `wrap` 把 id 改成 `平台@@id`，`detail`/`player` 走标准入口，聚合器自己按前缀路由 |
+  | 兜底 | 声明了 `SITES` 却没带平台 → 明确报「这是聚合源，要先选平台」，不是回一屏空白 |
+  | 安全 | 站点 `ext` 非空且不是 JSON 对象时不展开（不能既保留原参数又注入选择器） |
+
+  展开发生在「检测」时（唯一需要真跑一次的地方），结果写回 `sites`，第二次检测看到的
+  已是带 `__aggregatePlatform` 的站点，不会重复展开。
 
 **独立验证**分三层，全部真起 `python.exe`，夹具是原创的
-`test/fixtures/py_source/main.py`（两个线路、`parse=1`、空结果、故意抛异常）：
+`test/fixtures/py_source/main.py`（两个线路、`parse=1`、空结果、故意抛异常）与
+`aggregate.py`（`SITES` + 两个平台 + `wrap` 前缀）：
 
-- `test/py_host_e2e_test.dart`（17 项）：行-JSON 协议、参数裁剪、port 握手、
-  base64 代理回传、异常透传、`release` 后重新 init、`TvBoxSource` 的四条映射；
-- `test/py_runtime_e2e_test.dart`（6 项）：本地源启动、`/proxy` 真的打到源的
-  `localProxy`、远端 api 只下载一次、**store 的四条链路串联**（首页 → 搜索 → 详情 → 播放）；
+- `test/py_host_e2e_test.dart`（23 项）：行-JSON 协议、参数裁剪、port 握手、
+  base64 代理回传、异常透传、`release` 后重新 init、`TvBoxSource` 的四条映射，
+  以及聚合源的 `sites` / `site_home` / `call`+`wrap` / `平台@@id` 回路由；
+- `test/py_runtime_e2e_test.dart`（9 项）：本地源启动、`/proxy` 真的打到源的
+  `localProxy`、远端 api 只下载一次、`expandSites` 展开与去重、**store 的四条链路串联**
+  （首页 → 搜索 → 详情 → 播放），以及「检测展开聚合源后四条链路落在选中的平台上」；
 - `test/local_proxy_test.dart`（6 项）+ `test/py_store_test.dart`（18 项）：不依赖解释器，
   覆盖 HTTP 端点契约与 store 的分流/严格过滤/检测写回。
 
@@ -316,9 +331,12 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
   同一个地址只用下一次；换地址就是换 hash，自然重下。
 - `tvbox` 配置源本身仍靠「检测」联网拉站点：拉回来之后如果站点是 `.py`，下一次检测/打开
   首页就会真的跑起来。
+- **聚合源**：`pySitesOf()` 对已展开的 `py` 源直接读 `sites`；检测先 `expandSites` 再跑
+  probe，展开结果（每个平台一个 `SiteInfo`，`api` 都指向同一个文件、`ext` 带平台选择器）
+  写回源并持久化。首页/搜索/详情/播放因此看不出它和普通多站点配置的区别。
+  真机自证：夹具聚合源在真实 exe 上画出「甲平台」chip 与 `alpha分区` 片单。
 
 #### 还没做的（真正的灵魂部分）
-- 聚合源（`SITES` 展开 / `wrap` 形态）：现在会如实报「源没有实现 homeContent」
 - 配置里的 js 站点（`api` 以 `.js` 结尾的 TVBox 站点）：还没有通往猫源宿主的桥
 - 本地 js spider 直接执行（猫源宿主只认订阅目录，不认单个文件）
 - 挂载令牌失效后的**重新登录入口**（目前提示「删掉这个源重新添加」）

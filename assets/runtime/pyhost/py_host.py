@@ -12,6 +12,7 @@
      "method":"home","args":"[true]"}
     {"id":4,"op":"proxy","params":"{\"do\":\"py\"}"}
     {"id":5,"op":"release","key":"..."}
+    {"id":6,"op":"sites","path":"D:/src/main.py"}
 
 应答：{"id":n,"ok":true,"result":...} / {"id":n,"ok":false,"error":"Type: msg"}
 
@@ -36,6 +37,35 @@ if HERE not in sys.path:
 _out = sys.stdout.buffer
 sys.stdout = sys.stderr  # 协议专用 stdout，源的东西全去 stderr
 
+
+def _crawler_shim():
+    """让 `from com.github.catvod.crawler import Spider` 落到 Python 基类上。
+
+    有些源优先继承「宿主自带」的 Java 爬虫基类，导入失败才退回自己的基类。
+    安卓上 Chaquopy 真能导入那个 Java 类，接着 Python 类去继承 Java 类会直接
+    失败；桌面宿主没有这个类，不垫一层的话源连加载都过不去。
+    """
+    import types
+
+    def make(name):
+        module = types.ModuleType(name)
+
+        def __getattr__(attr):
+            if attr == 'Spider':
+                from base.spider import Spider
+                return Spider
+            raise AttributeError(attr)
+
+        module.__getattr__ = __getattr__
+        return module
+
+    for name in ('com', 'com.github', 'com.github.catvod',
+                 'com.github.catvod.crawler'):
+        sys.modules.setdefault(name, make(name))
+
+
+_crawler_shim()
+
 import base.local_proxy as local_proxy  # noqa: E402
 
 
@@ -56,6 +86,57 @@ def _invoke(fn, *args):
     except (TypeError, ValueError):
         count = len(args)
     return fn(*args[:count])
+
+
+def _platform(ext):
+    """聚合源选中的子平台，从 `{"__aggregatePlatform": "..."}` 里取。
+
+    不是 JSON 对象的 ext（普通源常见的空串或随意字符串）一律视为没有平台，
+    免得把普通源的 `init` 参数当成聚合指令。
+    """
+    if isinstance(ext, str) and ext.lstrip().startswith('{'):
+        try:
+            ext = json.loads(ext)
+        except Exception:
+            return ''
+    if not isinstance(ext, dict):
+        return ''
+    return str(ext.get('__aggregatePlatform') or '')
+
+
+def _normalise_sites(raw):
+    """把源里 `SITES` 的几种写法统一成 [{key, name, ext?}]。
+
+    见过的写法：list of dict（TVBox 站点条目）、dict（key → 名字或条目）、
+    list of str。其余形状一律当「没有 SITES」——宁可少展开一个源，
+    也不要凭猜测把一坨键名画成站点。
+    """
+    out = []
+    if isinstance(raw, dict):
+        for key, value in raw.items():
+            entry = {'key': str(key), 'name': str(key)}
+            if isinstance(value, dict):
+                for field in ('name', 'title', 'ext'):
+                    if value.get(field) not in (None, ''):
+                        entry[field] = value[field]
+            elif isinstance(value, str) and value:
+                entry['name'] = value
+            out.append(entry)
+        return out
+    if not isinstance(raw, (list, tuple)):
+        return []
+    for item in raw:
+        if isinstance(item, str) and item:
+            out.append({'key': item, 'name': item})
+        elif isinstance(item, dict):
+            key = item.get('key') or item.get('id')
+            if not key:
+                continue
+            entry = {'key': str(key), 'name': str(item.get('name') or key)}
+            if item.get('ext') not in (None, ''):
+                entry['ext'] = item['ext']
+            out.append(entry)
+    return out
 
 
 class Host(object):
@@ -87,12 +168,28 @@ class Host(object):
                 spider._site_key = key
             except Exception:
                 pass
+            # 记住这个文件是不是聚合源：它声明了 SITES 却拿不到平台时，
+            # 报一句能看懂的话，比回一屏空白强。
+            try:
+                spider._declares_sites = bool(getattr(module, 'SITES', None))
+            except Exception:
+                pass
             init = getattr(spider, 'init', None)
             if init is not None:
                 _invoke(init, ext or '')
             self._spiders[key] = spider
             self._recent = key
             return spider
+
+    def sites(self, path):
+        """列出一个文件把自己展开成哪些站点（聚合源的 `SITES`）。
+
+        只加载模块、不创建实例、不 `init`：这一步是「这个文件认识哪些平台」，
+        不是「去抓一次数据」。文件没有 `SITES` 就返回空列表，调用方据此知道
+        它是个单站点源。
+        """
+        module = self._load('probe|%s' % path, path)
+        return _normalise_sites(getattr(module, 'SITES', None))
 
     def _load(self, key, path):
         path = os.path.abspath(path)
@@ -132,6 +229,36 @@ class Host(object):
                 if found is not None:
                     return found
             raise AttributeError('源没有实现 %s' % names[0])
+
+        # 聚合源：配置里一个 main.py 展开成多个平台，ext 带上
+        # `__aggregatePlatform`。标准调用转给选中的子平台，列表再用源自己的
+        # `wrap` 包一层（它会把 id 改成 `平台@@id`，详情和播放才能路由回来）。
+        platform = _platform(ext)
+        if not platform and getattr(spider, '_declares_sites', False):
+            raise ValueError('这是聚合源，要先选平台（ext 缺少 __aggregatePlatform）')
+        if platform:
+            if not hasattr(spider, 'call') or not hasattr(spider, 'wrap'):
+                raise AttributeError('该 Python 源不支持平台展开')
+            if method == 'home':
+                home = spider.site_home(platform) if hasattr(spider, 'site_home') else {}
+                home = home if isinstance(home, dict) else {}
+                return _text({'class': home.get('class', []),
+                              'filters': home.get('filters', {})})
+            if method in ('homeVideo', 'category', 'search'):
+                if method == 'homeVideo':
+                    data = spider.call(platform, 'homeVideoContent')
+                elif method == 'category':
+                    data = spider.call(platform, 'categoryContent',
+                                       str(arg(0, '')), str(arg(1, '1')),
+                                       bool(arg(2, True)), arg(3, {}) or {})
+                else:
+                    data = spider.call(platform, 'searchContent', arg(0, ''),
+                                       bool(arg(1, False)), str(arg(2, '1')))
+                data = dict(data) if isinstance(data, dict) else {}
+                data['list'] = spider.wrap(platform, data.get('list', []))
+                return _text(data)
+            # detail / player / localProxy 直接用 wrap 过的 `平台@@id`，
+            # 聚合器自己会路由，所以落到下面的标准分发。
 
         if method == 'init':
             return ''
@@ -229,6 +356,8 @@ def _handle(request):
                                request.get('args', '[]'))
         elif op == 'proxy':
             result = host.proxy(request.get('params', '{}'))
+        elif op == 'sites':
+            result = host.sites(request['path'])
         elif op == 'port':
             host.port = int(request['port'])
             local_proxy.Proxy.set_port(host.port)

@@ -134,6 +134,55 @@ void main() {
         expect(runtime.lastError, contains('源文件不存在'));
       });
 
+      test('expandSites 把聚合文件展开成它声明的平台', () async {
+        final aggregate = File(
+          p.join(Directory.current.path, 'test', 'fixtures', 'py_source',
+              'aggregate.py'),
+        ).absolute;
+        final sites = await runtime.expandSites(
+          SourceInfo(id: 'agg-1', type: 'py', name: '聚合源', url: aggregate.path),
+        );
+        expect(sites, isNotNull, reason: runtime.lastError);
+        expect(sites!.map((s) => s.key).toList(), ['alpha', 'beta']);
+        expect(sites.map((s) => s.name).toList(), ['甲平台', '乙平台']);
+        expect(sites.map((s) => s.api).toSet(), {aggregate.path});
+
+        final alpha = jsonDecode(sites.first.ext) as Map<String, dynamic>;
+        expect(alpha['__aggregatePlatform'], 'alpha');
+        // SITES 给平台挂的额外参数也要到 ext 里。
+        final beta = jsonDecode(sites.last.ext) as Map<String, dynamic>;
+        expect(beta['__aggregatePlatform'], 'beta');
+        expect(beta['note'], 'beta');
+      });
+
+      test('expandSites 对普通源与已展开的站点都不动', () async {
+        expect(
+          await runtime.expandSites(
+            SourceInfo(id: 'py-1', type: 'py', name: '夹具源', url: fixture.path),
+          ),
+          isNull,
+        );
+        expect(
+          await runtime.expandSites(
+            SourceInfo(
+              id: 'agg-1',
+              type: 'py',
+              name: '聚合源',
+              url: fixture.path,
+              sites: const [
+                SiteInfo(
+                  key: 'alpha',
+                  name: '甲平台',
+                  api: '',
+                  ext: '{"__aggregatePlatform":"alpha"}',
+                ),
+              ],
+            ),
+          ),
+          isNull,
+        );
+      });
+
       test('dispose 关掉解释器和监听端口', () async {
         await runtime.sourceFor(
           source: source,
@@ -220,6 +269,47 @@ void main() {
       expect(target, isNotNull);
       expect(target!.url, 'http://example.invalid/2.m3u8');
       expect(target.headers['User-Agent'], 'LcbFixture');
+    });
+    test('检测把聚合源展开成平台，四条链路都落在选中的那个上', () async {
+      final aggregate = File(
+        p.join(Directory.current.path, 'test', 'fixtures', 'py_source',
+            'aggregate.py'),
+      ).absolute;
+      await store.addSource(
+        SourceInfo(id: 'agg-1', type: 'py', name: '聚合源', url: aggregate.path),
+      );
+      await store.selectSource('agg-1');
+
+      final checked = await store.probeSource(store.currentSource!, '');
+      expect(checked.ok, isTrue, reason: checked.error);
+      expect(checked.showCount, 1);
+      expect(checked.movieCount, 1);
+
+      final expanded = store.currentSource!;
+      expect(expanded.sites.map((s) => s.name).toList(), ['甲平台', '乙平台']);
+      expect(store.pyHomeSiteOf(expanded)!.key, 'alpha');
+
+      final feed = await store.pyCatalogue();
+      expect(feed, isNotNull, reason: runtime.lastError);
+      expect(feed!.sections.first.title, 'alpha分区');
+      final card = feed.sections.first.items.first;
+      expect(card.id, 'alpha@@cat');
+      expect(card.siteKey, 'alpha');
+
+      final full = await store.detailReal(card);
+      expect(full, isNotNull, reason: runtime.lastError);
+      expect(full!.title, 'alpha详情');
+
+      final target = await store.playTargetReal(
+        full,
+        flag: full.playLines.first.name,
+        nid: 1,
+      );
+      expect(target!.url, 'http://example.invalid/alpha/alpha@@cat.m3u8');
+
+      // 再检测一次不会把平台当成文件再展开一遍。
+      await store.probeSource(store.currentSource!, '');
+      expect(store.currentSource!.sites, hasLength(2));
     });
   }, skip: ready ? false : '没有 python 运行时（先跑 tool/sync_runtime.sh）');
 }

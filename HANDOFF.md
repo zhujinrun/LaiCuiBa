@@ -98,6 +98,11 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
   （首页片单）；store 的首页/搜索/详情/播放/检测五条路径都分流到 `TvBoxSource`；`py` 卡片
   走真检测。真机截图确认首页画出夹具源的 hero 与「电影」分区。
   e2e 加到 `py_runtime_e2e_test.dart`（含 store 串联）。**271 个测试全绿**。
+- **TVBox 聚合源**：`py_host.py` 加 `sites` op（读顶层 `SITES`，只加载模块不 `init`）与
+  `__aggregatePlatform` 转发（`home → site_home`、`category/search/homeVideo → call`+`wrap`、
+  `detail/player` 按 `平台@@id` 回聚合器）；`py_runtime.expandSites` 在检测时把文件展开成
+  平台站点并写回。夹具 `aggregate.py`（两个平台）覆盖展开、转发、回路由、重复检测不重展开。
+  真机截图确认首页画出「甲平台」chip 与 `alpha分区` 片单。**280 个测试全绿**。
 - **播放时钟落地（Phase 3 核心）**：`services/playback_clock.dart` 收口所有 seek，进度条在时长未知时
   不可拖动，续播位置带 `totalMs` 由播放器用真实时长复核（跨时间轴拒绝、漂移不落盘）；
   新增 `tool/verify_clock_live.dart` 真起 libmpv 自检 9 项；音量/倍速也随关闭持久化。
@@ -247,7 +252,7 @@ lib/
 - 老数据迁移：`flutter.sources` 里无 `sites` 的演示源在 load 时补种（有回归测试）
 
 **未完成**
-- TVBox 聚合源（`SITES` 展开 / `wrap`）与 `api` 是 `.js` 的站点
+- `api` 是 `.js` 的 TVBox 站点（还没有通往猫源宿主的桥）
 - 本地 js spider 直接执行（猫源宿主只认订阅目录，不认单个文件）
 
 **已完成（Emby / Jellyfin 挂载，2026-11-21）**
@@ -428,7 +433,7 @@ TV 焦点导航（原版 `ui/tv/*` 9 个文件）、Android 适配、AI 辅助�
 cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
-flutter test                    # 冒烟测试（当前 271 个全绿）
+flutter test                    # 冒烟测试（当前 280 个全绿）
 flutter analyze                 # 静态检查（当前零问题）
 dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 
@@ -496,7 +501,7 @@ dart run tool/verify_clock_live.dart /path/to/clip.mp4
      与账号，能连上才保存；保存后首页画目录、详情画选集。
 2. 验收无误后由**用户自己**推送（AI 不 push）：`git push -u origin master`。
 3. 下一步自然顺序：
-   - **TVBox 聚合源 / `.js` 站点**：`SITES` 展开与 `wrap` 形态，以及把 `.js` 站点桥到猫源宿主；
+   - **`.js` 站点**：把配置里 `api` 以 `.js` 结尾的站点桥到猫源宿主（聚合源已完成）；
    - **跳片头 / 防休眠**（Phase 3 剩下的）：跳片头等源站给片头时间点，`PlaybackClock`
      的闸门已留好；防休眠要引入 `wakelock_plus`；
    - 或纯本地收尾：设置页「媒体徽章」子页（**Phase 1 唯一剩下的一项**，现在是死控件）。

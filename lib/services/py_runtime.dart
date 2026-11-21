@@ -9,6 +9,18 @@ import 'local_proxy.dart';
 import 'py_host.dart';
 import 'tvbox_source.dart';
 
+/// True when [api] names a Python source rather than a catvod bundle.
+///
+/// Only the extension is checked, because both runtimes address their sources
+/// the same way otherwise (`http(s)://…/main.py` is a normal TVBox api, and a
+/// config written on Windows may carry a backslash path).
+bool isPyApi(String api) {
+  final address = api.trim().toLowerCase();
+  if (address.isEmpty) return false;
+  final path = address.split('?').first;
+  return path.endsWith('.py');
+}
+
 /// What the rest of the app asks of the Python side.
 ///
 /// Kept as an interface so the store can be tested without an interpreter: a
@@ -20,6 +32,11 @@ abstract class PySources {
     required SourceInfo source,
     required SiteInfo site,
   });
+
+  /// The site list with every aggregate file expanded into the platforms its
+  /// `SITES` declares, or null when nothing expanded (the caller keeps the
+  /// source as it is).
+  Future<List<SiteInfo>?> expandSites(SourceInfo source);
 
   /// Why the last [sourceFor] returned null. Null once something worked.
   String? get lastError;
@@ -109,6 +126,119 @@ class PyRuntime implements PySources {
     _sources[key] = created;
     _lastError = null;
     return created;
+  }
+
+  @override
+  Future<List<SiteInfo>?> expandSites(SourceInfo source) async {
+    final declared = source.sites.isNotEmpty
+        ? source.sites
+        : source.type == 'py'
+        ? [SiteInfo(key: source.id, name: source.name, api: source.url)]
+        : const <SiteInfo>[];
+    if (declared.isEmpty) return null;
+
+    var changed = false;
+    final out = <SiteInfo>[];
+    for (final site in declared) {
+      final platforms = await _platformsOf(site);
+      if (platforms == null) {
+        out.add(site);
+        continue;
+      }
+      changed = true;
+      for (final platform in platforms) {
+        out.add(
+          SiteInfo(
+            key: _uniqueKey(out, platform.key, site.key),
+            name: platform.name,
+            api: site.api,
+            ext: _platformExt(site.ext, platform),
+            enabled: site.enabled,
+          ),
+        );
+      }
+    }
+    return changed ? out : null;
+  }
+
+  /// The platforms [site]'s file declares, or null when it is not an aggregate
+  /// source (or cannot be read, in which case 检测 reports the real failure).
+  ///
+  /// A site already carrying `__aggregatePlatform` is one of its own children:
+  /// asking again would expand it forever.
+  Future<List<PySubSite>?> _platformsOf(SiteInfo site) async {
+    if (!isPyApi(site.api)) return null;
+    if (_aggregatePlatform(site.ext) != null) return null;
+    if (!_injectableExt(site.ext)) return null;
+    final path = await _localFileFor(site.api);
+    if (path == null) return null;
+    final host = await _ensureHost();
+    if (host == null) return null;
+    try {
+      final platforms = await host.sites(path: path);
+      return platforms.isEmpty ? null : platforms;
+    } on Object {
+      return null;
+    }
+  }
+
+  /// The `ext` a child platform is called with: the site's own parameters plus
+  /// the platform selector, plus whatever `SITES` attached to that platform.
+  static String _platformExt(String ext, PySubSite platform) {
+    final base = <String, dynamic>{};
+    final raw = ext.trim();
+    if (raw.startsWith('{')) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) base.addAll(Map<String, dynamic>.from(decoded));
+      } on FormatException {
+        // Unreachable: [_injectableExt] already rejected it.
+      }
+    }
+    base['__aggregatePlatform'] = platform.key;
+    final extra = platform.ext;
+    if (extra is Map) base.addAll(Map<String, dynamic>.from(extra));
+    return jsonEncode(base);
+  }
+
+  /// Site keys are how history rows and detail lookups find their way back, so
+  /// two files offering the same platform name must not collide.
+  static String _uniqueKey(List<SiteInfo> taken, String key, String file) {
+    final used = taken.map((site) => site.key).toSet();
+    if (!used.contains(key)) return key;
+    var candidate = '$file:$key';
+    var suffix = 2;
+    while (used.contains(candidate)) {
+      candidate = '$file:$key#${suffix++}';
+    }
+    return candidate;
+  }
+
+  /// Whether `ext` can carry the platform selector: empty, or a JSON object.
+  /// A non-empty free-form string is some source's own `init` parameter, and
+  /// overwriting it to inject ours would break that source.
+  static bool _injectableExt(String ext) {
+    final raw = ext.trim();
+    if (raw.isEmpty) return true;
+    if (!raw.startsWith('{')) return false;
+    try {
+      return jsonDecode(raw) is Map;
+    } on FormatException {
+      return false;
+    }
+  }
+
+  static String? _aggregatePlatform(String ext) {
+    final raw = ext.trim();
+    if (!raw.startsWith('{')) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final value = '${decoded['__aggregatePlatform'] ?? ''}'.trim();
+      return value.isEmpty ? null : value;
+    } on FormatException {
+      return null;
+    }
   }
 
   /// Drops a site's loaded module, e.g. after its api was edited.
