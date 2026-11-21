@@ -19,6 +19,7 @@ import 'tvbox_catalogue.dart';
 import 'tvbox_source.dart';
 import 'webdav_client.dart';
 import 'spider_session.dart';
+import 'track_choice.dart';
 
 /// Application-wide persistent state: watch history, favourites (in their own
 /// store, matching the original's `flutter.favorites` + `flutter.favoriteFolders`),
@@ -437,6 +438,42 @@ class AppStore extends ChangeNotifier {
     await updateSettings(
       _settings.copyWith(playerVolume: volume, playerRate: rate),
     );
+  }
+
+  /// The tracks the viewer picked last time on the same work and line.
+  ///
+  /// Empty when nothing was ever picked, which the player reads as "follow
+  /// mpv's default" rather than "turn everything off".
+  TrackPrefs trackPrefsFor(String key) =>
+      TrackPrefs.fromJson(_settings.trackPrefs[key]);
+
+  /// Remembers a track pick for one line. Clearing every pick on that line
+  /// removes the entry instead of storing three nulls.
+  Future<void> saveTrackPrefs(String key, TrackPrefs prefs) async {
+    if (key.isEmpty) return;
+    final current = _settings.trackPrefs[key];
+    final nextPick = prefs.isEmpty ? null : prefs.toJson();
+    if (_sameTracks(current, nextPick)) return;
+
+    final next = Map<String, Map<String, String>>.from(_settings.trackPrefs);
+    if (nextPick == null) {
+      next.remove(key);
+    } else {
+      next[key] = nextPick;
+    }
+    await updateSettings(_settings.copyWith(trackPrefs: next));
+  }
+
+  static bool _sameTracks(
+    Map<String, String>? a,
+    Map<String, String>? b,
+  ) {
+    if (a == null || b == null) return a == b;
+    if (a.length != b.length) return false;
+    for (final e in a.entries) {
+      if (b[e.key] != e.value) return false;
+    }
+    return true;
   }
 
   // -------------------------------------------------------------------------

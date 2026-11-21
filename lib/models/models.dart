@@ -696,6 +696,7 @@ class AppSettings {
     this.tvKeyboard = false,
     this.playerVolume = 100,
     this.playerRate = 1.0,
+    this.trackPrefs = const {},
     this.extra = const {},
   });
 
@@ -731,6 +732,13 @@ class AppSettings {
   final int playerVolume;
   final double playerRate;
 
+  /// 每条线路记住的轨道选择：`{'<作品id>|<线路名>': {'audio': '2'}}`。
+  ///
+  /// 存的是 mpv 的 track id，所以换集/换源之后由播放页核对一遍再用，见
+  /// `services/track_choice.dart`。这里保持成原始 JSON，是因为 [AppSettings]
+  /// 不依赖 services 层（模型包不能反过来 import 服务）。
+  final Map<String, Map<String, String>> trackPrefs;
+
   /// Unmodelled keys carried through unchanged.
   final Map<String, dynamic> extra;
 
@@ -758,6 +766,7 @@ class AppSettings {
     bool? tvKeyboard,
     int? playerVolume,
     double? playerRate,
+    Map<String, Map<String, String>>? trackPrefs,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -783,6 +792,7 @@ class AppSettings {
       tvKeyboard: tvKeyboard ?? this.tvKeyboard,
       playerVolume: playerVolume ?? this.playerVolume,
       playerRate: playerRate ?? this.playerRate,
+      trackPrefs: trackPrefs ?? this.trackPrefs,
       extra: extra,
     );
   }
@@ -812,6 +822,7 @@ class AppSettings {
     'tvKeyboard': tvKeyboard,
     'playerVolume': playerVolume,
     'playerRate': playerRate,
+    'trackPrefs': trackPrefs,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -851,7 +862,29 @@ class AppSettings {
       tvKeyboard: pop('tvKeyboard', false),
       playerVolume: pop('playerVolume', 100),
       playerRate: pop('playerRate', 1.0),
+      trackPrefs: _readTrackPrefs(extra.remove('trackPrefs')),
       extra: extra,
     );
   }
+}
+
+/// `{'<key>': {'audio': '2'}}` → 强类型。任何一层不是字符串就整条丢掉，
+/// 一份坏掉的记忆只该让那条线路回到默认，不该让设置加载失败。
+Map<String, Map<String, String>> _readTrackPrefs(Object? raw) {
+  if (raw is! Map) return const {};
+  final out = <String, Map<String, String>>{};
+  raw.forEach((key, value) {
+    if (key is! String || key.isEmpty || value is! Map) return;
+    final entry = <String, String>{};
+    value.forEach((k, v) {
+      if (k is! String || k.isEmpty) return;
+      if (v is String && v.isNotEmpty) {
+        entry[k] = v;
+      } else if (v is num) {
+        entry[k] = v.toInt().toString();
+      }
+    });
+    if (entry.isNotEmpty) out[key] = entry;
+  });
+  return out;
 }

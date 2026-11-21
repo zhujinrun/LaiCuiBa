@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:lai_cui_ba/models/models.dart';
 import 'package:lai_cui_ba/services/playback_clock.dart';
 import 'package:lai_cui_ba/services/store.dart';
+import 'package:lai_cui_ba/services/track_choice.dart';
 
 HistoryEntry _entry({
   String key = 'src|nodejs_jianpian|1',
@@ -659,6 +660,49 @@ void main() {
       final reloaded = await AppStore.load();
       expect(reloaded.settings.playerVolume, 45);
       expect(reloaded.settings.playerRate, 1.25);
+    });
+
+    test('track picks are remembered per line and survive a reload', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      expect(store.trackPrefsFor('575857|LZ线路').isEmpty, isTrue);
+
+      await store.saveTrackPrefs(
+        '575857|LZ线路',
+        const TrackPrefs(audio: '2', subtitle: 'no'),
+      );
+      // Another line is a different memory, not a shared one.
+      expect(store.trackPrefsFor('575857|快线').isEmpty, isTrue);
+
+      final pick = store.trackPrefsFor('575857|LZ线路');
+      expect(pick.audio, '2');
+      expect(pick.subtitle, 'no');
+      expect(pick.video, isNull);
+
+      final reloaded = await AppStore.load();
+      expect(reloaded.trackPrefsFor('575857|LZ线路').audio, '2');
+      expect(reloaded.trackPrefsFor('575857|LZ线路').subtitle, 'no');
+      expect(reloaded.trackPrefsFor('575857|快线').isEmpty, isTrue);
+    });
+
+    test('clearing every pick removes the entry instead of storing nulls', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      await store.saveTrackPrefs(
+        'x|线路',
+        const TrackPrefs(audio: '2'),
+      );
+      await store.saveTrackPrefs('x|线路', TrackPrefs.empty);
+
+      expect(store.settings.trackPrefs.containsKey('x|线路'), isFalse);
+      expect(store.trackPrefsFor('x|线路').isEmpty, isTrue);
+    });
+
+    test('an empty key is ignored rather than written under ""', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      await store.saveTrackPrefs('', const TrackPrefs(audio: '1'));
+      expect(store.settings.trackPrefs, isEmpty);
     });
 
     test('resume survives a reload with its total intact', () async {

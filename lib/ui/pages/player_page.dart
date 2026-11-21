@@ -9,6 +9,9 @@ import '../../models/models.dart';
 import '../../services/awake.dart';
 import '../../services/playback_clock.dart';
 import '../../services/skip_rule.dart';
+import '../../services/track_choice.dart';
+import '../../services/track_map.dart';
+import '../widgets/track_panel.dart';
 
 /// 播放页 — 全屏视频播放。
 ///
@@ -39,6 +42,12 @@ class PlayerPage extends StatefulWidget {
     this.skip = SkipRule.none,
     this.initialVolume = 100,
     this.initialRate = 1.0,
+    this.lines = const [],
+    this.lineIndex = 0,
+    this.trackKey,
+    this.trackPrefs = TrackPrefs.empty,
+    this.onLine,
+    this.onTrackPrefs,
     this.onEpisode,
     this.onClose,
     this.onProgress,
@@ -80,6 +89,25 @@ class PlayerPage extends StatefulWidget {
   /// left at, not a hardcoded 100 / 1.0×.
   final int initialVolume;
   final double initialRate;
+
+  /// The lines the source offers for this work, and which one is playing.
+  ///
+  /// Stepping to another line is not a track change: it resolves a different
+  /// URL through the source, so this page hands the decision (and where the
+  /// viewer was) back to the caller instead of trying it itself.
+  final List<String> lines;
+  final int lineIndex;
+  final void Function(int index, ResumePoint carry)? onLine;
+
+  /// Identifies "this work on this line" for remembering track picks, e.g.
+  /// `'<item id>|<line name>'`. Null disables the remembering.
+  final String? trackKey;
+
+  /// Tracks the viewer picked on this line last time.
+  final TrackPrefs trackPrefs;
+
+  /// Called when the viewer picks a track, so the caller can persist it.
+  final void Function(String key, TrackPrefs prefs)? onTrackPrefs;
 
   /// Invoked with the next episode index when the user steps; null hides the
   /// step controls (films).
@@ -125,6 +153,24 @@ class _PlayerPageState extends State<PlayerPage> {
   StreamSubscription<bool>? _playingSub;
   StreamSubscription<double>? _volumeSub;
   StreamSubscription<double>? _rateSub;
+  StreamSubscription<Tracks>? _tracksSub;
+  StreamSubscription<Track>? _trackSub;
+
+  /// media_kit's track objects, indexed by mpv's track id, plus the options the
+  /// panel renders — one mapping serves both, see [MappedTracks].
+  MappedTracks _mapped = MappedTracks(const Tracks());
+
+  TrackChoices _choices = TrackChoices.none;
+
+  /// What the viewer picked on this line, restored once the real list arrives.
+  TrackPrefs _prefs = TrackPrefs.empty;
+
+  /// The remembered picks are applied exactly once. mpv reports `auto` and then
+  /// its own default; without this flag the second event would overwrite the
+  /// viewer's choice right after they made it.
+  bool _restored = false;
+
+  bool _trackPanel = false;
 
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
@@ -153,6 +199,7 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void initState() {
     super.initState();
+    _prefs = widget.trackPrefs;
     _positionSub = _player.stream.position.listen((d) {
       if (!_seeking) _position = d;
       _clock.onPosition(d);
@@ -182,6 +229,26 @@ class _PlayerPageState extends State<PlayerPage> {
       _rate = r;
       if (mounted) setState(() {});
     });
+    _tracksSub = _player.stream.tracks.listen(_onTracks);
+    _trackSub = _player.stream.track.listen((t) {
+      if (!mounted) return;
+      // Together with the empty track list, mpv resets the selection to
+      // `auto` when it unloads a finished stream. Keeping the last real
+      // selection is what makes the panel still show which track was playing
+      // on a paused final frame.
+      final unloaded =
+          t.video.id == 'auto' &&
+          t.audio.id == 'auto' &&
+          t.subtitle.id == 'auto';
+      if (unloaded && !_choices.isEmpty) return;
+      setState(() {
+        _choices = _choices.copyWith(
+          videoId: t.video.id,
+          audioId: t.audio.id,
+          subtitleId: t.subtitle.id,
+        );
+      });
+    });
 
     // A viewer who starts an episode and walks away should come back to a
     // playing episode, not a locked screen.
@@ -209,6 +276,109 @@ class _PlayerPageState extends State<PlayerPage> {
       debugPrint('LcbPlayer: open failed: $e');
     }
     _scheduleHide();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tracks (画质 / 音轨 / 字幕轨)
+  // ---------------------------------------------------------------------------
+
+  /// The stream published its track list — map it into what the panel shows,
+  /// then (once) put back what the viewer had chosen on this line.
+  ///
+  /// mpv's `auto` / `no` entries are dropped here: they are control verbs, not
+  /// tracks. 「关闭」 is added by the panel itself, where it means something.
+  void _onTracks(Tracks tracks) {
+    if (!mounted) return;
+    final mapped = MappedTracks(tracks);
+    // mpv publishes an empty list when it unloads the stream (EOF, a new
+    // `loadfile` in flight). That is "nothing is loaded right now", not "this
+    // stream has no tracks", so the panel keeps the last real list instead of
+    // collapsing into "没有可切换的轨道" over a paused last frame.
+    if (mapped.isEmpty) return;
+    _mapped = mapped;
+    setState(() {
+      _choices = mapped.choicesFor(_player.state.track);
+    });
+    _restorePicks();
+  }
+
+  /// Applies the remembered picks once, and only to tracks that still exist.
+  ///
+  /// A new episode on the same line usually numbers its tracks the same way,
+  /// but nothing guarantees it: an id that is gone means "no opinion", so the
+  /// player keeps its default instead of jumping to whatever now holds that
+  /// number.
+  void _restorePicks() {
+    if (_restored || _choices.isEmpty) return;
+    _restored = true;
+    final current = _player.state.track;
+
+    final video = _prefs.videoFor(_choices.video);
+    if (video != null && video != current.video.id) {
+      _setVideo(video, remember: false);
+    }
+    final audio = _prefs.audioFor(_choices.audio);
+    if (audio != null && audio != current.audio.id) {
+      _setAudio(audio, remember: false);
+    }
+    final subtitle = _prefs.subtitleFor(_choices.subtitle);
+    if (subtitle != null && subtitle != current.subtitle.id) {
+      _setSubtitle(subtitle, remember: false);
+    }
+  }
+
+  void _setVideo(String id, {bool remember = true}) {
+    final track = _mapped.videoTrack(id);
+    if (track == null) return;
+    _player.setVideoTrack(track);
+    if (remember) _remember(_prefs.withVideo(id));
+  }
+
+  void _setAudio(String id, {bool remember = true}) {
+    final track = _mapped.audioTrack(id);
+    if (track == null) return;
+    _player.setAudioTrack(track);
+    if (remember) _remember(_prefs.withAudio(id));
+  }
+
+  void _setSubtitle(String id, {bool remember = true}) {
+    final track = _mapped.subtitleTrack(id);
+    if (track == null) return;
+    _player.setSubtitleTrack(track);
+    if (remember) _remember(_prefs.withSubtitle(id));
+  }
+
+  /// Remembers a pick for this work+line so the next episode opens the same
+  /// way. Written through the caller, which owns the settings store.
+  void _remember(TrackPrefs next) {
+    setState(() => _prefs = next);
+    final key = widget.trackKey;
+    if (key == null || key.isEmpty) return;
+    widget.onTrackPrefs?.call(key, next);
+  }
+
+  void _toggleTrackPanel() {
+    _hideTimer?.cancel();
+    setState(() {
+      _controlsVisible = true;
+      _trackPanel = !_trackPanel;
+    });
+  }
+
+  /// Another line means another URL: the caller resolves it and reopens the
+  /// page. The viewer's position rides along so the switch looks like a track
+  /// change rather than a restart.
+  void _switchLine(int index) {
+    if (index == widget.lineIndex) {
+      setState(() => _trackPanel = false);
+      return;
+    }
+    final carry = ResumePoint(
+      positionMs: _position.inMilliseconds,
+      totalMs: _duration.inMilliseconds,
+    );
+    setState(() => _trackPanel = false);
+    widget.onLine?.call(index, carry);
   }
 
   /// Asks the clock what seek is owed and performs it. Called on every duration
@@ -312,6 +482,8 @@ class _PlayerPageState extends State<PlayerPage> {
     _playingSub?.cancel();
     _volumeSub?.cancel();
     _rateSub?.cancel();
+    _tracksSub?.cancel();
+    _trackSub?.cancel();
     // Report the final position before tearing the player down; this is the
     // single reliable moment to capture where the user left off. Skip it when
     // the timeline moved under us — that position belongs to an ad segment or
@@ -393,6 +565,29 @@ class _PlayerPageState extends State<PlayerPage> {
             onClose: widget.onClose,
             visible: _controlsVisible,
           ),
+          // Tapping anywhere outside the panel closes it; it sits under the
+          // panel but over the video, so the bar below keeps working.
+          if (_trackPanel)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _trackPanel = false),
+              ),
+            ),
+          if (_trackPanel)
+            Positioned(
+              right: 20,
+              bottom: 132,
+              child: TrackPanel(
+                choices: _choices,
+                lines: widget.lines,
+                lineIndex: widget.lineIndex,
+                onLine: widget.onLine == null ? null : _switchLine,
+                onVideo: (t) => _setVideo(t.id),
+                onAudio: (t) => _setAudio(t.id),
+                onSubtitle: (t) => _setSubtitle(t.id),
+              ),
+            ),
           _BottomBar(
             playing: _playing,
             buffering: _buffering,
@@ -418,6 +613,8 @@ class _PlayerPageState extends State<PlayerPage> {
             onSeekChanged: (v) => _seekValue = v,
             onVolume: (v) => _player.setVolume(v),
             onRate: (r) => _player.setRate(r),
+            onTracks: _toggleTrackPanel,
+            tracksOpen: _trackPanel,
             onNext: _hasNext
                 ? () => widget.onEpisode!(widget.episodeIndex! + 1)
                 : null,
@@ -524,6 +721,8 @@ class _BottomBar extends StatelessWidget {
     required this.onSeekChanged,
     required this.onVolume,
     required this.onRate,
+    required this.onTracks,
+    required this.tracksOpen,
     this.onNext,
     this.onPrev,
   });
@@ -543,6 +742,8 @@ class _BottomBar extends StatelessWidget {
   final ValueChanged<double> onSeekChanged;
   final ValueChanged<double> onVolume;
   final ValueChanged<double> onRate;
+  final VoidCallback onTracks;
+  final bool tracksOpen;
   final VoidCallback? onNext;
   final VoidCallback? onPrev;
 
@@ -642,6 +843,8 @@ class _BottomBar extends StatelessWidget {
                         ),
                       ),
                     const Spacer(),
+                    _TracksButton(open: tracksOpen, onTap: onTracks),
+                    const SizedBox(width: 12),
                     _RateButton(rate: rate, onRate: onRate),
                     const SizedBox(width: 16),
                     VolumeControl(volume: volume, onVolume: onVolume),
@@ -695,6 +898,49 @@ class _RoundButtonState extends State<_RoundButton> {
             shape: BoxShape.circle,
           ),
           child: Icon(widget.icon, size: 24, color: Colors.white),
+        ),
+      ),
+    );
+  }
+}
+
+class _TracksButton extends StatelessWidget {
+  const _TracksButton({required this.open, required this.onTap});
+
+  final bool open;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          height: 30,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: open ? const Color(0x337B68EE) : const Color(0x1AFFFFFF),
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.tune,
+                size: 15,
+                color: open ? LcbColors.primary : Colors.white,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                '轨道',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: open ? LcbColors.primary : Colors.white,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

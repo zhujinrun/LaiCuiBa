@@ -150,7 +150,12 @@ class _ShellState extends State<Shell> {
   /// the chosen line); falls back to the source's `play` action when they are
   /// absent (e.g. a row whose detail has not been fetched yet). Keeps
   /// the resolution async so the spider round-trip never blocks the tap.
-  void _openPlayer(MediaItem item, int? episodeIndex, int lineIndex) {
+  void _openPlayer(
+    MediaItem item,
+    int? episodeIndex,
+    int lineIndex, {
+    ResumePoint? carry,
+  }) {
     // A mount row can be a folder: a WebDAV share lists directories, and its
     // episode URLs only exist after the detail call. Resolving that first means
     // 播放 starts the first episode instead of handing the player a directory
@@ -159,7 +164,7 @@ class _ShellState extends State<Shell> {
       _store.detailReal(item).then((full) {
         if (!mounted) return;
         if (full == null || full.playLines.isEmpty) return;
-        _openPlayer(full, episodeIndex ?? 0, 0);
+        _openPlayer(full, episodeIndex ?? 0, 0, carry: carry);
       });
       return;
     }
@@ -186,6 +191,7 @@ class _ShellState extends State<Shell> {
               lineIndex,
               target.url,
               extraHeaders: target.headers,
+              carry: carry,
             );
           });
       return;
@@ -198,7 +204,7 @@ class _ShellState extends State<Shell> {
     }
 
     if (url != null && url.isNotEmpty) {
-      _showPlayer(item, episodeIndex, lineIndex, url);
+      _showPlayer(item, episodeIndex, lineIndex, url, carry: carry);
       return;
     }
 
@@ -208,7 +214,7 @@ class _ShellState extends State<Shell> {
     _store.playReal(item, flag: line?.name, nid: episodeIndex).then((resolved) {
       if (!mounted || resolved == null || resolved.isEmpty) return;
       if (_detail?.id != item.id) return; // user navigated away
-      _showPlayer(item, episodeIndex, lineIndex, resolved);
+      _showPlayer(item, episodeIndex, lineIndex, resolved, carry: carry);
     });
   }
 
@@ -218,14 +224,24 @@ class _ShellState extends State<Shell> {
     int lineIndex,
     String url, {
     Map<String, String> extraHeaders = const {},
+    ResumePoint? carry,
   }) {
     // Resume from the saved position, but only when the requested episode is
     // the one the history row recorded (a fresh episode starts from zero). The
     // row's total rides along: the player rejects the position if the stream it
     // actually got lasts something else entirely.
-    final resume = episodeIndex == null
-        ? null
-        : _store.resumePointFor(item, episodeIndex: episodeIndex);
+    //
+    // [carry] wins over that: it is where the viewer was a moment ago, when the
+    // page is being reopened on another line, and it already carries its own
+    // total so the same check still applies.
+    final resume = carry ??
+        (episodeIndex == null
+            ? null
+            : _store.resumePointFor(item, episodeIndex: episodeIndex));
+    final lines = item.playLines.map((l) => l.name).toList(growable: false);
+    final lineName = (lineIndex >= 0 && lineIndex < lines.length)
+        ? lines[lineIndex]
+        : '';
     setState(() {
       _player = _PlayerSession(
         title: item.title,
@@ -238,6 +254,8 @@ class _ShellState extends State<Shell> {
         episodes: item.episodes,
         episodeIndex: episodeIndex,
         lineIndex: lineIndex,
+        lines: lines,
+        trackKey: '${item.id}|$lineName',
         resume: resume,
       );
     });
@@ -264,6 +282,15 @@ class _ShellState extends State<Shell> {
   void _closePlayer() {
     if (!mounted) return;
     setState(() => _player = null);
+  }
+
+  /// The viewer picked another line in the player's track panel. The URL has
+  /// to be resolved again through the source, so this is a reopen — with the
+  /// position carried over, so it feels like a switch and not a restart.
+  void _switchLine(_PlayerSession session, int index, ResumePoint carry) {
+    final detail = _detail;
+    if (detail == null) return;
+    _openPlayer(detail, session.episodeIndex, index, carry: carry);
   }
 
   /// Persists the final playback position when the player tears down. Only a
@@ -325,7 +352,7 @@ class _ShellState extends State<Shell> {
         _buildScaffold(),
         if (player != null)
           PlayerPage(
-            key: ValueKey('player-${player.url}'),
+            key: ValueKey('player-${player.url}-${player.lineIndex}'),
             title: player.title,
             subtitle: player.subtitle,
             url: player.url,
@@ -335,6 +362,12 @@ class _ShellState extends State<Shell> {
             resume: player.resume,
             skip: _store.skipRule,
             awake: _awake,
+            lines: player.lines,
+            lineIndex: player.lineIndex,
+            trackKey: player.trackKey,
+            trackPrefs: _store.trackPrefsFor(player.trackKey),
+            onTrackPrefs: (key, prefs) => _store.saveTrackPrefs(key, prefs),
+            onLine: (index, carry) => _switchLine(player, index, carry),
             initialVolume: _store.settings.playerVolume,
             initialRate: _store.settings.playerRate,
             onPrefs: (volume, rate) =>
@@ -423,6 +456,8 @@ class _PlayerSession {
     required this.title,
     required this.url,
     required this.episodes,
+    required this.trackKey,
+    this.lines = const [],
     this.subtitle,
     this.headers = const {},
     this.episodeIndex,
@@ -442,6 +477,13 @@ class _PlayerSession {
 
   /// The play line this URL came from; next/prev episode stays on it.
   final int lineIndex;
+
+  /// Every line the work offers, in the source's order, so the player can show
+  /// a line picker next to the audio/subtitle ones.
+  final List<String> lines;
+
+  /// `'<item id>|<line name>'` — the key track picks are remembered under.
+  final String trackKey;
 
   /// Where to seek on open, for 续播, and the total it was recorded against.
   final ResumePoint? resume;
