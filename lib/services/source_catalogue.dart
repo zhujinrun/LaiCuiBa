@@ -1,4 +1,5 @@
 import '../models/models.dart';
+import 'spider_client.dart';
 import 'spider_session.dart';
 
 /// The home rails a 猫源 answered with.
@@ -91,11 +92,34 @@ class SourceCatalogue {
   /// page one is one request, and the poster list only ever shows a handful.
   static const maxItemsPerSection = 24;
 
-  /// Sites tried before giving up. `homeSite` goes first (it is the site the
-  /// source itself nominates); the rest are fallbacks, because a 猫源 bundles
-  /// dozens of sites and the nominated one being dead is normal, not a bug.
-  /// Bounded so a source whose every site is dead still fails in seconds.
-  static const maxSitesTried = 3;
+  /// Sites probed before giving up.
+  ///
+  /// A bundle carries dozens of sites and only some of them answer `category`
+  /// at all -- on the default source 19 of 59 do, and the site the source
+  /// nominates is not always one of them. Trying three in series therefore
+  /// lands on a dead site often, and each dead site costs a full round-trip.
+  /// Probing is done in two concurrent rounds instead: every candidate answers
+  /// `home` at once, then every live one answers its first category at once.
+  /// The cost is two round-trips rather than `sites x latency`.
+  static const maxSitesTried = 8;
+
+  /// A site that produced rails once is tried first for the rest of the
+  /// process, so revisiting 首页 does not repeat the probe. Not persisted: the
+  /// source's own `homeSite` stays the user's choice, and a fresh launch re-asks
+  /// -- a site that dies overnight must not be remembered as good.
+  static String? _lastGoodSiteKey;
+
+  /// A stalled site must not hold the front page: category calls get a shorter
+  /// budget than the client's own timeout, and a timeout counts as "no data".
+  static const _probeTimeout = Duration(seconds: 6);
+
+  /// What a failed or stalled category call reads as.
+  static const _emptyPage = SpiderList(
+    items: [],
+    page: 1,
+    pageCount: 1,
+    total: 0,
+  );
 
   Future<CatalogueFeed> load({
     required SourceInfo source,
@@ -117,73 +141,117 @@ class SourceCatalogue {
     }
 
     final candidates = _candidates(source, sites);
-    String? lastNote;
-    var declared = 0;
 
-    for (final site in candidates) {
-      final classes = await session.home(
-        sourceId: source.id,
-        md5Url: md5Url,
-        site: site,
-      );
-      if (classes.isEmpty) continue;
-      declared = classes.length;
-
-      // One request per rail, all in flight together: a category page is
-      // independent of its siblings, and doing them in series would make the
-      // first screen take `rails x latency` for no reason. `Future.wait`
-      // preserves order, so the rails still follow the source's own.
-      final picked = classes.take(maxSections).toList();
-      final pages = await Future.wait([
-        for (final category in picked)
-          session.category(
+    // Round one: every candidate declares its categories at once.
+    final homes = await Future.wait([
+      for (final site in candidates)
+        _guard(
+          () => session.home(
             sourceId: source.id,
             md5Url: md5Url,
             site: site,
-            tid: category.typeId,
           ),
-      ]);
-
-      final sections = <HomeSection>[];
-      for (var i = 0; i < picked.length; i++) {
-        final items = pages[i].items.take(maxItemsPerSection).toList();
-        if (items.isEmpty) continue;
-        sections.add(HomeSection(title: picked[i].name, items: items));
-      }
-
-      if (sections.isNotEmpty) {
-        return CatalogueFeed(sections: sections, siteName: site.name);
-      }
-      // Categories but no titles behind them: worth trying the next site, but
-      // remember what happened in case every site answers the same way.
-      lastNote =
-          '${site.name} 给了 ${classes.length} 个分类，但分类下暂时没有片单';
+          const <SpiderClass>[],
+        ),
+    ]);
+    final live = <(SiteInfo, List<SpiderClass>)>[];
+    for (var i = 0; i < candidates.length; i++) {
+      if (homes[i].isNotEmpty) live.add((candidates[i], homes[i]));
     }
-
-    if (declared == 0) {
+    if (live.isEmpty) {
       return CatalogueFeed.failure(
         '首页没有返回分类',
         siteName: candidates.first.name,
       );
     }
+
+    // Round two: each live site answers its first category at once. The first
+    // one with titles wins -- a site that declares categories but has no feed
+    // behind them is normal, not an error.
+    final probes = await Future.wait([
+      for (final entry in live)
+        _guard(
+          () => session.category(
+            sourceId: source.id,
+            md5Url: md5Url,
+            site: entry.$1,
+            tid: entry.$2.first.typeId,
+          ),
+          _emptyPage,
+        ),
+    ]);
+    final hit = probes.indexWhere((page) => page.items.isNotEmpty);
+    if (hit < 0) {
+      final site = live.first.$1;
+      return CatalogueFeed(
+        sections: const [],
+        siteName: site.name,
+        error:
+            '${site.name} 给了 ${live.first.$2.length} 个分类，但分类下暂时没有片单',
+      );
+    }
+
+    final site = live[hit].$1;
+    final classes = live[hit].$2;
+    _lastGoodSiteKey = site.key;
+
+    // Round three: the remaining rails, in parallel. The category already
+    // fetched in round two is reused instead of asked again.
+    final picked = classes.take(maxSections).toList();
+    final pages = await Future.wait([
+      for (var i = 0; i < picked.length; i++)
+        if (i == 0)
+          Future.value(probes[hit])
+        else
+          _guard(
+            () => session.category(
+              sourceId: source.id,
+              md5Url: md5Url,
+              site: site,
+              tid: picked[i].typeId,
+            ),
+            _emptyPage,
+          ),
+    ]);
+
+    final sections = <HomeSection>[];
+    for (var i = 0; i < picked.length; i++) {
+      final items = pages[i].items.take(maxItemsPerSection).toList();
+      if (items.isEmpty) continue;
+      sections.add(HomeSection(title: picked[i].name, items: items));
+    }
     return CatalogueFeed(
-      sections: const [],
-      siteName: candidates.first.name,
-      error: lastNote,
+      sections: sections,
+      siteName: site.name,
+      error: sections.isEmpty ? '${site.name} 的分类下暂时没有片单' : null,
     );
   }
 
-  /// `homeSite` first when it is enabled, then the rest in declaration order.
+  /// Runs [body], turning a stall, a dead worker or a thrown error into
+  /// [fallback]: probing a dozen sites must not fail because one of them hangs.
+  Future<T> _guard<T>(Future<T> Function() body, T fallback) async {
+    try {
+      return await body().timeout(_probeTimeout);
+    } on Object {
+      return fallback;
+    }
+  }
+
+  /// The site that answered last time, then `homeSite` when it is enabled, then
+  /// the rest in declaration order.
   List<SiteInfo> _candidates(SourceInfo source, List<SiteInfo> sites) {
+    final remembered = <SiteInfo>[];
     final preferred = <SiteInfo>[];
     final others = <SiteInfo>[];
     for (final site in sites) {
-      if (site.key == source.homeSite) {
+      if (site.key == _lastGoodSiteKey) {
+        remembered.add(site);
+      } else if (site.key == source.homeSite) {
         preferred.add(site);
       } else {
         others.add(site);
       }
     }
-    return [...preferred, ...others].take(maxSitesTried).toList();
+    return [...remembered, ...preferred, ...others].take(maxSitesTried).toList();
   }
 }
