@@ -181,6 +181,30 @@ class ContinueWatching {
   }
 }
 
+/// A saved position that is worth resuming from, together with the total the
+/// recording session measured.
+///
+/// The total travels with the position because a position only means something
+/// against the timeline it was measured on. A source that splices a pre-roll ad
+/// into the same stream records "12s of 15s"; replaying that as "seek to 12s"
+/// against the real 42-minute feature drops the viewer into the ad break. Only
+/// the player, which learns the real duration, can tell the two apart — see
+/// `PlaybackClock` in `services/playback_clock.dart`.
+class ResumePoint {
+  const ResumePoint({required this.positionMs, required this.totalMs});
+
+  final int positionMs;
+
+  /// The duration the position was recorded against; 0 when the recording
+  /// session never learned one.
+  final int totalMs;
+
+  Duration get position => Duration(milliseconds: positionMs);
+
+  @override
+  String toString() => 'ResumePoint($positionMs/$totalMs)';
+}
+
 class HomeSection {
   const HomeSection({required this.title, required this.items});
 

@@ -30,7 +30,7 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
 | Phase 0 — 界面骨架 | ✅ 完成 |
 | Phase 1 — 数据层与页面闭环 | ✅ 完成（详情页 + 搜索页都已落地） |
 | Phase 2 — 源接入（灵魂） | 🔶 大部分（源→站点→联网拉取→spider 宿主→搜索/详情/播放/首页片单已通；Emby/Jellyfin 与 WebDAV/AList 挂载已通；TVBox python 宿主未做） |
-| Phase 3 — 播放链路 | ⬜ 未开始 |
+| Phase 3 — 播放链路 | 🔶 核心（播放时钟 + 续播校验 + 位置可信度已落地；跳片头等数据、休眠锁未接） |
 | Phase 4 — 外设模块 | ⬜ 未开始 |
 | Phase 5 — 多端 | ⬜ 未开始 |
 
@@ -88,6 +88,9 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
 - **114 个测试全绿**（C2 真实数据接入后，含 `spider_session` 5 例 + `spider_client` 5 例）、
   `flutter analyze` 零问题
 - **201 个测试全绿**（夹具全关 + 首页并发探测 + WebDAV 挂载之后）、`flutter analyze` 零问题
+- **播放时钟落地（Phase 3 核心）**：`services/playback_clock.dart` 收口所有 seek，进度条在时长未知时
+  不可拖动，续播位置带 `totalMs` 由播放器用真实时长复核（跨时间轴拒绝、漂移不落盘）；
+  新增 `tool/verify_clock_live.dart` 真起 libmpv 自检 9 项；**221 个测试全绿**、`flutter analyze` 零问题
 
 ---
 
@@ -388,12 +391,17 @@ lib/
   `index.js` + `index.config.js`），真起 `node.exe` 跑一遍，断言 2 分类 / 2 部 / 耗时 > 0；
   外加 `spiderAddressOf`、`applyProbe`（含跨重启持久化）纯逻辑用例。
 
-### 🟡 Phase 3 — 播放链路（未开始）
-- `media_kit` + 原版 `libmpv-2.dll`
-- 必须规避原版三类 bug（详见 ARCHITECTURE.md 第五节）：
-  1. 定位基准被污染 → 对策 `PlaybackClock`，只有 `duration>0 && position` 有效才换算
-  2. 广告段污染时间轴 → 对策只认 `history.durationMs` 校验过的位置
-  3. 跳片头与续播争抢 → 对策启动阶段串行化两次 seek
+### 🔶 Phase 3 — 播放链路（核心已落地）
+- `media_kit` + libmpv（暂用 `media_kit_libs_video` 自带的 DLL，尚未换成原版 `libmpv-2.dll`）。
+- **`lib/services/playback_clock.dart` 是播放页唯一允许 seek 的地方**，三条原版事故由此关闭：
+  1. 定位基准被污染 → 进度条在 `duration == 0` 时不可拖动，`pendingSeek()` 未就绪不换算；
+  2. 广告段污染时间轴 → 历史行连 `durationMs` 一起带出（`ResumePoint`），播放器用**真实时长**
+     复核，差超 20% 直接拒绝；播放中时长突变（`drifting`）时关闭不写位置；
+  3. 跳片头与续播争抢 → 取走即销毁，一回合一次 seek；用户拖动顶掉未执行的续播。
+- `start:` 只当提示：`duration` 一到就复核落点，偏超 8 秒才补发一次（HLS 会把 `start` 丢掉）。
+- 验证：`test/playback_clock_test.dart` 19 例 + `store_test` 的跨层用例 +
+  **`dart run tool/verify_clock_live.dart <clip.mp4>` 真起 libmpv 跑 4 组场景 9 项断言**全过。
+- 未做：跳片头/片尾（等源数据）、倍速与音量偏好持久化、播放中防休眠（`wakelock_plus`）。
 
 ### 🟡 Phase 4 — 外设模块（未开始）
 弹幕（dandanplay）、刮削（TMDB/Bangumi/豆瓣）、下载、字幕、投屏 DLNA、备份同步（WebDAV）
@@ -409,13 +417,16 @@ TV 焦点导航（原版 `ui/tv/*` 9 个文件）、Android 适配、AI 辅助�
 cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
-flutter test                    # 冒烟测试（当前 201 个全绿）
+flutter test                    # 冒烟测试（当前 221 个全绿）
 flutter analyze                 # 静态检查（当前零问题）
 dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 
 # 猫源宿主端到端自检（不依赖任何外部真实源，17 项断言）
 bash tool/sync_runtime.sh
 ./assets/runtime/node/node.exe tool/verify_host.js
+
+# 播放时钟真机自检（真起 libmpv；先 flutter build windows --debug）
+dart run tool/verify_clock_live.dart /path/to/clip.mp4
 ```
 
 环境约束：
@@ -453,8 +464,8 @@ bash tool/sync_runtime.sh
 2. 验收无误后由**用户自己**推送（AI 不 push）：`git push -u origin master`。
 3. 下一步自然顺序：
    - **TVBox/CPython 源宿主**（饭太硬等 json 源），需要原版 `python/` 二进制，属打包工程；
-   - **播放链路细节**（Phase 3 剩下的）：跳片头 / 广告段 / 续播争抢的串行化，见
-     `ARCHITECTURE.md` 第五节；目前播放器是"直开 + 续播 seek"，三条规避还没落地；
+   - **跳片头 / 倍速与音量记忆 / 防休眠**（Phase 3 剩下的）：跳片头等源站给片头时间点，
+     `PlaybackClock` 的闸门已留好；后两项是纯本地活；
    - 或纯本地收尾：设置页「媒体徽章」子页（**Phase 1 唯一剩下的一项**，现在是死控件）。
 
 ---

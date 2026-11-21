@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:lai_cui_ba/models/models.dart';
+import 'package:lai_cui_ba/services/playback_clock.dart';
 import 'package:lai_cui_ba/services/store.dart';
 
 HistoryEntry _entry({
@@ -531,22 +532,24 @@ void main() {
       expect(reloaded.history, isEmpty);
     });
 
-    test('resumePositionFor returns the saved position for a matching episode',
-        () async {
+    test('resumePointFor returns the saved position and its total', () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();
       // The demo history seeds 尚公主 at episodeIndex 38, positionMs 31840.
       const item = MediaItem(id: '575857', title: '尚公主');
 
-      final resumed = store.resumePositionFor(item, episodeIndex: 38);
-      expect(resumed, 31840);
+      final resumed = store.resumePointFor(item, episodeIndex: 38);
+      expect(resumed?.positionMs, 31840);
+      // The total rides along: the player needs it to reject a position that
+      // was recorded on a different cut.
+      expect(resumed?.totalMs, 2905400);
 
       // A different episode has no saved position.
-      expect(store.resumePositionFor(item, episodeIndex: 0), isNull);
+      expect(store.resumePointFor(item, episodeIndex: 0), isNull);
 
       // A different title has none either.
       expect(
-        store.resumePositionFor(
+        store.resumePointFor(
           const MediaItem(id: 'x', title: '不存在的剧'),
           episodeIndex: 38,
         ),
@@ -554,7 +557,7 @@ void main() {
       );
     });
 
-    test('resumePositionFor skips a position watched to the end', () async {
+    test('resumePointFor skips a position watched to the end', () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();
       await store.putHistory(
@@ -567,10 +570,40 @@ void main() {
         ),
       );
       expect(
-        store.resumePositionFor(
+        store.resumePointFor(
           const MediaItem(id: '99', title: '看完了'),
           episodeIndex: 1,
         ),
+        isNull,
+      );
+    });
+
+    test('a row recorded during a pre-roll is not replayed as a position',
+        () async {
+      // The ad-polluted row: 5s into what the session thought was a 15s
+      // stream. The store can only check the row against itself, so it hands
+      // the pair over; the player, which learns the real 45-minute duration,
+      // is what refuses it and starts from the head instead.
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      await store.putHistory(
+        _entry(
+          key: 'src|nodejs_jianpian|98',
+          title: '有贴片的片',
+          episodeIndex: 0,
+          positionMs: 5000,
+          durationMs: 15000,
+        ),
+      );
+
+      final point = store.resumePointFor(
+        const MediaItem(id: '98', title: '有贴片的片'),
+        episodeIndex: 0,
+      );
+      expect(point?.positionMs, 5000);
+      expect(point?.totalMs, 15000);
+      expect(
+        resolveResume(point!, const Duration(minutes: 45)),
         isNull,
       );
     });
@@ -603,14 +636,13 @@ void main() {
       expect(row.flag, 'LZ线路');
       expect(row.siteKey, 'nodejs_jianpian');
 
-      // 续播 now resolves from the recorded row.
-      expect(
-        store.resumePositionFor(
-          const MediaItem(id: '575857', title: '尚公主'),
-          episodeIndex: 1,
-        ),
-        45000,
+      // 续播 now resolves from the recorded row, total included.
+      final resume = store.resumePointFor(
+        const MediaItem(id: '575857', title: '尚公主'),
+        episodeIndex: 1,
       );
+      expect(resume?.positionMs, 45000);
+      expect(resume?.totalMs, 2700000);
     });
 
     test('recordPlayback labels a film with its own title', () async {

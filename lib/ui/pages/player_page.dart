@@ -6,6 +6,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/theme.dart';
 import '../../models/models.dart';
+import '../../services/playback_clock.dart';
 
 /// 播放页 — 全屏视频播放。
 ///
@@ -18,6 +19,11 @@ import '../../models/models.dart';
 /// caller hands in a concrete [url] from the detail's [MediaItem.playLines] or
 /// from the source's `play` action, so this page stays a pure renderer with no
 /// knowledge of the spider.
+///
+/// Every seek goes through a [PlaybackClock]: the bar cannot be dragged before
+/// the duration is known, a resume position is checked against the real
+/// duration before it is replayed, and the final position is only persisted
+/// when the session's timeline never changed under it.
 class PlayerPage extends StatefulWidget {
   const PlayerPage({
     super.key,
@@ -27,7 +33,7 @@ class PlayerPage extends StatefulWidget {
     this.headers = const {},
     this.episodes = const [],
     this.episodeIndex,
-    this.startAt,
+    this.resume,
     this.onEpisode,
     this.onClose,
     this.onProgress,
@@ -53,8 +59,9 @@ class PlayerPage extends StatefulWidget {
   /// Index of the episode currently playing, when [episodes] is non-empty.
   final int? episodeIndex;
 
-  /// Where to seek on open, for 续播.
-  final Duration? startAt;
+  /// Where to seek on open, for 续播. Carries the total it was recorded against
+  /// so the clock can refuse it when the stream is a different cut.
+  final ResumePoint? resume;
 
   /// Invoked with the next episode index when the user steps; null hides the
   /// step controls (films).
@@ -73,6 +80,9 @@ class PlayerPage extends StatefulWidget {
 class _PlayerPageState extends State<PlayerPage> {
   late final Player _player = Player();
   late final VideoController _controller = VideoController(_player);
+
+  /// Decides every seek this session makes. Fed from the two streams below.
+  late final PlaybackClock _clock = PlaybackClock(resume: widget.resume);
 
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration>? _durationSub;
@@ -99,10 +109,14 @@ class _PlayerPageState extends State<PlayerPage> {
     super.initState();
     _positionSub = _player.stream.position.listen((d) {
       if (!_seeking) _position = d;
+      _clock.onPosition(d);
+      _pumpClock();
       if (mounted) setState(() {});
     });
     _durationSub = _player.stream.duration.listen((d) {
+      _clock.onDuration(d);
       if (d > Duration.zero) _duration = d;
+      _pumpClock();
       if (mounted) setState(() {});
     });
     _playingSub = _player.stream.playing.listen((p) {
@@ -127,10 +141,13 @@ class _PlayerPageState extends State<PlayerPage> {
 
   Future<void> _open() async {
     try {
+      // `start` is only a hint: mpv applies it while loading and drops it for
+      // some HLS streams. The clock verifies the landing and re-issues the seek
+      // when it did not take, so this stays a fast path rather than the truth.
       await _player.open(
         Media(
           widget.url,
-          start: widget.startAt,
+          start: widget.resume?.position,
           httpHeaders: {'User-Agent': _ua, ...widget.headers},
         ),
         play: true,
@@ -139,6 +156,26 @@ class _PlayerPageState extends State<PlayerPage> {
       debugPrint('LcbPlayer: open failed: $e');
     }
     _scheduleHide();
+  }
+
+  /// Asks the clock what seek is owed and performs it. Called on every duration
+  /// and position event; the clock drops the request once it has been taken, so
+  /// this never double-seeks.
+  void _pumpClock() {
+    final target = _clock.pendingSeek();
+    if (target == null) return;
+    _player.seek(target);
+    // Show where we asked to be, not the frame the player was still painting —
+    // the label would otherwise flash 0:00 over a resumed episode.
+    _position = target;
+  }
+
+  /// Every seek made from the UI goes through here, so a drag that happens
+  /// before the timeline is known is held instead of landing on zero.
+  void _seekTo(Duration target) {
+    _clock.requestSeek(target);
+    _pumpClock();
+    if (mounted) setState(() {});
   }
 
   static const _ua =
@@ -190,8 +227,15 @@ class _PlayerPageState extends State<PlayerPage> {
     _volumeSub?.cancel();
     _rateSub?.cancel();
     // Report the final position before tearing the player down; this is the
-    // single reliable moment to capture where the user left off.
-    widget.onProgress?.call(_position, _duration);
+    // single reliable moment to capture where the user left off. Skip it when
+    // the timeline moved under us — that position belongs to an ad segment or
+    // another cut, and writing it would resume the viewer in the wrong place.
+    if (_clock.recordable) {
+      widget.onProgress?.call(_position, _duration);
+    } else {
+      debugPrint('LcbPlayer: dropped position $_position/$_duration '
+          '(timeline changed during playback)');
+    }
     _player.dispose();
     super.dispose();
   }
@@ -240,15 +284,14 @@ class _PlayerPageState extends State<PlayerPage> {
             hasPrev:
                 widget.episodeIndex != null && widget.episodeIndex! > 0,
             onTogglePlay: _togglePlay,
-            onSeek: (d) => _player.seek(d),
             onSeekStart: () => setState(() => _seeking = true),
             onSeekEnd: () {
               _seeking = false;
-              final target = Duration(
-                milliseconds:
-                    (_seekValue * _duration.inMilliseconds).round(),
+              final total = _duration.inMilliseconds;
+              if (total <= 0) return; // bar is disabled; nothing to land on
+              _seekTo(
+                Duration(milliseconds: (_seekValue * total).round()),
               );
-              _player.seek(target);
               _scheduleHide();
             },
             onSeekChanged: (v) => _seekValue = v,
@@ -355,7 +398,6 @@ class _BottomBar extends StatelessWidget {
     required this.hasNext,
     required this.hasPrev,
     required this.onTogglePlay,
-    required this.onSeek,
     required this.onSeekStart,
     required this.onSeekEnd,
     required this.onSeekChanged,
@@ -375,7 +417,6 @@ class _BottomBar extends StatelessWidget {
   final bool hasNext;
   final bool hasPrev;
   final VoidCallback onTogglePlay;
-  final ValueChanged<Duration> onSeek;
   final VoidCallback onSeekStart;
   final VoidCallback onSeekEnd;
   final ValueChanged<double> onSeekChanged;
@@ -425,12 +466,16 @@ class _BottomBar extends StatelessWidget {
                         value: value,
                         activeColor: LcbColors.primary,
                         inactiveColor: const Color(0x66FFFFFF),
-                        onChangeStart: (_) => onSeekStart(),
-                        onChanged: (v) {
-                          onSeekChanged(v);
-                          // Live-preview the scrub position in the label.
-                        },
-                        onChangeEnd: (v) => onSeekEnd(),
+                        // Dragging a bar whose scale is unknown can only land
+                        // on zero, so it stays inert until the duration is in.
+                        onChangeStart: totalMs <= 0 ? null : (_) => onSeekStart(),
+                        onChanged: totalMs <= 0
+                            ? null
+                            : (v) {
+                                onSeekChanged(v);
+                                // Live-preview the scrub position in the label.
+                              },
+                        onChangeEnd: totalMs <= 0 ? null : (v) => onSeekEnd(),
                       ),
                     ),
                     Text(

@@ -798,13 +798,18 @@ class AppStore extends ChangeNotifier {
     );
   }
 
-  /// The saved playback position for [item], in milliseconds, for 续播.
+  /// The saved position for [item], for 续播, together with the duration it was
+  /// recorded against.
   ///
   /// Matches a history row by title and, for a series, by the episode index;
   /// returns null when the title has never been watched or was finished. A
   /// resume position of zero (or a nearly-finished one) is not worth seeking
   /// to, so it is treated as absent.
-  int? resumePositionFor(MediaItem item, {int? episodeIndex}) {
+  ///
+  /// The total is handed along because the store cannot tell whether the row
+  /// was recorded on the same cut the player is about to open; only the player
+  /// learns the real duration. See `PlaybackClock`.
+  ResumePoint? resumePointFor(MediaItem item, {int? episodeIndex}) {
     for (final e in _history) {
       if (e.title != item.title) continue;
       if (episodeIndex != null && e.episodeIndex != episodeIndex) continue;
@@ -812,7 +817,7 @@ class AppStore extends ChangeNotifier {
       if (ms <= 0) continue;
       // Skip if it was watched to the end (a fresh play, not a resume).
       if (e.durationMs > 0 && ms >= e.durationMs - 3000) continue;
-      return ms;
+      return ResumePoint(positionMs: ms, totalMs: e.durationMs);
     }
     return null;
   }

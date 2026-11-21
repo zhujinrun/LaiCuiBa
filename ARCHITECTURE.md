@@ -275,6 +275,35 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
 ### Phase 3 — 播放链路
 `media_kit` + libmpv。**必须规避原版的三类 bug**，见下节。
 
+#### 已落地：`PlaybackClock`（2026-11-21）
+
+`lib/services/playback_clock.dart` 把「播放器说它在 X、总长 Y」翻译成「seek 到 Z，或者什么都别做」。
+播放页每一次 seek 的唯一出口，所以三次原版事故从结构上不会再发生：
+
+| 原版事故 | 现在的做法 |
+| --- | --- |
+| 未就绪就换算 → 跳回片头 | 进度条在 `duration == 0` 时**不可拖动**（`Slider.onChanged: null`）；所有 seek 先问 `pendingSeek()`，未就绪一律不换算 |
+| 广告段的时间轴被当成正片 | 每行历史连 `durationMs` 一起带出（`ResumePoint`），播放器用**真实时长**复核：`resolveResume()` 在「记录时的总长」与「这次真正的总长」相差超 20% 时直接拒绝；播放中时长突变（±20%）标记 `drifting`，关闭时**不写**这条位置 |
+| 跳片头与续播抢同一次跳转 | `pendingSeek()` 取走即销毁，一回合只发一次 seek；用户拖动会顶掉未执行的续播（`requestSeek` 优先）。跳片头本身还没接数据（源站 detail 不带片头标记），但"两次 seek 合并成一次最终目标"的闸门已经在 |
+
+`start:` 只当**提示**用：mpv 在加载途中应用它，部分 HLS 流会把它丢掉。`duration` 一到就开始
+复核落点：落点与目标相差超过 8 秒才补发一次（同一个目标重复 seek 是无害的，但会造成一次肉眼可见的抖动，
+所以只有确实没落地才发）。落点核对没通过（例如贴片把基准带跑偏）时退回片头，而不是把人丢在广告里。
+
+**独立验证（不需要任何外部源）**：
+
+| 载体 | 内容 |
+| --- | --- |
+| `test/playback_clock_test.dart` | 19 例：未就绪不换算、落点复核、跨时间轴拒绝、拖动顶掉续播、漂移标记、`resolveResume` 边界 |
+| `test/store_test.dart` | 续播点带着 `totalMs` 一起返回；贴着贴片录下的一行在 45 分钟真片上被拒 |
+| `tool/verify_clock_live.dart` | **真起 libmpv** 跑同一条决策链：4 组场景 9 项断言（无续播不 seek、续播恰好一次且落到 59.96s、`start` 生效时不补发、贴片位置被拒）。用法见「七、开发」 |
+
+#### 还没做的
+- 跳片头/片尾：源站 detail 不带片头时间点，需要先有数据（原版靠 i18n 里那套
+  `skipIntroOutro` 设置 + 逐片标记），闸门已留好。
+- 倍速/音量等偏好不持久化（每次开播放器回到 1.0×/100）。
+- 播放中不阻止系统休眠（原版用 `wakelock_plus`，本工程还没引入这个依赖）。
+
 ### Phase 4 — 外设模块
 弹幕（dandanplay）、刮削（TMDB/Bangumi/豆瓣）、下载、字幕、投屏 DLNA、
 备份同步（WebDAV）。
@@ -291,16 +320,17 @@ TV 端焦点导航（原版 `ui/tv/*` 共 9 个文件）、Android 适配、AI �
 1. **定位基准被污染**：`duration` / `position` 在未就绪时被用于 `seek`，代理位置
    算成 0，于是"按右键跳回片头"。
    → 对策：所有 seek 走一个 `PlaybackClock`，只有 `duration > 0 && position 有效`
-   时才允许换算；seek 请求排队，等时长就绪再执行。
+   时才允许换算；seek 请求排队，等时长就绪再执行。**已实现**（Phase 3）。
 
 2. **广告段污染时间轴**：源站把贴片广告塞进同一条流，广告段的时间轴被写入
    `_lastPosition`，切正片时 `_tryRecover → _resumeAt(脏位置)`，导致从片头起播。
    → 对策：恢复位置只认持久化的 `history.durationMs` 校验过的时间点；
-   检测到时长突变（±20% 以上）时丢弃当前位置，改从历史位置恢复。
+   检测到时长突变（±20% 以上）时丢弃当前位置，改从历史位置恢复。**已实现**（Phase 3）。
 
 3. **自动跳片头与续播争抢**：`skipIntroOutro` 的自动 seek 和 resume 定位抢同一次
    跳转。
    → 对策：启动阶段串行化——先 resume，再跳片头，两次 seek 合并为一次最终目标。
+   **闸门已实现**（Phase 3），跳片头本身等数据。
 
 ## 六、运行时版本（与原版严格对齐）
 
@@ -335,6 +365,9 @@ flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
 flutter test                    # 冒烟测试
 ./assets/runtime/node/node.exe tool/verify_host.js  # 猫源宿主端到端自检
+
+# 播放时钟真机自检（真起 libmpv，取 build 产物里的 DLL；先 build 再跑）
+dart run tool/verify_clock_live.dart /path/to/clip.mp4
 ```
 
 环境约束（**已锁定，勿随意升级**）：

@@ -192,10 +192,12 @@ class _ShellState extends State<Shell> {
     String url,
   ) {
     // Resume from the saved position, but only when the requested episode is
-    // the one the history row recorded (a fresh episode starts from zero).
-    final resumeMs = episodeIndex == null
+    // the one the history row recorded (a fresh episode starts from zero). The
+    // row's total rides along: the player rejects the position if the stream it
+    // actually got lasts something else entirely.
+    final resume = episodeIndex == null
         ? null
-        : _store.resumePositionFor(item, episodeIndex: episodeIndex);
+        : _store.resumePointFor(item, episodeIndex: episodeIndex);
     setState(() {
       _player = _PlayerSession(
         title: item.title,
@@ -208,7 +210,7 @@ class _ShellState extends State<Shell> {
         episodes: item.episodes,
         episodeIndex: episodeIndex,
         lineIndex: lineIndex,
-        startAt: resumeMs == null ? null : Duration(milliseconds: resumeMs),
+        resume: resume,
       );
     });
   }
@@ -284,7 +286,7 @@ class _ShellState extends State<Shell> {
             headers: player.headers,
             episodes: player.episodes,
             episodeIndex: player.episodeIndex,
-            startAt: player.startAt,
+            resume: player.resume,
             onEpisode: (i) => _openPlayer(_detail!, i, player.lineIndex),
             onClose: _closePlayer,
             onProgress: (pos, dur) => _recordProgress(
@@ -372,7 +374,7 @@ class _PlayerSession {
     this.headers = const {},
     this.episodeIndex,
     this.lineIndex = 0,
-    this.startAt,
+    this.resume,
   });
 
   final String title;
@@ -388,8 +390,8 @@ class _PlayerSession {
   /// The play line this URL came from; next/prev episode stays on it.
   final int lineIndex;
 
-  /// Where to seek on open, for 续播.
-  final Duration? startAt;
+  /// Where to seek on open, for 续播, and the total it was recorded against.
+  final ResumePoint? resume;
 }
 
 class _Sidebar extends StatelessWidget {
