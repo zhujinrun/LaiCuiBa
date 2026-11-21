@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../../core/app_info.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
+import '../../models/models.dart';
+import '../../services/badge_rule.dart';
 import '../../services/store.dart';
 import '../page_header.dart';
 import '../widgets/backup_dialog.dart';
@@ -228,7 +230,7 @@ class _SettingsPageState extends State<SettingsPage> {
       case '播放':
         return _playbackRows(store);
       case '媒体徽章':
-        return _badgeRows();
+        return _badgeRows(store);
       case '数据与存储':
         return _dataRows(store);
       default:
@@ -704,37 +706,204 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ];
 
-  /// 媒体徽章 — 4K / 杜比 / HDR specification badges and their badge pack.
-  List<Widget> _badgeRows() => [
+  /// 媒体徽章 — 4K / 杜比 / HDR specification badges, their position and
+  /// which groups to show. Every value is a real setting read from the store.
+  List<Widget> _badgeRows(AppStore store) => [
         _Group(
           rows: [
-            const _Row(
+            _Row(
               icon: CupertinoIcons.rosette,
               color: LcbColors.sysPurple,
               title: '显示媒体徽章',
-              subtitle: '4K、杜比、HDR 等规格标签',
+              subtitle: '4K、杜比视界、HDR、DTS 等规格标签',
               toggle: true,
-              toggleOn: true,
-            ),
-            _Row(
-              icon: CupertinoIcons.rectangle_stack,
-              color: LcbColors.sysBlue,
-              title: '徽章包',
-              subtitle: '徽章的样式与图标',
-              value: '内置',
-              onTap: () {},
+              toggleValue: store.settings.mediaBadgesEnabled,
+              onToggle: (v) => store.updateSettings(
+                store.settings.copyWith(mediaBadgesEnabled: v),
+              ),
             ),
             _Row(
               icon: CupertinoIcons.rectangle_3_offgrid,
-              color: LcbColors.sysGreen,
+              color: LcbColors.sysBlue,
               title: '显示位置',
-              subtitle: '海报角落还是列表行内',
-              value: '左上角',
-              onTap: () {},
+              subtitle: '徽章摆在海报的哪个角',
+              value: _badgeSpotLabel(store.settings.badgeSpot),
+              onTap: () => _pickBadgeSpot(store),
+            ),
+            _Row(
+              icon: CupertinoIcons.textformat,
+              color: LcbColors.sysGreen,
+              title: '带文字标签',
+              subtitle: '关闭后只显示 4K、DV 这类短标',
+              toggle: true,
+              toggleValue: store.settings.badgeText,
+              onToggle: (v) => store.updateSettings(
+                store.settings.copyWith(badgeText: v),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 23),
+        const _GroupLabel('规格'),
+        _Group(
+          rows: [
+            for (final group in BadgeGroup.values)
+              _Row(
+                icon: _badgeGroupIcon(group),
+                color: _badgeGroupColor(group),
+                title: _badgeGroupLabel(group),
+                subtitle: _badgeGroupHint(group),
+                toggle: true,
+                toggleValue: _badgeGroupOn(store.settings, group),
+                onToggle: (v) => _setBadgeGroup(store, group, v),
+              ),
+          ],
+        ),
+        const SizedBox(height: 23),
+        const _GroupLabel('徽章包'),
+        _Group(
+          rows: [
+            _Row(
+              icon: CupertinoIcons.rectangle_stack,
+              color: LcbColors.sysOrange,
+              title: '徽章包',
+              subtitle: '徽章的样式与图标',
+              value: '内置',
+              onTap: () => _toast('远端徽章包要联网下载，暂未接入'),
             ),
           ],
         ),
       ];
+
+  String _badgeSpotLabel(String spot) {
+    switch (spot) {
+      case 'rightTop':
+        return '右上角';
+      case 'leftBottom':
+        return '左下角';
+      case 'rightBottom':
+        return '右下角';
+      case 'leftTop':
+      default:
+        return '左上角';
+    }
+  }
+
+  Future<void> _pickBadgeSpot(AppStore store) async {
+    const options = <String, String>{
+      'leftTop': '左上角',
+      'rightTop': '右上角',
+      'leftBottom': '左下角',
+      'rightBottom': '右下角',
+    };
+    final picked = await showDialog<String>(
+      context: context,
+      barrierColor: const Color(0x78000000),
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          '显示位置',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final e in options.entries)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: Text(e.value),
+                trailing: store.settings.badgeSpot == e.key
+                    ? const Icon(
+                        Icons.check,
+                        color: LcbColors.primary,
+                        size: 18,
+                      )
+                    : null,
+                onTap: () => Navigator.of(ctx).pop(e.key),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    await store.updateSettings(store.settings.copyWith(badgeSpot: picked));
+    if (!mounted) return;
+    _toast('徽章已移到${options[picked]}');
+  }
+
+  IconData _badgeGroupIcon(BadgeGroup group) {
+    switch (group) {
+      case BadgeGroup.quality:
+        return CupertinoIcons.arrow_up_right_square_fill;
+      case BadgeGroup.hdr:
+        return CupertinoIcons.sun_max_fill;
+      case BadgeGroup.audio:
+        return CupertinoIcons.speaker_2_fill;
+      case BadgeGroup.source:
+        return CupertinoIcons.cloud_fill;
+    }
+  }
+
+  Color _badgeGroupColor(BadgeGroup group) {
+    switch (group) {
+      case BadgeGroup.quality:
+        return LcbColors.sysOrange;
+      case BadgeGroup.hdr:
+        return LcbColors.sysViolet;
+      case BadgeGroup.audio:
+        return LcbColors.sysBlue;
+      case BadgeGroup.source:
+        return LcbColors.sysGray;
+    }
+  }
+
+  String _badgeGroupLabel(BadgeGroup group) {
+    switch (group) {
+      case BadgeGroup.quality:
+        return '画质';
+      case BadgeGroup.hdr:
+        return 'HDR';
+      case BadgeGroup.audio:
+        return '音轨';
+      case BadgeGroup.source:
+        return '片源';
+    }
+  }
+
+  String _badgeGroupHint(BadgeGroup group) {
+    switch (group) {
+      case BadgeGroup.quality:
+        return '4K、8K、1080p、HEVC 等分辨率与编码';
+      case BadgeGroup.hdr:
+        return '杜比视界、HDR10、HDR10+';
+      case BadgeGroup.audio:
+        return '杜比全景声、DTS、TrueHD 等音轨';
+      case BadgeGroup.source:
+        return 'IMAX、BluRay、WEB-DL、Remux 等片源';
+    }
+  }
+
+  /// 一组规格视为「开」当且仅当组内没有任何一个 slug 被显式关掉。
+  /// （缺省即开，见 [AppSettings.badgeSpecs] 的语义。）
+  bool _badgeGroupOn(AppSettings settings, BadgeGroup group) {
+    final slugs = BadgeRule.all.where((b) => b.group == group).map((b) => b.slug);
+    return slugs.every((s) => settings.badgeSpecs[s] != false);
+  }
+
+  void _setBadgeGroup(AppStore store, BadgeGroup group, bool on) {
+    final next = Map<String, bool>.from(store.settings.badgeSpecs);
+    for (final b in BadgeRule.all.where((b) => b.group == group)) {
+      // 开 → 删掉这条「关」的标记（回到缺省开）；关 → 显式记 false。
+      if (on) {
+        next.remove(b.slug);
+      } else {
+        next[b.slug] = false;
+      }
+    }
+    store.updateSettings(store.settings.copyWith(badgeSpecs: next));
+  }
 }
 
 class _GroupLabel extends StatelessWidget {

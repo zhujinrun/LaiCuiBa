@@ -2,8 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
 
+import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
+import 'media_badges.dart';
 import 'poster_art.dart';
 
 class SectionHeader extends StatelessWidget {
@@ -251,9 +253,19 @@ class _PosterCardState extends State<PosterCard> {
                       : null,
                 ),
                 clipBehavior: Clip.antiAlias,
-                child: PosterArt(
-                  seed: widget.item.posterSeed,
-                  image: widget.item.image,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    PosterArt(
+                      seed: widget.item.posterSeed,
+                      image: widget.item.image,
+                    ),
+                    // 规格徽章叠在海报角落，识别不到就自动不画。
+                    MediaBadgeRow(
+                      item: widget.item,
+                      settings: StoreScope.of(context).settings,
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 10),

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
+import '../widgets/media_badges.dart';
 
 /// 详情页 — 影片详情（hero + 选集 + 演员阵容 + 分类）。
 ///
@@ -240,14 +241,24 @@ class _Hero extends StatelessWidget {
             top: 35,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
-              child: Image.asset(
-                item.image ?? '',
+              child: SizedBox(
                 width: 204,
                 height: 306,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const ColoredBox(
-                  color: Color(0xFF2B2B2E),
-                  child: SizedBox(width: 204, height: 306),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.asset(
+                      item.image ?? '',
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const ColoredBox(
+                        color: Color(0xFF2B2B2E),
+                      ),
+                    ),
+                    MediaBadgeRow(
+                      item: item,
+                      settings: StoreScope.of(context).settings,
+                    ),
+                  ],
                 ),
               ),
             ),

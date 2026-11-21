@@ -697,6 +697,10 @@ class AppSettings {
     this.playerVolume = 100,
     this.playerRate = 1.0,
     this.trackPrefs = const {},
+    this.mediaBadgesEnabled = true,
+    this.badgeSpot = 'leftTop',
+    this.badgeText = false,
+    this.badgeSpecs = const {},
     this.extra = const {},
   });
 
@@ -739,6 +743,19 @@ class AppSettings {
   /// 不依赖 services 层（模型包不能反过来 import 服务）。
   final Map<String, Map<String, String>> trackPrefs;
 
+  /// 媒体规格徽章（4K、HDR10、杜比视界、DTS…）的显示开关与位置。
+  /// 识别逻辑在 `services/badge_rule.dart`，这里只存「要不要显示」。
+  final bool mediaBadgesEnabled;
+
+  /// 徽章摆在海报的哪个角：`leftTop` / `rightTop` / `leftBottom` / `rightBottom`。
+  final String badgeSpot;
+
+  /// 徽章是否带文字（如「杜比视界」），否则只显示短标（如「DV」）。
+  final bool badgeText;
+
+  /// 各类规格的细开关：`{'hdr10': false}` 表示不显示 HDR10。缺省的键视为开。
+  final Map<String, bool> badgeSpecs;
+
   /// Unmodelled keys carried through unchanged.
   final Map<String, dynamic> extra;
 
@@ -767,6 +784,10 @@ class AppSettings {
     int? playerVolume,
     double? playerRate,
     Map<String, Map<String, String>>? trackPrefs,
+    bool? mediaBadgesEnabled,
+    String? badgeSpot,
+    bool? badgeText,
+    Map<String, bool>? badgeSpecs,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -793,6 +814,10 @@ class AppSettings {
       playerVolume: playerVolume ?? this.playerVolume,
       playerRate: playerRate ?? this.playerRate,
       trackPrefs: trackPrefs ?? this.trackPrefs,
+      mediaBadgesEnabled: mediaBadgesEnabled ?? this.mediaBadgesEnabled,
+      badgeSpot: badgeSpot ?? this.badgeSpot,
+      badgeText: badgeText ?? this.badgeText,
+      badgeSpecs: badgeSpecs ?? this.badgeSpecs,
       extra: extra,
     );
   }
@@ -823,6 +848,10 @@ class AppSettings {
     'playerVolume': playerVolume,
     'playerRate': playerRate,
     'trackPrefs': trackPrefs,
+    'mediaBadgesEnabled': mediaBadgesEnabled,
+    'badgeSpot': badgeSpot,
+    'badgeText': badgeText,
+    'badgeSpecs': badgeSpecs,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -863,6 +892,10 @@ class AppSettings {
       playerVolume: pop('playerVolume', 100),
       playerRate: pop('playerRate', 1.0),
       trackPrefs: _readTrackPrefs(extra.remove('trackPrefs')),
+      mediaBadgesEnabled: pop('mediaBadgesEnabled', true),
+      badgeSpot: pop('badgeSpot', 'leftTop'),
+      badgeText: pop('badgeText', false),
+      badgeSpecs: _readBadgeSpecs(extra.remove('badgeSpecs')),
       extra: extra,
     );
   }
@@ -885,6 +918,20 @@ Map<String, Map<String, String>> _readTrackPrefs(Object? raw) {
       }
     });
     if (entry.isNotEmpty) out[key] = entry;
+  });
+  return out;
+}
+
+/// `{'hdr10': false}` → 强类型。坏值整条丢掉，一份坏掉的开关只该回到默认
+/// 全开，不该让设置加载失败。
+Map<String, bool> _readBadgeSpecs(Object? raw) {
+  if (raw is! Map) return const {};
+  final out = <String, bool>{};
+  raw.forEach((key, value) {
+    if (key is! String || key.isEmpty) return;
+    if (value is bool) {
+      out[key] = value;
+    }
   });
   return out;
 }

@@ -553,6 +553,72 @@ void main() {
     expect(store.skipRule.isEmpty, isTrue);
   });
 
+  testWidgets('媒体徽章 settings carry real switches and spot', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('设置').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('媒体徽章'));
+    await tester.pumpAndSettle();
+
+    // 总开关默认开，位置默认左上角。
+    expect(find.text('显示媒体徽章'), findsOneWidget);
+    expect(find.text('左上角'), findsOneWidget);
+    expect(find.text('带文字标签'), findsOneWidget);
+    // 规格四组开关都在。
+    expect(find.text('画质'), findsOneWidget);
+    expect(find.text('HDR'), findsOneWidget);
+    expect(find.text('音轨'), findsOneWidget);
+    expect(find.text('片源'), findsOneWidget);
+
+    // 关掉总开关，store 里要真实落到 false。
+    await tester.tap(find.text('显示媒体徽章'));
+    await tester.pumpAndSettle();
+    expect(store.settings.mediaBadgesEnabled, isFalse);
+
+    await tester.tap(find.text('显示媒体徽章'));
+    await tester.pumpAndSettle();
+    expect(store.settings.mediaBadgesEnabled, isTrue);
+
+    // 位置选择弹窗，选右上角。
+    await tester.tap(find.text('显示位置'));
+    await tester.pumpAndSettle();
+    expect(find.text('右上角'), findsWidgets);
+    await tester.tap(find.text('右上角').last);
+    await tester.pumpAndSettle();
+    expect(store.settings.badgeSpot, 'rightTop');
+    expect(find.text('右上角'), findsOneWidget);
+
+    // 带文字标签开关。
+    await tester.tap(find.text('带文字标签'));
+    await tester.pumpAndSettle();
+    expect(store.settings.badgeText, isTrue);
+
+    // 关掉 HDR 组，badgeSpecs 里 hdr 相关 slug 要显式 false。
+    await tester.tap(find.text('HDR'));
+    await tester.pumpAndSettle();
+    expect(store.settings.badgeSpecs['hdr10'], isFalse);
+    expect(store.settings.badgeSpecs['dolbyVision'], isFalse);
+    // 画质组不受影响。
+    expect(store.settings.badgeSpecs['uhd'], isNull);
+
+    // 再开回来，false 标记应被清除。
+    await tester.tap(find.text('HDR'));
+    await tester.pumpAndSettle();
+    expect(store.settings.badgeSpecs['hdr10'], isNull);
+  });
+
   testWidgets('备份与恢复 writes a file the dialog lists', (tester) async {
     tester.view.physicalSize = const Size(1920, 1040);
     tester.view.devicePixelRatio = 1.0;
