@@ -68,6 +68,38 @@ Future<void> _recheckSource(
 ) async {
   final messenger = ScaffoldMessenger.of(context);
 
+  // A mount is checked against the server that actually holds the library.
+  // Doing it first matters: an Emby address is neither a spider subscription
+  // nor a config document, so handing it to either of the paths below would
+  // report a failure that says nothing about the server.
+  if (AppStore.isMountSource(source)) {
+    if (store.mountClientOf(source) == null) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('这个挂载还没有登录，编辑它重新填一次账号密码'),
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('正在连接服务器并读取影片库…'),
+        duration: Duration(seconds: 20),
+      ),
+    );
+    final report = await store.probeSource(source, '');
+    if (!context.mounted) return;
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(_probeSummary(report, mount: true)),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+    return;
+  }
+
   final address = store.spiderAddressOf(source);
   if (address != null) {
     if (store.spider == null) {
@@ -160,7 +192,11 @@ Future<void> _recheckSource(
 }
 
 /// One line for the toast: what the check measured, or why it failed.
-String _probeSummary(ProbeReport report) {
+///
+/// [mount] changes the wording of [ProbeReport.showCount]: for a 猫源 it is how
+/// many categories the home screen declared, for a mount it is how many series
+/// the library holds. Same field, different sentence.
+String _probeSummary(ProbeReport report, {bool mount = false}) {
   if (!report.ok) {
     final reason = report.error!;
     return report.latencyMs > 0
@@ -168,8 +204,9 @@ String _probeSummary(ProbeReport report) {
         : reason;
   }
   final parts = <String>[
-    if (report.showCount > 0) '${report.showCount} 个分类',
-    '首页 ${report.movieCount} 部',
+    if (mount && report.showCount > 0) '${report.showCount} 部剧集',
+    if (!mount && report.showCount > 0) '${report.showCount} 个分类',
+    mount ? '${report.movieCount} 部电影' : '首页 ${report.movieCount} 部',
     '用时 ${report.latencyMs} ms',
   ];
   final note = report.note == null ? '' : '（${report.note}）';

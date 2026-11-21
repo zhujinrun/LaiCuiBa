@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import '../../core/detail_nav.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
+import '../../models/models.dart';
+import '../../services/store.dart';
 import '../widgets/hero_banner.dart';
 import '../widgets/media_card.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
   /// Poster rails shrink with the window: 196 wide at 1680 content, 161 at
@@ -19,23 +21,87 @@ class HomePage extends StatelessWidget {
   }
 
   @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  /// Which mount the rails below belong to. Null while the bundled catalogue is
+  /// on screen -- the state every source type except a logged-in mount leaves.
+  String? _mountId;
+
+  /// The mount's titles, or null while the first page is still loading. An
+  /// empty list is a real answer ("the library has nothing"), which is why it
+  /// cannot be conflated with "not loaded yet".
+  List<MediaItem>? _mountItems;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncMount(StoreScope.of(context));
+  }
+
+  /// Swaps the rails over when the active source becomes a logged-in mount, and
+  /// back when it stops being one. The store notifies on selection and source
+  /// edits, so this runs on every change that could matter.
+  void _syncMount(AppStore store) {
+    if (!store.hasMount) {
+      if (_mountId == null) return;
+      setState(() {
+        _mountId = null;
+        _mountItems = null;
+      });
+      return;
+    }
+    final id = store.currentSource?.id;
+    if (id == null || id == _mountId) return;
+    setState(() {
+      _mountId = id;
+      _mountItems = null;
+    });
+    _loadMount(store, id);
+  }
+
+  Future<void> _loadMount(AppStore store, String id) async {
+    final items = await store.mountLibrary(limit: 30);
+    if (!mounted || _mountId != id) return;
+    setState(() => _mountItems = items);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
     final continueWatching = store.continueWatching;
-    final sections = store.homeSections;
+    // A mount answers for itself or not at all: showing the bundled fixtures
+    // while "客厅 Emby" is the active source would pass demo titles off as the
+    // user's own library. Non-mount sources keep the catalogue for now.
+    final mount = _mountId != null;
+    final items = _mountItems;
+    final sections = mount
+        ? (items == null
+              ? const <HomeSection>[]
+              : [HomeSection(title: '影片库', items: items)])
+        : store.homeSections;
+    final hero = mount
+        ? (items == null ? const <MediaItem>[] : items.take(5).toList())
+        : store.heroItems;
+
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            HeroBanner(items: store.heroItems),
+            if (mount && items == null)
+              const _HeroPlaceholder()
+            else if (hero.isNotEmpty)
+              HeroBanner(items: hero),
+            if (mount && items != null && items.isEmpty) const _EmptyLibrary(),
             LayoutBuilder(
               builder: (context, constraints) {
                 final contentWidth = constraints.maxWidth;
                 final landscapeWidth = LandscapeCard.widthFor(contentWidth);
                 final landscapeHeight = landscapeWidth * 9 / 16;
-                final posterWidth = posterWidthFor(contentWidth);
+                final posterWidth = HomePage.posterWidthFor(contentWidth);
 
                 // The rails bleed all the way to the window edge: only the
                 // section headers sit inside the 40px page gutter, the lists
@@ -126,3 +192,68 @@ class HomePage extends StatelessWidget {
   }
 }
 
+/// The hero's footprint while a mount's first page is in flight, so the rails
+/// below do not jump up and then get pushed back down.
+class _HeroPlaceholder extends StatelessWidget {
+  const _HeroPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final height = math.min(
+          constraints.maxWidth * 0.37,
+          MediaQuery.sizeOf(context).height * 0.54,
+        );
+        return Container(
+          height: height,
+          alignment: Alignment.center,
+          child: const SizedBox(
+            width: 26,
+            height: 26,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.2,
+              color: LcbColors.primary,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Shown when the mount answered with an empty library. Says whose library it
+/// is, because "nothing here" on the home page otherwise reads like a bug.
+class _EmptyLibrary extends StatelessWidget {
+  const _EmptyLibrary();
+
+  @override
+  Widget build(BuildContext context) {
+    final name = StoreScope.of(context).currentSource?.name ?? '这个服务器';
+    return SizedBox(
+      height: 260,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$name 的影片库里还没有内容',
+              style: const TextStyle(
+                fontSize: 15,
+                color: LcbColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '在服务器上添加电影或剧集后，重新选择一次这个源即可刷新',
+              style: TextStyle(
+                fontSize: 13,
+                color: LcbColors.textSecondary.withValues(alpha: 0.75),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

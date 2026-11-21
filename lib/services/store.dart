@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import 'catalog_sites.dart';
 import 'demo_data.dart' as demo;
+import 'emby_client.dart';
 import 'source_probe.dart';
 import 'spider_client.dart' show SpiderClass;
 import 'spider_session.dart';
@@ -413,13 +414,81 @@ class AppStore extends ChangeNotifier {
     return (source.id, url);
   }
 
+  /// Whether [source] is a media mount (Emby / Jellyfin) rather than a scraper.
+  ///
+  /// Kept as one predicate because three call sites must agree on it: which
+  /// client answers a search, which one answers a detail, and whether 检测 runs
+  /// the mount or pulls a config document. A source that disagrees with itself
+  /// between those three is how "the card says 58 部 but search is empty" bugs
+  /// happen.
+  static bool isMountSource(SourceInfo? source) {
+    if (source == null) return false;
+    return source.type == 'emby' || source.type == 'jellyfin';
+  }
+
+  /// A client for [source]'s mount, or null when it is not a mount or has never
+  /// logged in. The caller owns the result and must [EmbyClient.close] it --
+  /// every call site is a short request, and leaking a socket per keystroke is
+  /// not worth a connection pool this early.
+  EmbyClient? mountClientOf(SourceInfo? source) {
+    if (!isMountSource(source)) return null;
+    if (source!.token.isEmpty || source.tokenUserId.isEmpty) return null;
+    if (source.url.trim().isEmpty) return null;
+    return EmbyClient(
+      baseUrl: source.url,
+      token: source.token,
+      userId: source.tokenUserId,
+      sourceName: source.name,
+    );
+  }
+
   /// Whether a real spider search is possible right now.
-  bool get canSearchReal => spider != null && _jsSource() != null;
+  bool get canSearchReal =>
+      (spider != null && _jsSource() != null) ||
+      mountClientOf(currentSource) != null;
+
+  /// The active mount's library, newest first, for the home rails.
+  ///
+  /// Returns an empty list for "not a mount", "not logged in" and "the server
+  /// did not answer" alike: the home page only needs to know what to draw, and
+  /// it already has the source card to explain a broken mount. An empty list
+  /// still means something specific there -- it stops the demo catalogue from
+  /// being presented as the user's own library.
+  Future<List<MediaItem>> mountLibrary({int limit = 24}) async {
+    final mount = mountClientOf(currentSource);
+    if (mount == null) return const [];
+    try {
+      return await mount.library(limit: limit);
+    } on EmbyException {
+      return const [];
+    } finally {
+      mount.close();
+    }
+  }
+
+  /// True when the active source is a logged-in mount, i.e. the home page
+  /// should draw the server's library rather than the bundled catalogue.
+  bool get hasMount => mountClientOf(currentSource) != null;
 
   /// Runs a keyword search against every enabled site behind the active source.
   /// Returns null when the runtime is unavailable (the caller then falls back
   /// to the demo catalogue).
   Future<SpiderSearch?> searchReal(String keyword, {bool strict = false}) async {
+    final mount = mountClientOf(currentSource);
+    if (mount != null) {
+      try {
+        final items = _filterMountHits(await mount.search(keyword), strict, keyword);
+        return SpiderSearch(
+          groups: [
+            SpiderSearchSite(site: currentSource!.name, items: items),
+          ],
+        );
+      } on EmbyException catch (e) {
+        return SpiderSearch.failure(e.message);
+      } finally {
+        mount.close();
+      }
+    }
     final session = spider;
     final js = _jsSource();
     if (session == null || js == null) return null;
@@ -441,6 +510,13 @@ class AppStore extends ChangeNotifier {
     String keyword, {
     bool strict = false,
   }) {
+    // A mount answers as a single "site" named after the source, which is the
+    // truth: one Emby box is one library, not a list of scraped sites. The
+    // search page fans out over `SpiderSearchSite` groups without knowing
+    // which kind of source produced them.
+    final mount = mountClientOf(currentSource);
+    if (mount != null) return _mountSearchStream(mount, keyword, strict);
+
     final session = spider;
     final js = _jsSource();
     if (session == null || js == null) return null;
@@ -455,9 +531,66 @@ class AppStore extends ChangeNotifier {
     );
   }
 
+  /// One group, emitted once the library has answered. Cancelling the
+  /// subscription still closes the client, because the whole body runs inside
+  /// `try/finally` -- the search page cancels on every new keystroke.
+  Stream<SpiderSearchSite> _mountSearchStream(
+    EmbyClient client,
+    String keyword,
+    bool strict,
+  ) async* {
+    try {
+      final hits = _filterMountHits(await client.search(keyword), strict, keyword);
+      // Always one group, even when it is empty: the search page falls back to
+      // the demo catalogue when nothing lands, and showing bundled fixtures as
+      // if they were in the user's own media library would be a lie. An empty
+      // group says "your library has nothing matching" instead.
+      yield SpiderSearchSite(
+        site: currentSource?.name ?? '影片库',
+        items: hits,
+      );
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Applies 严格 to a mount's hits. Emby's `SearchTerm` is a fuzzy contains
+  /// match, so strict has to be applied here or the toggle would do nothing on
+  /// an Emby source. Comparison ignores spaces and case, because a library
+  /// titled `流浪 地球` should still be an exact hit for `流浪地球`.
+  List<MediaItem> _filterMountHits(
+    List<MediaItem> items,
+    bool strict,
+    String keyword,
+  ) {
+    if (!strict) return items;
+    final wanted = keyword.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+    if (wanted.isEmpty) return items;
+    return items
+        .where(
+          (item) =>
+              item.title.toLowerCase().replaceAll(RegExp(r'\s+'), '') ==
+              wanted,
+        )
+        .toList(growable: false);
+  }
+
   /// Fetches the full record for [item] from its site. Returns null when the
   /// item carries no site key / vod id or the runtime is unavailable.
   Future<MediaItem?> detailReal(MediaItem item) async {
+    final mount = mountClientOf(currentSource);
+    if (mount != null) {
+      try {
+        return await mount.detail(item);
+      } on EmbyException {
+        // A detail that cannot be read leaves the list row on screen; the
+        // player will say the URL is missing rather than the page dying.
+        return null;
+      } finally {
+        mount.close();
+      }
+    }
+
     final session = spider;
     final js = _jsSource();
     if (session == null || js == null) return null;
@@ -484,6 +617,25 @@ class AppStore extends ChangeNotifier {
     String? flag,
     int? nid,
   }) async {
+    final mount = mountClientOf(currentSource);
+    if (mount != null) {
+      try {
+        // `detail` already wrote every episode's URL into the play lines, and
+        // the player prefers those. Reaching here means a card whose detail was
+        // never fetched, so fall back to the item's own stream.
+        final episodes = [
+          for (final line in item.playLines) ...line.episodes,
+        ];
+        final index = nid ?? 0;
+        if (index >= 0 && index < episodes.length) {
+          return episodes[index].url;
+        }
+        return mount.streamUrl(item.id);
+      } finally {
+        mount.close();
+      }
+    }
+
     final session = spider;
     final js = _jsSource();
     if (session == null || js == null) return null;
@@ -737,7 +889,22 @@ class AppStore extends ChangeNotifier {
   /// screen, writes the numbers back onto the source and returns the report so
   /// the caller can say what happened. Inert: a dead source comes back as a
   /// failed report, never an exception.
+  ///
+  /// A mount is checked by asking the server for its library counts, which is
+  /// the same question ("does this source have anything to show?") answered the
+  /// only way a mount can answer it. [md5Url] is ignored for those.
   Future<ProbeReport> probeSource(SourceInfo source, String md5Url) async {
+    final mount = mountClientOf(source);
+    if (mount != null) {
+      try {
+        final report = await mount.probe();
+        await applyProbe(source.id, report);
+        return report;
+      } finally {
+        mount.close();
+      }
+    }
+
     final session = spider;
     if (session == null) {
       return const ProbeReport.failure('没有可用的源运行时，先加载源文件');

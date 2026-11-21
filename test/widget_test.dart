@@ -2,12 +2,13 @@ import 'dart:io';
 import 'dart:ui' show Size;
 
 import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoSwitch;
-import 'package:flutter/material.dart' show Icons, TextField, Wrap;
+import 'package:flutter/material.dart' show Icons, TextField, ValueKey, Wrap;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:lai_cui_ba/main.dart';
+import 'package:lai_cui_ba/models/models.dart';
 import 'package:lai_cui_ba/services/backup.dart';
 import 'package:lai_cui_ba/services/source_probe.dart';
 import 'package:lai_cui_ba/services/store.dart';
@@ -611,7 +612,44 @@ void main() {
     expect(find.text('0.7s'), findsOneWidget);
   });
 
-  testWidgets('the Emby form keeps address and user, never the password', (
+  testWidgets('a mounted source replaces the demo catalogue on 首页', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+    await store.addSource(
+      const SourceInfo(
+        id: 'emby-home',
+        type: 'emby',
+        name: '客厅 Emby',
+        url: 'http://127.0.0.1:9',
+        username: 'lxy',
+        token: 'tok',
+        tokenUserId: 'u1',
+      ),
+    );
+    await store.selectSource('emby-home');
+
+    await tester.pumpWidget(LcbApp(store: store));
+    // The library fetch cannot succeed under the test binding (every request is
+    // answered with 400 without connecting), which is fine: the point is that
+    // the home page stops presenting bundled fixtures as the user's library.
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // The demo rails are gone (their section header is what proves it -- a
+    // history row may legitimately still say 尚公主 in 继续观看), and the page
+    // says whose empty library this is instead.
+    expect(find.text(store.homeSections.first.title), findsNothing);
+    expect(find.text('客厅 Emby 的影片库里还没有内容'), findsOneWidget);
+  });
+
+  testWidgets('the Emby form refuses to save a mount it could not log in to', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1920, 1040);
@@ -641,13 +679,43 @@ void main() {
     await tester.tap(find.text('添加'));
     await tester.pumpAndSettle();
 
-    final added = store.sources.last;
-    expect(added.type, 'emby');
-    expect(added.name, '客厅 Emby');
-    expect(added.url, 'http://192.168.1.10:8096');
-    expect(added.username, 'lxy');
-    // A password with nowhere to be exchanged for a token is not written.
-    expect(added.password, isEmpty);
-    expect(find.text('未连接 · lxy'), findsOneWidget);
+    // The test binding answers every HTTP request with 400 without connecting,
+    // so the login cannot succeed here -- which is the case worth locking down:
+    // a mount that never authenticated must not be written to the source list
+    // as if it were ready.
+    expect(store.sources.where((s) => s.type == 'emby'), isEmpty);
+    expect(find.byKey(const ValueKey('server-form-error')), findsOneWidget);
+    expect(find.text('添加'), findsOneWidget);
+  });
+
+  testWidgets('the Emby form asks for credentials before trying to log in', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('资源').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(CupertinoIcons.plus));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Emby 服务器'));
+    await tester.pumpAndSettle();
+
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(1), 'http://192.168.1.10:8096');
+    await tester.pump();
+    await tester.tap(find.text('添加'));
+    await tester.pumpAndSettle();
+
+    expect(store.sources.where((s) => s.type == 'emby'), isEmpty);
+    expect(find.text('要填账号和密码才能登录，密码不会被保存'), findsOneWidget);
   });
 }

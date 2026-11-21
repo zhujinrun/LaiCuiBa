@@ -17,6 +17,7 @@ class MediaItem {
     this.episodes = const [],
     this.playLines = const [],
     this.siteKey,
+    this.sourceName,
   });
 
   final String id;
@@ -64,6 +65,12 @@ class MediaItem {
   /// for fixtures that predate the source layer.
   final String? siteKey;
 
+  /// Display name of the mount a record came from, for sources that have no
+  /// site keys at all -- an Emby library has one library, not a list of sites.
+  /// The detail page and the player print this instead of leaving the 选集 row
+  /// saying 全部站点. Null for 猫源 records, whose [siteKey] resolves to a name.
+  final String? sourceName;
+
   /// Same record, re-tagged with [siteKey]. Used when the store attributes
   /// fixture cards to the sites the config declared.
   MediaItem withSiteKey(String? siteKey) => MediaItem(
@@ -83,6 +90,35 @@ class MediaItem {
     episodes: episodes,
     playLines: playLines,
     siteKey: siteKey ?? this.siteKey,
+    sourceName: sourceName,
+  );
+
+  /// Same record with the fields only a detail fetch can supply. Every
+  /// argument is optional, so a caller fills in just what its source has --
+  /// Emby, for instance, has no `vod_play_from` equivalent and only sets the
+  /// play lines it synthesised.
+  MediaItem withDetail({
+    String? overview,
+    List<String>? episodes,
+    List<PlayLine>? playLines,
+  }) => MediaItem(
+    id: id,
+    title: title,
+    subtitle: subtitle,
+    score: score,
+    tag: tag,
+    year: year,
+    overview: overview ?? this.overview,
+    posterSeed: posterSeed,
+    image: image,
+    latest: latest,
+    area: area,
+    categories: categories,
+    actors: actors,
+    episodes: episodes ?? this.episodes,
+    playLines: playLines ?? this.playLines,
+    siteKey: siteKey,
+    sourceName: sourceName,
   );
 }
 
@@ -372,6 +408,8 @@ class SourceInfo {
     required this.url,
     this.username = '',
     this.password = '',
+    this.token = '',
+    this.tokenUserId = '',
     this.latencyMs = 0,
     this.movieCount = 0,
     this.showCount = 0,
@@ -387,6 +425,13 @@ class SourceInfo {
   final String url;
   final String username;
   final String password;
+
+  /// The access token an Emby / Jellyfin login returned, plus the user id it
+  /// belongs to. The password is never persisted -- a token is what the server
+  /// actually re-uses, and it is revocable from the server side, which a stored
+  /// password is not.
+  final String token;
+  final String tokenUserId;
   final int latencyMs;
   final int movieCount;
   final int showCount;
@@ -415,6 +460,8 @@ class SourceInfo {
     String? url,
     String? username,
     String? password,
+    String? token,
+    String? tokenUserId,
     int? latencyMs,
     int? movieCount,
     int? showCount,
@@ -429,6 +476,8 @@ class SourceInfo {
     url: url ?? this.url,
     username: username ?? this.username,
     password: password ?? this.password,
+    token: token ?? this.token,
+    tokenUserId: tokenUserId ?? this.tokenUserId,
     latencyMs: latencyMs ?? this.latencyMs,
     movieCount: movieCount ?? this.movieCount,
     showCount: showCount ?? this.showCount,
@@ -454,6 +503,10 @@ class SourceInfo {
     'url': url,
     'username': username,
     'password': password,
+    // Omitted while empty: every source written before mounts existed keeps the
+    // exact shape it had, and no other source type carries a token.
+    if (token.isNotEmpty) 'token': token,
+    if (tokenUserId.isNotEmpty) 'tokenUserId': tokenUserId,
     'latencyMs': latencyMs,
     'movieCount': movieCount,
     'showCount': showCount,
@@ -472,6 +525,8 @@ class SourceInfo {
     url: json['url'] as String? ?? '',
     username: json['username'] as String? ?? '',
     password: json['password'] as String? ?? '',
+    token: json['token'] as String? ?? '',
+    tokenUserId: json['tokenUserId'] as String? ?? '',
     latencyMs: json['latencyMs'] as int? ?? 0,
     movieCount: json['movieCount'] as int? ?? 0,
     showCount: json['showCount'] as int? ?? 0,

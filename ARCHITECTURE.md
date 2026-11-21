@@ -232,12 +232,29 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
   本地 `.js/.py/.php` 文件明确回「还不能直接执行」，不再假装 `CatBundle` 能读本地路径。
 - 资源卡片 `当前使用 · N 部` 只在有真实计数时显示，否则退回「N 个站点 / 未解析」。
 
+#### 挂载：Emby / Jellyfin（已完成，2026-11-21）
+- `services/emby_client.dart`：`AuthenticateByName` 换令牌 → `Users/{id}/Items` 列表/搜索 →
+  `Shows/{id}/Episodes` 取集 → `Videos/{id}/stream?static=true&api_key=` 直链 →
+  `Items/Counts` 取库容量。Jellyfin 同协议，一个客户端覆盖两种源。
+- **密码不落盘**：添加表单点「添加」时真登录一次，成功只把 `token` + `tokenUserId` 写进
+  `SourceInfo`；登录失败对话框不关、显示原因、**不保存**——避免出现「看着配好了却什么都
+  拉不到」的假源。
+- 搜索在搜索页表现为**单个站点**（站点名 = 源名）：一台 Emby 就是一个库，不是一堆采集站。
+  严格模式在本地过滤（Emby 的 `SearchTerm` 是模糊包含，不接管这一层就等于严格开关失效）。
+  库里没有命中时**仍然回一个空分组**，不让页面回落到 demo 片单冒充用户自己的库。
+- 详情：剧集拉 `Episodes`，一集一个 `PlayEpisode`（URL 直接带 `api_key`），播放器沿用
+  现成的 `item.playLines` 路径，无需新协议；电影给单个「正片」。
+- 首页：当前源是已登录挂载时，hero/section 改画服务器片库（空的就说「影片库里还没有内容」）。
+- 检测：走 `Items/Counts` + 首屏 24 条，写回 `movieCount/showCount/latencyMs`，卡片显示
+  `当前使用 · N 部`；令牌失效给的是可执行的话（重新添加即可重新登录）。
+
 #### 还没做的（真正的灵魂部分）
 - TVBox：CPython + JS spider，参考原版 `py_host` / `spider_channel`
   （需要打包一份便携 Python + `requests`/`lxml`，属打包工程，不是代码工程）
 - 本地 spider 文件直接执行（现在必须有订阅地址；文件路径无从得知站点 key/type）
-- 挂载：Emby / WebDAV / AList / 网盘
-- 首页真实片单（等源站 `category` 稳定）
+- 挂载：WebDAV / AList / 网盘（Emby / Jellyfin 已完成，见上）
+- 首页真实片单（猫源 `category` 仍不稳定；挂载源已走真实片库）
+- 挂载令牌失效后的**重新登录入口**（目前提示「删掉这个源重新添加」）
 
 > `js2p://_WEB_` 已核对过：它不是应用侧缺口。该 scheme 由**源自带的 ext 服务**在自己的
 > 进程里重写成 `http://127.0.0.1:<源端口>`，宿主与播放器都不需要认识它。

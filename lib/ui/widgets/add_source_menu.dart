@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
+import '../../services/emby_client.dart';
 import '../../services/source_import.dart';
 import 'source_dialogs.dart';
 
@@ -443,29 +444,73 @@ class _ServerFormState extends State<_ServerForm> {
     super.dispose();
   }
 
-  bool get _ready => _url.text.trim().isNotEmpty;
+  bool get _ready => _url.text.trim().isNotEmpty && !_busy;
+  bool _busy = false;
+  String? _error;
 
+  /// Logs in for real, then keeps the token and drops the password.
+  ///
+  /// Saving a mount without a successful login would produce a source that
+  /// looks configured and answers nothing -- the exact "added but broken" state
+  /// the card's 未连接 label exists to avoid. So the dialog stays open on
+  /// failure and says why, and only a server that returned a token is saved.
   Future<void> _save() async {
     final store = StoreScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
     final url = _url.text.trim();
     final name = _name.text.trim();
-    // No password field is persisted: without a login round-trip there is
-    // nothing to exchange it for, and a plain-text secret on disk is worse than
-    // asking again once the mount layer lands.
+    final user = _user.text.trim();
+    final password = _password.text;
+
+    if (user.isEmpty || password.isEmpty) {
+      setState(() => _error = '要填账号和密码才能登录，密码不会被保存');
+      return;
+    }
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    EmbyAuth auth;
+    try {
+      auth = await EmbyClient.authenticate(
+        baseUrl: url,
+        username: user,
+        password: password,
+      );
+    } on EmbyException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e.message;
+      });
+      return;
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = '登录失败：$e';
+      });
+      return;
+    }
+
     await store.addSource(
       SourceInfo(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         type: widget.type,
         name: name.isEmpty ? widget.title : name,
         url: url,
-        username: _user.text.trim(),
+        username: user,
+        token: auth.token,
+        tokenUserId: auth.userId,
       ),
     );
     if (!mounted) return;
     Navigator.of(context).pop();
-    ScaffoldMessenger.of(context).showSnackBar(
+    messenger.showSnackBar(
       SnackBar(
-        content: Text('已添加「${name.isEmpty ? widget.title : name}」，登录校验需要联网'),
+        content: Text('已登录「${name.isEmpty ? widget.title : name}」并添加'),
         duration: const Duration(seconds: 3),
       ),
     );
@@ -507,12 +552,22 @@ class _ServerFormState extends State<_ServerForm> {
           ),
           const SizedBox(height: 10),
           const Text(
-            '密码不写入本机：这里没有可换取的令牌，'
-            '等挂载层接上后再真正登录，现在只记住地址与用户名。',
+            '点「添加」时会真正登录一次；成功后只保存登录令牌，密码不写入本机。',
             style: _noteStyle,
           ),
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              key: const ValueKey('server-form-error'),
+              style: _noteStyle.copyWith(color: LcbColors.sysRed),
+            ),
+          ],
           const SizedBox(height: 12),
-          _PrimaryButton(label: '添加', onTap: _ready ? _save : null),
+          _PrimaryButton(
+            label: _busy ? '正在登录…' : '添加',
+            onTap: _ready ? _save : null,
+          ),
         ],
       ),
     );

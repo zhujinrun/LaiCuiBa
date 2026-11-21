@@ -164,9 +164,21 @@ class _SourceCard extends StatelessWidget {
         return _remote ? _measuredLine : '本地 spider 文件 · 待宿主执行';
       case 'emby':
       case 'jellyfin':
-        return source.username.isEmpty
-            ? '未连接 · 待挂载'
-            : '未连接 · ${source.username}';
+        // Logged-out and logged-in are different states, and a mount that has a
+        // token but was never checked can still say whose account it is. Once
+        // 检测 has read the library, the title count takes over -- the same
+        // shape a 猫源 card shows.
+        if (source.token.isEmpty) {
+          return source.username.isEmpty
+              ? '未连接 · 待登录'
+              : '未连接 · ${source.username}';
+        }
+        if (source.movieCount > 0) {
+          final prefix = selected ? '当前使用 · ' : '';
+          return '$prefix${source.movieCount} 部';
+        }
+        if (!selected) return '已登录 · 未使用';
+        return '当前使用 · 待检测';
       default:
         final sites = source.searchableSites.length;
         // An address-only source says so even before it is selected: the user

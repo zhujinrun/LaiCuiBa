@@ -188,7 +188,7 @@ class _ShellState extends State<Shell> {
         url: url,
         subtitle: StoreScope.of(context).siteNameOfKey(
           item.siteKey,
-          fallback: '',
+          fallback: item.sourceName ?? '',
         ),
         episodes: item.episodes,
         episodeIndex: episodeIndex,

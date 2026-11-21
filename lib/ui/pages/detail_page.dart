@@ -169,9 +169,10 @@ class _DetailPageState extends State<DetailPage> {
                       // The real site the record came from; the original shows
                       // the same chip, only there it is `「直」荐片` because its
                       // home feed was drawn from that site.
-                      siteLabel: StoreScope.of(
-                        context,
-                      ).siteNameOfKey(item.siteKey, fallback: '全部站点'),
+                      siteLabel: StoreScope.of(context).siteNameOfKey(
+                        item.siteKey,
+                        fallback: item.sourceName ?? '全部站点',
+                      ),
                     ),
                     const SizedBox(height: 10),
                     _EpisodeGrid(

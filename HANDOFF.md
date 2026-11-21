@@ -233,10 +233,37 @@ lib/
 
 **未完成**
 - TVBox：CPython + JS spider（参考原版 `py_host`/`spider_channel`）
-- 挂载：Emby/WebDAV/AList/网盘
+- 挂载：WebDAV/AList/网盘（Emby/Jellyfin 已完成，见下节）
 - 本地 spider 文件直接执行（需要站点 key/type，纯文件路径给不出来）
-- 首页 hero/分区的真实片单（`category` 接口实测返回空，源站分类数据不稳定）
+- 首页猫源真实片单（`category` 接口实测返回空；挂载源已画真实片库）
 - ⚠️ 以上都依赖原版包 `node/`、`python/` 二进制 + 联网，**不适合无人值守推进**
+
+**已完成（Emby / Jellyfin 挂载，2026-11-21）**
+
+`SourceInfo` 早有 `username/password` 却从没登录过，卡片只能写「未连接」。这一轮把挂载做成
+真能出片的链路，且仍然**零外部源**可自证（假服务器跑在 localhost）：
+
+- `lib/services/emby_client.dart`：`AuthenticateByName`（`X-Emby-Authorization` 头）换
+  `AccessToken` + `UserId`；`Users/{id}/Items` 列表与搜索；`Shows/{id}/Episodes` 取集；
+  `Videos/{id}/stream?static=true&MediaSourceId=&api_key=` 直链；`Items/Counts` 取库容量。
+  Jellyfin 同协议，一个客户端覆盖两种源。所有失败都转成可读中文 `EmbyException`（401 区分
+  「账号密码不对」与「登录已失效」）。
+- `SourceInfo` 新增 `token` / `tokenUserId`（为空时**不写进 JSON**，老数据形状不变）。
+  **密码不落盘**：添加表单点「添加」时真登录，成功只存令牌；失败则对话框不关、显示原因、
+  不保存——不产生「看着配好了却拉不到东西」的假源。
+- 搜索：在搜索页表现为**单个站点**（站点名 = 源名），因为一台 Emby 就是一个库。
+  严格模式在本地按标题精确过滤（Emby 的 `SearchTerm` 是模糊包含）；没命中时**仍回一个空
+  分组**，避免页面回落到 demo 片单冒充用户自己的库。
+- 详情/播放：剧集逐集生成 `PlayEpisode`，URL 自带 `api_key`，播放器沿用现有 `playLines`
+  路径（无需新协议）；电影给单个「正片」。`MediaItem.sourceName` 让详情页站点标签与播放器
+  副标题写源名而不是「全部站点」。
+- 首页：当前源是已登录挂载时画服务器片库（hero = 前 5 条，一个「影片库」分区）；空库明确
+  说「××的影片库里还没有内容」；非挂载源行为不变。
+- 检测：`AppStore.probeSource` 对挂载走 `Items/Counts` + 首屏 24 条，写回四个字段，
+  卡片显示 `当前使用 · N 部`。
+- 验证：`test/support/fake_emby.dart` 起真 `HttpServer` 当假 Emby，`test/emby_client_test.dart`
+  15 例覆盖登录/登录失败/连不上、行映射、剧集与电影详情、直链、检测计数、store 分流与严格模式；
+  `widget_test` 新增 3 例（挂载源替换首页 demo 片单、表单未登录不保存、缺账号密码先拦下）。
 
 **已完成（spider 宿主 + 真实搜索/详情，2026-11-20）**
 - `assets/runtime/node/cat_host.js`：协议重写版宿主（每源一个 Worker，`catServerFactory`/
@@ -321,7 +348,7 @@ TV 焦点导航（原版 `ui/tv/*` 9 个文件）、Android 适配、AI 辅助�
 cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
-flutter test                    # 冒烟测试（当前 147 个全绿）
+flutter test                    # 冒烟测试（当前 164 个全绿）
 flutter analyze                 # 静态检查（当前零问题）
 dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 
