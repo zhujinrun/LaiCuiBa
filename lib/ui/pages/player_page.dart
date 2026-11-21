@@ -24,6 +24,7 @@ class PlayerPage extends StatefulWidget {
     required this.title,
     required this.url,
     this.subtitle,
+    this.headers = const {},
     this.episodes = const [],
     this.episodeIndex,
     this.startAt,
@@ -40,6 +41,10 @@ class PlayerPage extends StatefulWidget {
 
   /// Secondary line under the title, e.g. the site or line name.
   final String? subtitle;
+
+  /// Headers the request needs. A WebDAV share has no token in its URL, so the
+  /// Basic credential has to ride along here; every other source passes none.
+  final Map<String, String> headers;
 
   /// Episode labels for the next/prev controls and the title suffix. Empty for
   /// films.
@@ -126,7 +131,7 @@ class _PlayerPageState extends State<PlayerPage> {
         Media(
           widget.url,
           start: widget.startAt,
-          httpHeaders: const {'User-Agent': _ua},
+          httpHeaders: {'User-Agent': _ua, ...widget.headers},
         ),
         play: true,
       );

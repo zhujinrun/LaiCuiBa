@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/models.dart';
+import 'media_mount.dart';
 import 'source_probe.dart' show ProbeReport;
 
 /// A server that refused a request, carrying a message written for the UI.
@@ -47,7 +48,7 @@ class EmbyAuth {
 /// Deliberately stateless apart from [baseUrl] / [token] / [userId]: the store
 /// builds one per request from the persisted source, so a re-login or an edited
 /// address takes effect without any cache to invalidate.
-class EmbyClient {
+class EmbyClient implements MediaMount {
   /// [http] is only passed by tests: a shared client is then left open on
   /// [close], because the caller owns its lifetime.
   factory EmbyClient({
@@ -88,6 +89,7 @@ class EmbyClient {
   /// The mount's display name, stamped onto every record this client produces
   /// so the detail page and the player can say where a title came from. A mount
   /// has no site keys to resolve a name from.
+  @override
   final String sourceName;
 
   /// Owned only when the caller did not supply one, so a shared client passed
@@ -155,6 +157,7 @@ class EmbyClient {
   }
 
   /// Movies and series, newest first. Used by the home rails.
+  @override
   Future<List<MediaItem>> library({int limit = 24}) async {
     return _items(
       Uri.parse('$baseUrl/Users/$userId/Items').replace(
@@ -174,6 +177,7 @@ class EmbyClient {
 
   /// Titles whose name matches [term]. Empty string matches the whole library,
   /// which is what "show me everything" means here.
+  @override
   Future<List<MediaItem>> search(String term, {int limit = 60}) async {
     final query = <String, String>{
       'api_key': token,
@@ -223,6 +227,7 @@ class EmbyClient {
   /// never flashes an empty shell. A movie gets a single 正片 entry; a series
   /// gets one entry per episode, which is exactly the shape the 选集 row and
   /// the player's episode list already consume.
+  @override
   Future<MediaItem> detail(MediaItem item) async {
     List<MediaItem> episodes = const [];
     if (item.latest != null && item.latest!.isNotEmpty) {
@@ -271,6 +276,12 @@ class EmbyClient {
   /// Direct-play URL for one item. `static=true` asks the server to remux
   /// nothing and serve the file as stored, which is the only thing a local
   /// player can rely on across every container the server may hold.
+  /// Emby authenticates through `api_key` in the URL, so the player needs no
+  /// extra headers.
+  @override
+  Map<String, String> get playbackHeaders => const {};
+
+  @override
   String streamUrl(String itemId) {
     final query = Uri(
       queryParameters: {
@@ -284,6 +295,7 @@ class EmbyClient {
 
   /// Measures the mount by listing its library, in the same shape a 猫源 probe
   /// reports, so the source card and `重新检测` treat both kinds alike.
+  @override
   Future<ProbeReport> probe() async {
     final watch = Stopwatch()..start();
     try {
@@ -318,6 +330,7 @@ class EmbyClient {
     }
   }
 
+  @override
   void close() {
     if (_ownsHttp) _http.close(force: true);
   }

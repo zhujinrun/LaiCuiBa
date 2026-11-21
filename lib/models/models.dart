@@ -99,6 +99,7 @@ class MediaItem {
   /// play lines it synthesised.
   MediaItem withDetail({
     String? overview,
+    String? latest,
     List<String>? episodes,
     List<PlayLine>? playLines,
   }) => MediaItem(
@@ -111,7 +112,7 @@ class MediaItem {
     overview: overview ?? this.overview,
     posterSeed: posterSeed,
     image: image,
-    latest: latest,
+    latest: latest ?? this.latest,
     area: area,
     categories: categories,
     actors: actors,

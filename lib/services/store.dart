@@ -9,7 +9,9 @@ import 'demo_data.dart' as demo;
 import 'emby_client.dart';
 import 'source_catalogue.dart';
 import 'source_probe.dart';
+import 'media_mount.dart';
 import 'spider_client.dart' show SpiderClass;
+import 'webdav_client.dart';
 import 'spider_session.dart';
 
 /// Application-wide persistent state: watch history, favourites (in their own
@@ -500,23 +502,52 @@ class AppStore extends ChangeNotifier {
   /// happen.
   static bool isMountSource(SourceInfo? source) {
     if (source == null) return false;
-    return source.type == 'emby' || source.type == 'jellyfin';
+    return source.type == 'emby' ||
+        source.type == 'jellyfin' ||
+        source.type == 'webdav';
   }
 
-  /// A client for [source]'s mount, or null when it is not a mount or has never
-  /// logged in. The caller owns the result and must [EmbyClient.close] it --
+  /// A client for [source]'s mount, or null when it is not a mount or is not
+  /// set up yet. The caller owns the result and must [MediaMount.close] it --
   /// every call site is a short request, and leaking a socket per keystroke is
   /// not worth a connection pool this early.
-  EmbyClient? mountClientOf(SourceInfo? source) {
+  ///
+  /// Emby / Jellyfin need a token from a login; WebDAV needs the credential
+  /// itself, because the protocol has no token exchange. That password is
+  /// stored in the source record (local prefs, plain) -- the same place the
+  /// original keeps it, and the only way a share can be reopened without asking
+  /// the user every launch.
+  MediaMount? mountClientOf(SourceInfo? source) {
     if (!isMountSource(source)) return null;
-    if (source!.token.isEmpty || source.tokenUserId.isEmpty) return null;
-    if (source.url.trim().isEmpty) return null;
+    if (source!.url.trim().isEmpty) return null;
+    if (source.type == 'webdav') {
+      return WebDavClient(
+        baseUrl: source.url,
+        username: source.username,
+        password: source.password,
+        sourceName: source.name,
+      );
+    }
+    if (source.token.isEmpty || source.tokenUserId.isEmpty) return null;
     return EmbyClient(
       baseUrl: source.url,
       token: source.token,
       userId: source.tokenUserId,
       sourceName: source.name,
     );
+  }
+
+  /// Headers the player must send along with a stream URL from the current
+  /// source. Empty for every source whose URL already carries its credential
+  /// (spiders, Emby's `api_key`); a WebDAV share needs Basic auth here.
+  Map<String, String> get playbackHeaders {
+    final mount = mountClientOf(currentSource);
+    if (mount == null) return const {};
+    try {
+      return mount.playbackHeaders;
+    } finally {
+      mount.close();
+    }
   }
 
   /// Whether a real search is possible right now: a cat host to run the spider,
@@ -537,7 +568,9 @@ class AppStore extends ChangeNotifier {
     if (mount == null) return const [];
     try {
       return await mount.library(limit: limit);
-    } on EmbyException {
+    } on Object {
+      // A mount that cannot be read draws an empty library; the source card is
+      // where the reason belongs, and 检测 is where it gets written down.
       return const [];
     } finally {
       mount.close();
@@ -589,8 +622,8 @@ class AppStore extends ChangeNotifier {
             SpiderSearchSite(site: currentSource!.name, items: items),
           ],
         );
-      } on EmbyException catch (e) {
-        return SpiderSearch.failure(e.message);
+      } on Object catch (e) {
+        return SpiderSearch.failure('$e');
       } finally {
         mount.close();
       }
@@ -644,7 +677,7 @@ class AppStore extends ChangeNotifier {
   /// subscription still closes the client, because the whole body runs inside
   /// `try/finally` -- the search page cancels on every new keystroke.
   Stream<SpiderSearchSite> _mountSearchStream(
-    EmbyClient client,
+    MediaMount client,
     String keyword,
     bool strict,
   ) async* {
@@ -693,7 +726,7 @@ class AppStore extends ChangeNotifier {
     if (mount != null) {
       try {
         return await mount.detail(item);
-      } on EmbyException {
+      } on Object {
         // A detail that cannot be read leaves the list row on screen; the
         // player will say the URL is missing rather than the page dying.
         return null;

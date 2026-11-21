@@ -8,13 +8,17 @@ import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../services/emby_client.dart';
+import '../../services/webdav_client.dart';
 import '../../services/source_import.dart';
 import 'source_dialogs.dart';
 
-/// The nine entries of the original's 添加资源 sheet, in its three groups.
+/// The entries of the original's 添加资源 sheet, in its three groups. WebDAV is
+/// ours: the original shipped no share-based source, and the entry sits with
+/// the servers because that is what a share is.
 enum AddSourceAction {
   emby,
   jellyfin,
+  webdav,
   tvboxUrl,
   liveUrl,
   pasteText,
@@ -57,6 +61,15 @@ void _run(BuildContext context, AddSourceAction action) {
           hint: action == AddSourceAction.emby
               ? 'http://192.168.1.10:8096'
               : 'http://192.168.1.10:5666',
+        ),
+      );
+    case AddSourceAction.webdav:
+      unawaited(
+        _showServerForm(
+          context,
+          type: 'webdav',
+          title: 'WebDAV / AList 网盘',
+          hint: 'http://192.168.1.10:5244/dav',
         ),
       );
     case AddSourceAction.tvboxUrl:
@@ -462,7 +475,7 @@ class _ServerFormState extends State<_ServerForm> {
     final user = _user.text.trim();
     final password = _password.text;
 
-    if (user.isEmpty || password.isEmpty) {
+    if (widget.type != 'webdav' && (user.isEmpty || password.isEmpty)) {
       setState(() => _error = '要填账号和密码才能登录，密码不会被保存');
       return;
     }
@@ -471,6 +484,52 @@ class _ServerFormState extends State<_ServerForm> {
       _busy = true;
       _error = null;
     });
+
+    // A WebDAV share has no login to exchange for a token: the credential is
+    // the only way in, so it is stored and replayed as Basic auth. The probe is
+    // what makes the save honest -- a path that cannot be listed is refused
+    // here instead of becoming a source that answers nothing.
+    if (widget.type == 'webdav') {
+      final client = WebDavClient(
+        baseUrl: url,
+        username: user,
+        password: password,
+        sourceName: name.isEmpty ? widget.title : name,
+      );
+      try {
+        final report = await client.probe();
+        if (report.ok != true) {
+          if (!mounted) return;
+          setState(() {
+            _busy = false;
+            _error = report.error ?? report.note ?? '连不上这个目录';
+          });
+          return;
+        }
+      } finally {
+        client.close();
+      }
+
+      await store.addSource(
+        SourceInfo(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          type: 'webdav',
+          name: name.isEmpty ? widget.title : name,
+          url: url,
+          username: user,
+          password: password,
+        ),
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('已连接「${name.isEmpty ? widget.title : name}」并添加'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
 
     EmbyAuth auth;
     try {
@@ -546,7 +605,9 @@ class _ServerFormState extends State<_ServerForm> {
           const SizedBox(height: 12),
           _Field(
             controller: _password,
-            hint: '密码（不保存）',
+            hint: widget.type == 'webdav'
+                ? '密码（保存在本机配置里，用于每次访问）'
+                : '密码（不保存）',
             icon: CupertinoIcons.lock,
             obscure: true,
           ),
@@ -565,7 +626,9 @@ class _ServerFormState extends State<_ServerForm> {
           ],
           const SizedBox(height: 12),
           _PrimaryButton(
-            label: _busy ? '正在登录…' : '添加',
+            label: _busy
+                ? (widget.type == 'webdav' ? '正在连接…' : '正在登录…')
+                : '添加',
             onTap: _ready ? _save : null,
           ),
         ],
@@ -613,6 +676,13 @@ class _AddSourceMenu extends StatelessWidget {
                     title: '飞牛影视 / Jellyfin',
                     subtitle: '飞牛 NAS（fnOS）影视与 Jellyfin 服务器',
                     action: AddSourceAction.jellyfin,
+                  ),
+                  _MenuRow(
+                    icon: CupertinoIcons.folder_fill,
+                    color: LcbColors.sysIndigo,
+                    title: 'WebDAV / AList 网盘',
+                    subtitle: 'AList、群晖、坚果云等共享目录，按目录当片单',
+                    action: AddSourceAction.webdav,
                   ),
                 ],
               ),

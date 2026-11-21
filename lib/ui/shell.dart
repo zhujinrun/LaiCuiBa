@@ -145,6 +145,19 @@ class _ShellState extends State<Shell> {
   /// absent (e.g. a row whose detail has not been fetched yet). Keeps
   /// the resolution async so the spider round-trip never blocks the tap.
   void _openPlayer(MediaItem item, int? episodeIndex, int lineIndex) {
+    // A mount row can be a folder: a WebDAV share lists directories, and its
+    // episode URLs only exist after the detail call. Resolving that first means
+    // 播放 starts the first episode instead of handing the player a directory
+    // URL that cannot be opened.
+    if (item.playLines.isEmpty && _store.hasMount) {
+      _store.detailReal(item).then((full) {
+        if (!mounted) return;
+        if (full == null || full.playLines.isEmpty) return;
+        _openPlayer(full, episodeIndex ?? 0, 0);
+      });
+      return;
+    }
+
     final lines = item.playLines;
     final line = (lineIndex >= 0 && lineIndex < lines.length)
         ? lines[lineIndex]
@@ -187,6 +200,7 @@ class _ShellState extends State<Shell> {
       _player = _PlayerSession(
         title: item.title,
         url: url,
+        headers: _store.playbackHeaders,
         subtitle: StoreScope.of(context).siteNameOfKey(
           item.siteKey,
           fallback: item.sourceName ?? '',
@@ -267,6 +281,7 @@ class _ShellState extends State<Shell> {
             title: player.title,
             subtitle: player.subtitle,
             url: player.url,
+            headers: player.headers,
             episodes: player.episodes,
             episodeIndex: player.episodeIndex,
             startAt: player.startAt,
@@ -354,6 +369,7 @@ class _PlayerSession {
     required this.url,
     required this.episodes,
     this.subtitle,
+    this.headers = const {},
     this.episodeIndex,
     this.lineIndex = 0,
     this.startAt,
@@ -362,6 +378,10 @@ class _PlayerSession {
   final String title;
   final String url;
   final String? subtitle;
+
+  /// Extra headers the stream needs. A WebDAV share authenticates per request,
+  /// so its player must send Basic auth along with the URL.
+  final Map<String, String> headers;
   final List<String> episodes;
   final int? episodeIndex;
 

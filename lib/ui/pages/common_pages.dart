@@ -162,6 +162,19 @@ class _SourceCard extends StatelessWidget {
         // A js source is either a local spider file or a subscription address;
         // only the latter can be booted, so only the latter can be measured.
         return _remote ? _measuredLine : '本地 spider 文件 · 待宿主执行';
+      case 'webdav':
+        // A share has no login step to report: it either lists or it does not.
+        // Folders and loose films are both "what this share has to show".
+        if (source.url.isEmpty) return '未设置地址';
+        if (source.movieCount > 0) {
+          final prefix = selected ? '当前使用 · ' : '';
+          return '$prefix${source.movieCount} 部';
+        }
+        if (source.showCount > 0) {
+          final prefix = selected ? '当前使用 · ' : '';
+          return '$prefix${source.showCount} 个目录';
+        }
+        return selected ? '当前使用 · 待检测' : '未使用 · 待检测';
       case 'emby':
       case 'jellyfin':
         // Logged-out and logged-in are different states, and a mount that has a
