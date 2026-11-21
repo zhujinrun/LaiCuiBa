@@ -2,7 +2,8 @@ import 'dart:io';
 import 'dart:ui' show Size;
 
 import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoSwitch;
-import 'package:flutter/material.dart' show Icons, TextField, ValueKey, Wrap;
+import 'package:flutter/material.dart'
+    show CircularProgressIndicator, Icons, TextField, ValueKey, Wrap;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -647,6 +648,30 @@ void main() {
     // says whose empty library this is instead.
     expect(find.text(store.homeSections.first.title), findsNothing);
     expect(find.text('客厅 Emby 的影片库里还没有内容'), findsOneWidget);
+  });
+
+  testWidgets('a 猫源 that cannot answer keeps the demo catalogue on 首页', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+    // The seeded 豆儿猫源 is a bundle subscription, so the home page asks it for
+    // rails. No session is attached under the test binding, so it cannot answer.
+    expect(store.hasSpiderHome, isTrue);
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    // A failed attempt must not cost the user the front page: the catalogue
+    // stays, and the page does not claim the source is empty.
+    expect(find.text(store.homeSections.first.title), findsWidgets);
+    expect(find.textContaining('的首页没有取到片单'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
   testWidgets('the Emby form refuses to save a mount it could not log in to', (

@@ -7,6 +7,7 @@ import '../models/models.dart';
 import 'catalog_sites.dart';
 import 'demo_data.dart' as demo;
 import 'emby_client.dart';
+import 'source_catalogue.dart';
 import 'source_probe.dart';
 import 'spider_client.dart' show SpiderClass;
 import 'spider_session.dart';
@@ -469,6 +470,34 @@ class AppStore extends ChangeNotifier {
   /// True when the active source is a logged-in mount, i.e. the home page
   /// should draw the server's library rather than the bundled catalogue.
   bool get hasMount => mountClientOf(currentSource) != null;
+
+  /// True when the active source can run in the cat host, i.e. the home page
+  /// should draw the source's own rails rather than the bundled catalogue.
+  ///
+  /// Deliberately keyed on [spiderAddressOf] (strict) rather than the looser
+  /// search rule: replacing the front page is a promise, and a TVBox config URL
+  /// that cannot be booted would answer that promise with an empty screen. Such
+  /// a source keeps the demo catalogue until its type is supported.
+  bool get hasSpiderHome {
+    final source = currentSource;
+    return source != null && spiderAddressOf(source) != null;
+  }
+
+  /// The active 猫源's home rails, or null when the active source does not run
+  /// in the cat host.
+  ///
+  /// Null and an empty feed mean different things: null is "not a spider
+  /// source, keep the demo catalogue", while an empty feed is "this source
+  /// answered with nothing", which the page states out loud instead of filling
+  /// with borrowed titles.
+  Future<CatalogueFeed?> spiderCatalogue() async {
+    final session = spider;
+    final source = currentSource;
+    if (session == null || source == null) return null;
+    final address = spiderAddressOf(source);
+    if (address == null) return null;
+    return SourceCatalogue(session).load(source: source, md5Url: address);
+  }
 
   /// Runs a keyword search against every enabled site behind the active source.
   /// Returns null when the runtime is unavailable (the caller then falls back

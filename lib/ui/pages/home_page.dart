@@ -6,6 +6,7 @@ import '../../core/detail_nav.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
+import '../../services/source_catalogue.dart';
 import '../../services/store.dart';
 import '../widgets/hero_banner.dart';
 import '../widgets/media_card.dart';
@@ -25,65 +26,96 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  /// Which mount the rails below belong to. Null while the bundled catalogue is
-  /// on screen -- the state every source type except a logged-in mount leaves.
-  String? _mountId;
+  /// The source the rails were requested from. Null while no source answers the
+  /// home screen itself -- the state every source type that cannot run in the
+  /// host leaves, and the state the bundled catalogue is drawn in.
+  String? _askedId;
 
-  /// The mount's titles, or null while the first page is still loading. An
-  /// empty list is a real answer ("the library has nothing"), which is why it
-  /// cannot be conflated with "not loaded yet".
-  List<MediaItem>? _mountItems;
+  /// True when the answer comes from a mount rather than a 猫源. A mount is an
+  /// explicit user action, so its rails replace the catalogue immediately (with
+  /// a placeholder while they load); a 猫源 answers in the background while the
+  /// catalogue stays readable.
+  bool _mount = false;
+
+  /// The rails the source answered with, or null before it has answered. An
+  /// empty list is a real answer ("the source has nothing right now"), which is
+  /// why it cannot be conflated with "not answered yet".
+  List<HomeSection>? _sections;
+
+  /// Why the rails are empty, when the source said something specific.
+  String? _feedError;
+
+  bool _failed = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _syncMount(StoreScope.of(context));
+    _syncFeed(StoreScope.of(context));
   }
 
-  /// Swaps the rails over when the active source becomes a logged-in mount, and
-  /// back when it stops being one. The store notifies on selection and source
-  /// edits, so this runs on every change that could matter.
-  void _syncMount(AppStore store) {
-    if (!store.hasMount) {
-      if (_mountId == null) return;
+  /// Swaps the rails over when the active source starts (or stops) answering
+  /// the home screen itself. The store notifies on selection and source edits,
+  /// so this runs on every change that could matter.
+  void _syncFeed(AppStore store) {
+    final answers = store.hasMount || store.hasSpiderHome;
+    final id = answers ? store.currentSource?.id : null;
+    if (id == _askedId) return;
+    setState(() {
+      _askedId = id;
+      _sections = null;
+      _feedError = null;
+      _failed = false;
+      _mount = id != null && store.hasMount;
+    });
+    if (id != null) _loadFeed(store, id);
+  }
+
+  Future<void> _loadFeed(AppStore store, String id) async {
+    if (store.hasMount) {
+      final items = await store.mountLibrary(limit: 30);
+      if (!mounted || _askedId != id) return;
       setState(() {
-        _mountId = null;
-        _mountItems = null;
+        _sections = items.isEmpty
+            ? const <HomeSection>[]
+            : [HomeSection(title: '影片库', items: items)];
       });
       return;
     }
-    final id = store.currentSource?.id;
-    if (id == null || id == _mountId) return;
-    setState(() {
-      _mountId = id;
-      _mountItems = null;
-    });
-    _loadMount(store, id);
-  }
 
-  Future<void> _loadMount(AppStore store, String id) async {
-    final items = await store.mountLibrary(limit: 30);
-    if (!mounted || _mountId != id) return;
-    setState(() => _mountItems = items);
+    final feed = await store.spiderCatalogue();
+    if (!mounted || _askedId != id) return;
+    setState(() {
+      if (feed == null || !feed.ok) {
+        // A source that could not answer keeps the catalogue. Dropping the
+        // front page to an error screen is how a transient network hiccup would
+        // turn into "the app is broken"; 检测 is where a dead source is named.
+        _failed = true;
+        return;
+      }
+      _sections = feed.sections;
+      _feedError = feed.error;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
     final continueWatching = store.continueWatching;
-    // A mount answers for itself or not at all: showing the bundled fixtures
+    final answered = _sections;
+    // A mount says nothing but its own library: showing the bundled fixtures
     // while "客厅 Emby" is the active source would pass demo titles off as the
-    // user's own library. Non-mount sources keep the catalogue for now.
-    final mount = _mountId != null;
-    final items = _mountItems;
-    final sections = mount
-        ? (items == null
-              ? const <HomeSection>[]
-              : [HomeSection(title: '影片库', items: items)])
+    // user's own. A 猫源 gets the same treatment once it answers, and keeps the
+    // catalogue until then (or forever, if it never answers).
+    final real = _askedId != null && (_mount || answered != null);
+    final sections = real
+        ? (answered ?? const <HomeSection>[])
         : store.homeSections;
-    final hero = mount
-        ? (items == null ? const <MediaItem>[] : items.take(5).toList())
+    final hero = real
+        ? (answered == null
+              ? const <MediaItem>[]
+              : CatalogueFeed.heroOf(answered))
         : store.heroItems;
+    final loadingMount = _mount && answered == null && !_failed;
 
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
@@ -91,11 +123,12 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (mount && items == null)
+            if (loadingMount)
               const _HeroPlaceholder()
             else if (hero.isNotEmpty)
               HeroBanner(items: hero),
-            if (mount && items != null && items.isEmpty) const _EmptyLibrary(),
+            if (real && answered != null && answered.isEmpty)
+              _EmptyCatalogue(spider: !_mount, reason: _feedError),
             LayoutBuilder(
               builder: (context, constraints) {
                 final contentWidth = constraints.maxWidth;
@@ -192,7 +225,7 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-/// The hero's footprint while a mount's first page is in flight, so the rails
+/// The hero's footprint while a source's first page is in flight, so the rails
 /// below do not jump up and then get pushed back down.
 class _HeroPlaceholder extends StatelessWidget {
   const _HeroPlaceholder();
@@ -222,14 +255,25 @@ class _HeroPlaceholder extends StatelessWidget {
   }
 }
 
-/// Shown when the mount answered with an empty library. Says whose library it
-/// is, because "nothing here" on the home page otherwise reads like a bug.
-class _EmptyLibrary extends StatelessWidget {
-  const _EmptyLibrary();
+/// Shown when the active source answered but had nothing to put on the home
+/// screen. Says whose source it is and what to try next, because "nothing here"
+/// on the front page otherwise reads like a bug.
+class _EmptyCatalogue extends StatelessWidget {
+  const _EmptyCatalogue({required this.spider, this.reason});
+
+  final bool spider;
+  final String? reason;
 
   @override
   Widget build(BuildContext context) {
-    final name = StoreScope.of(context).currentSource?.name ?? '这个服务器';
+    final source = StoreScope.of(context).currentSource;
+    final name = source?.name ?? (spider ? '这个源' : '这个服务器');
+    final head = spider ? '$name 的首页没有取到片单' : '$name 的影片库里还没有内容';
+    final detail = spider
+        ? (reason ?? '站点今天可能没有更新')
+        : '在服务器上添加电影或剧集后，重新选择一次这个源即可刷新';
+    final hint = spider ? '在资源页点「重新检测」可以确认它还能不能用' : null;
+
     return SizedBox(
       height: 260,
       child: Center(
@@ -237,7 +281,7 @@ class _EmptyLibrary extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              '$name 的影片库里还没有内容',
+              head,
               style: const TextStyle(
                 fontSize: 15,
                 color: LcbColors.textSecondary,
@@ -245,12 +289,23 @@ class _EmptyLibrary extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '在服务器上添加电影或剧集后，重新选择一次这个源即可刷新',
+              detail,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
                 color: LcbColors.textSecondary.withValues(alpha: 0.75),
               ),
             ),
+            if (hint != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                hint,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: LcbColors.textSecondary.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
           ],
         ),
       ),

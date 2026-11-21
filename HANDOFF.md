@@ -29,7 +29,7 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
 | --- | --- |
 | Phase 0 — 界面骨架 | ✅ 完成 |
 | Phase 1 — 数据层与页面闭环 | ✅ 完成（详情页 + 搜索页都已落地） |
-| Phase 2 — 源接入（灵魂） | 🔶 大部分（源→站点→联网拉取→spider 宿主→搜索/详情真实数据已通；播放/首页分类未做） |
+| Phase 2 — 源接入（灵魂） | 🔶 大部分（源→站点→联网拉取→spider 宿主→搜索/详情/播放/首页片单已通；TVBox python 宿主未做） |
 | Phase 3 — 播放链路 | ⬜ 未开始 |
 | Phase 4 — 外设模块 | ⬜ 未开始 |
 | Phase 5 — 多端 | ⬜ 未开始 |
@@ -235,7 +235,6 @@ lib/
 - TVBox：CPython + JS spider（参考原版 `py_host`/`spider_channel`）
 - 挂载：WebDAV/AList/网盘（Emby/Jellyfin 已完成，见下节）
 - 本地 spider 文件直接执行（需要站点 key/type，纯文件路径给不出来）
-- 首页猫源真实片单（`category` 接口实测返回空；挂载源已画真实片库）
 - ⚠️ 以上都依赖原版包 `node/`、`python/` 二进制 + 联网，**不适合无人值守推进**
 
 **已完成（Emby / Jellyfin 挂载，2026-11-21）**
@@ -264,6 +263,24 @@ lib/
 - 验证：`test/support/fake_emby.dart` 起真 `HttpServer` 当假 Emby，`test/emby_client_test.dart`
   15 例覆盖登录/登录失败/连不上、行映射、剧集与电影详情、直链、检测计数、store 分流与严格模式；
   `widget_test` 新增 3 例（挂载源替换首页 demo 片单、表单未登录不保存、缺账号密码先拦下）。
+
+**已完成（猫源首页片单，2026-11-21）**
+
+搜索/详情/播放早已走真实源，只有首页还挂着 demo——最后一块「真实源」与「用户看到的」不一致
+的地方，现在接上了，仍然**零外部源**可自证（夹具订阅跑在 localhost）：
+
+- `services/source_catalogue.dart`：`home` 取分类 → 最多 5 个分类各翻第一页 → `HomeSection`；
+  分类请求并发（`Future.wait` 保序），串行会把首屏拖成「分区数 × 延迟」。
+- 站点轮换：`homeSite` 优先，失败再试后面两个（最多试 3 个）——猫源包里几十个站点，
+  被指定的那个死掉是常态。
+- hero 跨分区取片：按 vod_id 去重、有海报的优先（hero 是全幅背景）、上限 5 张。
+- 首页策略：**先照旧显示 demo，真片单到了再替换**；订阅下载失败/源没起来就**静默留 demo**
+  （一次网络抖动不该把首屏变成错误页），只有源**明确回答空**才说「××的首页没有取到片单」。
+  挂载源保持「占位 → 库内容」，因为它是用户显式添加的，demo 一定不对。
+- 判定用严格的 `spiderAddressOf`：答应接管首页是个承诺，配置类 TVBox 地址跑不起来。
+- 验证：`test/source_catalogue_test.dart` 11 例（hero 挑片 4、`hasSpiderHome` 4、真起 node
+  的夹具订阅 3，含「homeSite 指到死站仍能轮到下一个」）；`widget_test` 新增 1 例锁
+  「猫源答不上来时首页仍是 demo 且不显示空态/转圈」。
 
 **已完成（spider 宿主 + 真实搜索/详情，2026-11-20）**
 - `assets/runtime/node/cat_host.js`：协议重写版宿主（每源一个 Worker，`catServerFactory`/
@@ -348,7 +365,7 @@ TV 焦点导航（原版 `ui/tv/*` 9 个文件）、Android 适配、AI 辅助�
 cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
-flutter test                    # 冒烟测试（当前 164 个全绿）
+flutter test                    # 冒烟测试（当前 176 个全绿）
 flutter analyze                 # 静态检查（当前零问题）
 dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 
@@ -390,10 +407,10 @@ bash tool/sync_runtime.sh
    - 断网/无 node.exe 时回退 demo 片单，页面不白屏。
 2. 验收无误后由**用户自己**推送（AI 不 push）：`git push -u origin master`。
 3. 下一步自然顺序：
-   - **播放链路（Phase 3）**：真实片单已能搜到，但点「播放」还无反应，需 media_kit +
-     原版 `libmpv-2.dll` + spider 的 `play` 接口；
+   - 真机验收**猫源首页**：默认源（豆儿猫源）启动后应先出 demo，1–3 秒后换成真实分区；
+     断网时应保持 demo（不是空白/错误页），可对照「资源 → 重新检测」的数字；
    - 或 **TVBox/CPython 源宿主**（饭太硬等 json 源），需要原版 `python/` 二进制；
-   - 或 **首页真实片单**（等源站 `category` 接口稳定）；
+   - 或 **WebDAV / AList 挂载**（纯 HTTP，可像 Emby 一样用假服务器自证）；
    - 或纯本地收尾：设置页「媒体徽章」子页、HistoryEntry 字段保真。
 
 ---
