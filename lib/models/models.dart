@@ -692,6 +692,8 @@ class AppSettings {
     this.navBehavior = 'always',
     this.tvClassicUi = false,
     this.tvKeyboard = false,
+    this.playerVolume = 100,
+    this.playerRate = 1.0,
     this.extra = const {},
   });
 
@@ -714,6 +716,12 @@ class AppSettings {
   final String navBehavior;
   final bool tvClassicUi;
   final bool tvKeyboard;
+
+  /// Volume (0-100) and speed the player opens with. Carried across sessions
+  /// because a viewer who muted or slowed the last episode wants the same
+  /// again for the next one, not a reset to 100 / 1.0×.
+  final int playerVolume;
+  final double playerRate;
 
   /// Unmodelled keys carried through unchanged.
   final Map<String, dynamic> extra;
@@ -738,6 +746,8 @@ class AppSettings {
     String? navBehavior,
     bool? tvClassicUi,
     bool? tvKeyboard,
+    int? playerVolume,
+    double? playerRate,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -759,6 +769,8 @@ class AppSettings {
       navBehavior: navBehavior ?? this.navBehavior,
       tvClassicUi: tvClassicUi ?? this.tvClassicUi,
       tvKeyboard: tvKeyboard ?? this.tvKeyboard,
+      playerVolume: playerVolume ?? this.playerVolume,
+      playerRate: playerRate ?? this.playerRate,
       extra: extra,
     );
   }
@@ -784,6 +796,8 @@ class AppSettings {
     'navBehavior': navBehavior,
     'tvClassicUi': tvClassicUi,
     'tvKeyboard': tvKeyboard,
+    'playerVolume': playerVolume,
+    'playerRate': playerRate,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -819,6 +833,8 @@ class AppSettings {
       navBehavior: pop('navBehavior', 'always'),
       tvClassicUi: pop('tvClassicUi', false),
       tvKeyboard: pop('tvKeyboard', false),
+      playerVolume: pop('playerVolume', 100),
+      playerRate: pop('playerRate', 1.0),
       extra: extra,
     );
   }

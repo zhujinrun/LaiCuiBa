@@ -645,6 +645,41 @@ void main() {
       expect(resume?.totalMs, 2700000);
     });
 
+    test('savePlaybackPrefs remembers the volume and speed', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      expect(store.settings.playerVolume, 100);
+      expect(store.settings.playerRate, 1.0);
+
+      await store.savePlaybackPrefs(volume: 45, rate: 1.25);
+      expect(store.settings.playerVolume, 45);
+      expect(store.settings.playerRate, 1.25);
+
+      // Survives a restart: the next episode opens the way this one ended.
+      final reloaded = await AppStore.load();
+      expect(reloaded.settings.playerVolume, 45);
+      expect(reloaded.settings.playerRate, 1.25);
+    });
+
+    test('resume survives a reload with its total intact', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      await store.recordPlayback(
+        const MediaItem(id: '777', title: '跨重启'),
+        episodeIndex: null,
+        positionMs: 90000,
+        durationMs: 2400000,
+        lineName: '',
+      );
+
+      final reloaded = await AppStore.load();
+      final point = reloaded.resumePointFor(
+        const MediaItem(id: '777', title: '跨重启'),
+      );
+      expect(point?.positionMs, 90000);
+      expect(point?.totalMs, 2400000);
+    });
+
     test('recordPlayback labels a film with its own title', () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();

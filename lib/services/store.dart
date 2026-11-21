@@ -398,6 +398,21 @@ class AppStore extends ChangeNotifier {
     await _prefs.setString(_kSettings, jsonEncode(_settings.toJson()));
   }
 
+  /// Remembers the volume and speed the player was left at, so the next
+  /// episode opens the same way. Written once when the player closes, not on
+  /// every slider tick.
+  Future<void> savePlaybackPrefs({
+    required int volume,
+    required double rate,
+  }) async {
+    if (volume == _settings.playerVolume && rate == _settings.playerRate) {
+      return;
+    }
+    await updateSettings(
+      _settings.copyWith(playerVolume: volume, playerRate: rate),
+    );
+  }
+
   // -------------------------------------------------------------------------
   // Content
   //

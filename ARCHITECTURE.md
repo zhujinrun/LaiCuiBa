@@ -298,11 +298,15 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
 | `test/store_test.dart` | 续播点带着 `totalMs` 一起返回；贴着贴片录下的一行在 45 分钟真片上被拒 |
 | `tool/verify_clock_live.dart` | **真起 libmpv** 跑同一条决策链：4 组场景 9 项断言（无续播不 seek、续播恰好一次且落到 59.96s、`start` 生效时不补发、贴片位置被拒）。用法见「七、开发」 |
 
+播放器退出时把音量与倍速写进 `flutter.settings` 的 `playerVolume` / `playerRate`
+（`AppStore.savePlaybackPrefs`），下一集用同一档继续——和续播位置一起在关闭那一刻落盘，
+不做滑块级联写入。
+
 #### 还没做的
 - 跳片头/片尾：源站 detail 不带片头时间点，需要先有数据（原版靠 i18n 里那套
   `skipIntroOutro` 设置 + 逐片标记），闸门已留好。
-- 倍速/音量等偏好不持久化（每次开播放器回到 1.0×/100）。
 - 播放中不阻止系统休眠（原版用 `wakelock_plus`，本工程还没引入这个依赖）。
+- 画质/音轨/字幕轨选择（原版 `player` 设置里的整组开关）。
 
 ### Phase 4 — 外设模块
 弹幕（dandanplay）、刮削（TMDB/Bangumi/豆瓣）、下载、字幕、投屏 DLNA、

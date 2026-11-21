@@ -287,6 +287,10 @@ class _ShellState extends State<Shell> {
             episodes: player.episodes,
             episodeIndex: player.episodeIndex,
             resume: player.resume,
+            initialVolume: _store.settings.playerVolume,
+            initialRate: _store.settings.playerRate,
+            onPrefs: (volume, rate) =>
+                _store.savePlaybackPrefs(volume: volume, rate: rate),
             onEpisode: (i) => _openPlayer(_detail!, i, player.lineIndex),
             onClose: _closePlayer,
             onProgress: (pos, dur) => _recordProgress(

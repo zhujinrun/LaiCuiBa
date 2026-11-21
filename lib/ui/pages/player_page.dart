@@ -34,9 +34,12 @@ class PlayerPage extends StatefulWidget {
     this.episodes = const [],
     this.episodeIndex,
     this.resume,
+    this.initialVolume = 100,
+    this.initialRate = 1.0,
     this.onEpisode,
     this.onClose,
     this.onProgress,
+    this.onPrefs,
   });
 
   /// Title shown in the top bar.
@@ -63,6 +66,11 @@ class PlayerPage extends StatefulWidget {
   /// so the clock can refuse it when the stream is a different cut.
   final ResumePoint? resume;
 
+  /// Volume (0-100) and speed to open with — the values the last session was
+  /// left at, not a hardcoded 100 / 1.0×.
+  final int initialVolume;
+  final double initialRate;
+
   /// Invoked with the next episode index when the user steps; null hides the
   /// step controls (films).
   final ValueChanged<int>? onEpisode;
@@ -72,6 +80,9 @@ class PlayerPage extends StatefulWidget {
   /// Reports the final playback position and total duration when the player is
   /// torn down, so the shell can persist it for 续播.
   final void Function(Duration position, Duration duration)? onProgress;
+
+  /// Reports the volume and speed the session ended on.
+  final void Function(int volume, double rate)? onPrefs;
 
   @override
   State<PlayerPage> createState() => _PlayerPageState();
@@ -141,6 +152,9 @@ class _PlayerPageState extends State<PlayerPage> {
 
   Future<void> _open() async {
     try {
+      // Both are mpv properties, so they hold across the upcoming load.
+      await _player.setVolume(widget.initialVolume.toDouble());
+      await _player.setRate(widget.initialRate);
       // `start` is only a hint: mpv applies it while loading and drops it for
       // some HLS streams. The clock verifies the landing and re-issues the seek
       // when it did not take, so this stays a fast path rather than the truth.
@@ -236,6 +250,7 @@ class _PlayerPageState extends State<PlayerPage> {
       debugPrint('LcbPlayer: dropped position $_position/$_duration '
           '(timeline changed during playback)');
     }
+    widget.onPrefs?.call(_volume.round(), _rate);
     _player.dispose();
     super.dispose();
   }

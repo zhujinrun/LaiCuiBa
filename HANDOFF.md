@@ -90,7 +90,8 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
 - **201 个测试全绿**（夹具全关 + 首页并发探测 + WebDAV 挂载之后）、`flutter analyze` 零问题
 - **播放时钟落地（Phase 3 核心）**：`services/playback_clock.dart` 收口所有 seek，进度条在时长未知时
   不可拖动，续播位置带 `totalMs` 由播放器用真实时长复核（跨时间轴拒绝、漂移不落盘）；
-  新增 `tool/verify_clock_live.dart` 真起 libmpv 自检 9 项；**221 个测试全绿**、`flutter analyze` 零问题
+  新增 `tool/verify_clock_live.dart` 真起 libmpv 自检 9 项；音量/倍速也随关闭持久化。
+  **223 个测试全绿**、`flutter analyze` 零问题
 
 ---
 
@@ -401,7 +402,8 @@ lib/
 - `start:` 只当提示：`duration` 一到就复核落点，偏超 8 秒才补发一次（HLS 会把 `start` 丢掉）。
 - 验证：`test/playback_clock_test.dart` 19 例 + `store_test` 的跨层用例 +
   **`dart run tool/verify_clock_live.dart <clip.mp4>` 真起 libmpv 跑 4 组场景 9 项断言**全过。
-- 未做：跳片头/片尾（等源数据）、倍速与音量偏好持久化、播放中防休眠（`wakelock_plus`）。
+- 音量与倍速随关闭一起写进 `flutter.settings`（`playerVolume` / `playerRate`），下一集沿用。
+- 未做：跳片头/片尾（等源数据）、播放中防休眠（`wakelock_plus`）、画质/音轨/字幕轨选择。
 
 ### 🟡 Phase 4 — 外设模块（未开始）
 弹幕（dandanplay）、刮削（TMDB/Bangumi/豆瓣）、下载、字幕、投屏 DLNA、备份同步（WebDAV）
@@ -417,7 +419,7 @@ TV 焦点导航（原版 `ui/tv/*` 9 个文件）、Android 适配、AI 辅助�
 cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
-flutter test                    # 冒烟测试（当前 221 个全绿）
+flutter test                    # 冒烟测试（当前 223 个全绿）
 flutter analyze                 # 静态检查（当前零问题）
 dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 
