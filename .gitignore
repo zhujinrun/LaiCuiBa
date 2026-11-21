@@ -47,3 +47,7 @@ app.*.map.json
 
 # Local pixel-probe tooling (screenshots, glyph matchers) stays out of git.
 .probe/
+
+# 猫源宿主会把源的数据库/配置写进 bundle 的 data/ 下；夹具目录里同样会出现，
+# 那是运行时产物，不进 git。
+test/fixtures/**/data/

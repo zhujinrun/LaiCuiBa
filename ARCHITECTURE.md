@@ -195,11 +195,33 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
 粘贴配置 / 导入文件 / 导入直播列表 / 导入文件夹 / 从 ZIP 导入），其余 8 项分别需要
 网络拉取或 spider 运行时，属于下一步。
 
+#### 猫源宿主（已完成，2026-11-21）
+
+`assets/runtime/node/cat_host.js` 按原版协议重写，不搬运原文件：
+
+- 每个源一个 `worker_threads` Worker —— 源都会往 `globalThis` 挂东西，放一起会打架。
+- 注入 `catServerFactory`（源用自己的框架起服务，宿主只负责 `listen` 与端口回传）和
+  `catDartServerPort`（`messageToDart` 回传通道，只放行 `toast` / `openInternalWebview`）。
+- 控制端口绑 `127.0.0.1` + `x-token`：`/ping` `/load` `/unload`。
+- `/load` 幂等重载：同 id + 同 dir + `index.js` 的 mtime 未变才复用 Worker，否则杀掉重起，
+  订阅更新后不会继续跑 `require` 缓存里的旧代码。
+- 传 `stdin` 参数时标准输入断开即退出（桌面端子进程跟随应用退出）。
+
+**fastify 不在宿主侧**：`node.exe` 是从原版包拷来的裸 node（无 `node_modules`），
+宿主不可能 `require('fastify')`。fastify 是源自己的依赖，源起好服务后经
+`catServerFactory` 把 server 交给宿主。宿主不关心源用什么框架。
+
+**独立验证（不依赖任何外部真实源）**：
+
+| 载体 | 内容 |
+| --- | --- |
+| `test/fixtures/cat_source/` | 原创最小猫源，实现 `init/home/category/detail/search/play` |
+| `tool/verify_host.js` | node 侧端到端自检，17 项断言（含 bundle 更新后重载、卸载后端口关闭） |
+| `test/cat_host_e2e_test.dart` | Dart 侧真起 `node.exe` 的集成测试，6 项；无运行时二进制时自动 skip |
+
 #### 还没做的（真正的灵魂部分）
-- 猫源宿主：Node.js + fastify，需要实现宿主注入的 `catServerFactory`、
-  `catDartServerPort`、`messageToDart`，以及 `js2p://_WEB_` 协议
+- `js2p://_WEB_` 协议（网页类源的内部 webview 打开）
 - TVBox：CPython + JS spider，参考原版 `py_host` / `spider_channel`
-- 从配置地址联网拉取（现在只能粘贴/导入本地内容）
 - 挂载：Emby / WebDAV / AList / 网盘
 - 可用性度量：不只判 `supported`，补 `latencyMs` / `movieCount` / `checkedAt`
 
@@ -265,6 +287,7 @@ cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
 flutter test                    # 冒烟测试
+./assets/runtime/node/node.exe tool/verify_host.js  # 猫源宿主端到端自检
 ```
 
 环境约束（**已锁定，勿随意升级**）：

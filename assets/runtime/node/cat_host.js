@@ -16,11 +16,16 @@
 //   /ping    -> { ok:true, node: process.version }
 //   /load    -> { port }         body: { id, dir }  dir 是源 bundle 目录
 //   /unload  -> { ok:true }      body: { id }
+//
+// /load 是幂等的：同 id、同 dir、且 index.js 未被改动时复用已运行的 Worker
+// （返回同一个端口）；bundle 被重新下载覆盖（mtime 变化）或换了目录时会
+// 杀掉旧 Worker 重新 require，保证订阅更新后跑的是新代码。
 
 'use strict';
 
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const { Worker } = require('worker_threads');
 
 const [controlPort, token, tmpDir, watch, messagePort] = process.argv.slice(2);
@@ -91,9 +96,27 @@ bridge.listen(0, '127.0.0.1', () => {
 
 const sources = new Map();
 
+// 订阅式源的 bundle 会被重新下载覆盖。require 在 Worker 里是有缓存的，只
+// 复用端口而不重起 Worker 的话，会一直跑旧代码。所以复用条件除了 id，还要
+// 目录相同、index.js 的 mtime 未变；任一变化都杀掉旧 Worker 重新加载。
+function indexMtime(dir) {
+  try {
+    return fs.statSync(path.join(dir, 'index.js')).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
 function load(id, dir) {
+  const mtime = indexMtime(dir);
   const running = sources.get(id);
-  if (running) return running.ready;
+  if (running && running.dir === dir && running.mtime === mtime) {
+    return running.ready;
+  }
+  if (running) {
+    sources.delete(id);
+    running.worker.terminate();
+  }
   const worker = new Worker(workerCode, {
     eval: true,
     workerData: { dir, id, messagePort: Number(messagePort) || 0, token },
@@ -117,7 +140,7 @@ function load(id, dir) {
     if (sources.get(id) && sources.get(id).worker === worker) sources.delete(id);
     worker.terminate();
   });
-  sources.set(id, { worker, ready });
+  sources.set(id, { worker, ready, dir, mtime });
   return ready;
 }
 

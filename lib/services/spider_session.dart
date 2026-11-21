@@ -60,12 +60,25 @@ class SpiderSession {
   /// Resolves the bundle and boots the host for [source], returning whether the
   /// source is now ready to query. A cached bundle keeps working when the
   /// network is down; a first download that fails leaves [lastError] set.
+  ///
+  /// With [force], an already-loaded source is unloaded and the bundle is
+  /// re-resolved first, so a subscription that has published a new `index.js`
+  /// (or a user tapping 重新检测) picks up the new code instead of the cached
+  /// worker. The default path keeps the cheap "already loaded" short-circuit so
+  /// a search never pays for an extra md5 round-trip.
   Future<bool> ensureLoaded({
     required String id,
     required String md5Url,
+    bool force = false,
   }) async {
     // Already running this exact source: nothing to do.
-    if (_loadedId == id && _sourcePort != null) return true;
+    if (!force && _loadedId == id && _sourcePort != null) return true;
+
+    if (force && _host != null && _loadedId != null) {
+      await _host!.unloadSource(_loadedId!);
+      _sourcePort = null;
+      _client = null;
+    }
 
     final bundle = CatBundle(rootDir: bundleRoot);
     final resolved = await bundle.ensure(md5Url);

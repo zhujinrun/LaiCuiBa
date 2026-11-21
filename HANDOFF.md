@@ -252,6 +252,36 @@ lib/
 
 （原「添加资源其余 8 入口」「从配置地址联网拉取」两项已完成，见上。）
 
+**已完成（宿主独立化 + 可自证，2026-11-21）**
+
+用户明确要求：LaiCuiBa 与 Player/Gateway 那条线**相互独立**，宿主不接那边已验证过的
+任何真实 spider 源。所以这一轮把宿主做成「零外部源也能证明自己是对的」：
+
+- **自研夹具源** `test/fixtures/cat_source/`：原创的最小猫源，按 catvod 协议实现
+  `init / home / category / detail / search / play`，不基于任何真实商业源。宿主会
+  往 bundle 的 `data/` 写源数据，所以测试一律拷到临时目录再加载。
+- **`tool/verify_host.js`**（node 侧端到端自检，17 项断言）：`/ping`、错误 token 403、
+  `/load` 回传端口、`init/home/search/detail/play`、未知站点 404、**bundle 更新后重载**、
+  `/unload` 后端口关闭。跑法：
+  `./assets/runtime/node/node.exe tool/verify_host.js`（退出码 0 = 全过）。
+- **`test/cat_host_e2e_test.dart`**（Dart 侧真起 node.exe 的集成测试，6 项）：覆盖
+  `CatHost` / `SpiderClient` 的 `vod → MediaItem` 映射、选集解析、`nid` 取集、卸载语义；
+  缺 `node.exe` 时整组自动 skip。
+- **修 `SpiderClient` 健壮性**：源卸载或 Worker 崩溃后，`_call` 原来会直接把
+  `SocketException` 抛给 UI（`home`/`detail`/`play`/`category`/`search` 都没兜）。现在
+  `_call` 失败返回 `null`，各方法翻译成空结果/`null`——宿主不可达应读作「没数据」。
+- **宿主 `/load` 幂等重载**：原来只按 id 复用 Worker，订阅更新后 `require` 缓存会让它
+  继续跑旧代码。现在复用条件是「同 id + 同 dir + `index.js` 的 mtime 未变」，否则杀掉
+  Worker 重起。自检里有专门的「改片名 → 重载 → 读到新片名」用例。
+- **`SpiderSession.ensureLoaded(force: true)`**：给将来的「重新检测」用，先 `unload`
+  再重新解析 bundle。默认路径保留「已加载就短路」，搜索不会多付一次 md5 往返。
+
+> **fastify 的定位**：`node.exe` 是原版包里拷来的**裸 node（无 node_modules）**，
+> 宿主侧不可能也不该 `require('fastify')`。fastify 是**源（index.js）自带**的依赖，
+> 源自己起服务后经宿主注入的 `catServerFactory(handle)` 把 server 交给宿主监听；
+> 宿主只负责 `listen` 与端口回传。夹具源用 node 原生 `http` 实现同一协议，正是为了
+> 证明「宿主不关心源用什么框架」。
+
 ### 🟡 Phase 3 — 播放链路（未开始）
 - `media_kit` + 原版 `libmpv-2.dll`
 - 必须规避原版三类 bug（详见 ARCHITECTURE.md 第五节）：
@@ -273,9 +303,13 @@ TV 焦点导航（原版 `ui/tv/*` 9 个文件）、Android 适配、AI 辅助�
 cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
-flutter test                    # 冒烟测试（当前 104 个全绿）
+flutter test                    # 冒烟测试（当前 138 个全绿）
 flutter analyze                 # 静态检查（当前零问题）
 dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
+
+# 猫源宿主端到端自检（不依赖任何外部真实源，17 项断言）
+bash tool/sync_runtime.sh
+./assets/runtime/node/node.exe tool/verify_host.js
 ```
 
 环境约束：

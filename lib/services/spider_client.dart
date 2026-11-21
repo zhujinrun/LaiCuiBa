@@ -35,6 +35,7 @@ class SpiderClient {
   /// A category row from `home` (`class`).
   Future<List<SpiderClass>> home(String storeKey, String type) async {
     final json = await _call(storeKey, type, 'home');
+    if (json == null) return const [];
     final classes = (json['class'] as List?) ?? const [];
     return [
       for (final raw in classes)
@@ -58,6 +59,7 @@ class SpiderClient {
       'tid': tid,
       'pg': page,
     });
+    if (json == null) return _emptyList;
     return _listFrom(json);
   }
 
@@ -72,12 +74,14 @@ class SpiderClient {
       'wd': keyword,
       if (strict) 'quick': true,
     });
+    if (json == null) return _emptyList;
     return _listFrom(json);
   }
 
   /// Full record for one `vod_id`. `id` is singular, matching the source.
   Future<MediaItem?> detail(String storeKey, String type, String vodId) async {
     final json = await _call(storeKey, type, 'detail', {'id': vodId});
+    if (json == null) return null;
     final list = (json['list'] as List?) ?? const [];
     if (list.isEmpty) return null;
     final raw = list.first;
@@ -103,6 +107,7 @@ class SpiderClient {
       if (flag != null && flag.isNotEmpty) 'flag': flag,
       if (nid != null) 'nid': nid,
     });
+    if (json == null) return null;
     // list form: {list:[{url}]}
     final list = json['list'] as List?;
     if (list != null && list.isNotEmpty && list.first is Map) {
@@ -116,7 +121,14 @@ class SpiderClient {
     return null;
   }
 
-  Future<Map<String, dynamic>> _call(
+  /// Posts one spider action and returns its JSON body, or null when the source
+  /// cannot be reached (host unloaded, worker crashed, port refused) or answers
+  /// something that is not a JSON object.
+  ///
+  /// It deliberately swallows transport failures: a source that has just been
+  /// unloaded must read as "no data", not as a `SocketException` thrown into the
+  /// UI. Callers translate null into their own empty result.
+  Future<Map<String, dynamic>?> _call(
     String storeKey,
     String type,
     String action, [
@@ -124,22 +136,36 @@ class SpiderClient {
   ]) async {
     final key = spiderKey(storeKey);
     final uri = Uri.parse('http://127.0.0.1:$port/spider/$key/$type/$action');
-    final request = await _client.postUrl(uri);
-    request.headers.set(
-      HttpHeaders.contentTypeHeader,
-      'application/json; charset=utf-8',
-    );
-    request.add(utf8.encode(jsonEncode(body ?? const {})));
-    // A site whose upstream is slow must not stall the whole fan-out: bound the
-    // full round-trip so a single dead backend cannot hold every other site up.
-    final response = await request.close().timeout(const Duration(seconds: 12));
-    final text = await utf8.decodeStream(response).timeout(
-      const Duration(seconds: 12),
-    );
-    if (text.trim().isEmpty) return const {};
-    final decoded = jsonDecode(text);
-    return decoded is Map<String, dynamic> ? decoded : const {};
+    try {
+      final request = await _client.postUrl(uri);
+      request.headers.set(
+        HttpHeaders.contentTypeHeader,
+        'application/json; charset=utf-8',
+      );
+      request.add(utf8.encode(jsonEncode(body ?? const {})));
+      // A site whose upstream is slow must not stall the whole fan-out: bound
+      // the full round-trip so a single dead backend cannot hold every other
+      // site up.
+      final response = await request.close().timeout(
+        const Duration(seconds: 12),
+      );
+      final text = await utf8.decodeStream(response).timeout(
+        const Duration(seconds: 12),
+      );
+      if (text.trim().isEmpty) return const {};
+      final decoded = jsonDecode(text);
+      return decoded is Map<String, dynamic> ? decoded : const {};
+    } on Object {
+      return null;
+    }
   }
+
+  static const _emptyList = SpiderList(
+    items: [],
+    page: 1,
+    pageCount: 1,
+    total: 0,
+  );
 
   SpiderList _listFrom(Map<String, dynamic> json) {
     final list = (json['list'] as List?) ?? const [];
