@@ -261,9 +261,45 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
 - 判定用严格的 `spiderAddressOf`（http + `.md5`/`index.js`）：答应接管首页是个承诺，
   配置类 TVBox 地址跑不起来，答应下来只会得到一屏空白。
 
+#### Python（TVBox）源宿主（宿主与客户端已通，2026-11-21）
+
+猫源是 js，TVBox 那批「饭太硬」是 Python：源就是一个 `main.py`，里面
+`from base.spider import Spider` 再重写五个 `*Content`。原版为此带了一份 CPython
+3.11.9（`python/`，39MB，`requests`/`lxml`/`bs4`/`pyquery` 都在 `Lib/site-packages`）。
+
+| 部件 | 位置 | 说明 |
+| --- | --- | --- |
+| 运行时 | `assets/runtime/python/` | 原版包整份拷进来（**git-ignored**），`tool/sync_runtime.sh` 同步到 assets 与 build 产物 |
+| 宿主 | `assets/runtime/pyhost/py_host.py` | 一行 JSON 进一行 JSON 出；每请求一线程；stdout 只给协议，源自己的 print 全部改到 stderr |
+| 源契约 | `assets/runtime/pyhost/base/spider.py` | 按 `base.spider` 契约**重写**（fetch/post/html/regStr/cleanText/getProxyUrl/getCache…），不是搬运原版 |
+| Dart 客户端 | `services/py_host.dart` | `Process.start` + 行解码 + id 配对；`call`/`proxy`/`release`/`ping`，每次调用有超时 |
+| 源封装 | `services/tvbox_source.dart` | `home/category/search/detail/play` → 模型；`parse!=0`（要浏览器解析）如实回 null |
+
+几个刻意的选择：
+
+- **没有控制端口**。猫源用 HTTP + token，因为 node 侧本来就起了个服务；Python 侧
+  协议就是管道，多开一个端口只会多一处要守的边界。
+- **`call` 返回字符串**，正是 TVBox 的原始响应体。宿主不解析业务 JSON，Dart 才解析，
+  于是「JSON 契约」可以单独测，`PyHost` 也不必认识 `MediaItem`。
+- **vod 行复用 `SpiderClient.vodToItem`**（已转公开）：catvod 的字段名就是从 TVBox
+  继承的，两套解析各写一份只会慢慢漂移。
+- **`init` 的参数裁剪**：`inspect.signature` 数一下源实际要几个参数，多的截掉 ——
+  老源少写一个参数是常态，硬传会 `TypeError`。
+- 聚合源（`SITES` 展开 / `wrap`）**还没接**，遇到会得到一句「源没有实现 homeContent」
+  这样的真实错误，而不是空列表。
+
+**独立验证**：`test/py_host_e2e_test.dart` 真起 `python.exe`，用
+`test/fixtures/py_source/main.py`（原创夹具，覆盖两个线路、`parse=1`、空结果、故意抛异常）
+跑 17 项断言：协议、参数裁剪、port 握手（`getProxyUrl()` 指向应用侧端口）、
+base64 代理回传、异常透传、`release` 后重新 init，以及 `TvBoxSource` 的四条映射。
+
+**还没接**：`SourceInfo` 里还没有 `tvbox` 类型，所以资源页加不进这类源、搜索/首页/详情
+还没走它；`/proxy` 与 `/cache` 这两条应用侧 HTTP 端点同样没起（宿主的 port 已经能下发，
+但没人监听）。这三块是下一段。
+
 #### 还没做的（真正的灵魂部分）
-- TVBox：CPython + JS spider，参考原版 `py_host` / `spider_channel`
-  （需要打包一份便携 Python + `requests`/`lxml`，属打包工程，不是代码工程）
+- TVBox 接进 store：`SourceInfo` 加 `tvbox` 类型 + 地址（`.py` 路径或配置 JSON 里的
+  `api`）、`/proxy` 与 `/cache` 两个应用侧端点、搜索/首页/详情/播放改走 `TvBoxSource`
 - 本地 spider 文件直接执行（现在必须有订阅地址；文件路径无从得知站点 key/type）
 - 挂载：WebDAV / AList / 网盘（Emby / Jellyfin 已完成，见上）
 - 挂载令牌失效后的**重新登录入口**（目前提示「删掉这个源重新添加」）

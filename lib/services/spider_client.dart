@@ -86,7 +86,7 @@ class SpiderClient {
     if (list.isEmpty) return null;
     final raw = list.first;
     if (raw is! Map) return null;
-    return _vodToItem(Map<String, dynamic>.from(raw), storeKey);
+    return vodToItem(Map<String, dynamic>.from(raw), storeKey);
   }
 
   /// Resolves the play URL for one episode.
@@ -172,7 +172,7 @@ class SpiderClient {
     final items = <MediaItem>[];
     for (final raw in list) {
       if (raw is Map) {
-        items.add(_vodToItem(Map<String, dynamic>.from(raw), null));
+        items.add(vodToItem(Map<String, dynamic>.from(raw), null));
       }
     }
     return SpiderList(
@@ -185,7 +185,11 @@ class SpiderClient {
 
   /// Maps one catvod `vod` row onto [MediaItem]. `siteKey` is the store's
   /// prefixed key; pass null from a batch where the caller tags them itself.
-  static MediaItem _vodToItem(Map<String, dynamic> vod, String? siteKey) {
+  ///
+  /// Public because a TVBox (Python) source answers with the very same `vod`
+  /// object — catvod inherited the field names — so `TvBoxSource` reuses this
+  /// rather than keeping a second, drifting copy of the mapping.
+  static MediaItem vodToItem(Map<String, dynamic> vod, String? siteKey) {
     final remarks = vod['vod_remarks'] as String? ?? '';
     final typeName = vod['type_name'] as String? ?? '';
     final actor = vod['vod_actor'] as String? ?? '';

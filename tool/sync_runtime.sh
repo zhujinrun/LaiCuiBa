@@ -19,6 +19,16 @@ copy() {
 
 copy "$SRC/node/node.exe" "$HERE/assets/runtime/node/node.exe"
 
+# CPython 11.9 整个发行版（python.exe + Lib/site-packages，含 requests/lxml）。
+# 39MB，只进工作区，不进 git（见 .gitignore）。
+if [ -d "$SRC/python" ]; then
+  mkdir -p "$HERE/assets/runtime/python"
+  cp -r "$SRC/python/." "$HERE/assets/runtime/python/"
+  echo "已同步 assets/runtime/python/（$(du -sh "$HERE/assets/runtime/python" | cut -f1)）"
+else
+  echo "缺少 $SRC/python（原版包不存在？）" >&2
+fi
+
 # Also drop the runtime next to the debug build output, where RuntimePaths
 # resolves it from the executable's own directory. cat_host.js lives in assets
 # and is copied verbatim (it is ours, not the original's).
@@ -33,4 +43,15 @@ for target in \
   fi
 done
 
-echo "完成。node.exe 已就位（不提交到 git）。"
+# Python 运行时也要落到产物旁边，RuntimePaths 从 exe 目录找。
+for target in \
+  "$HERE/build/windows/x64/runner/Debug/runtime/python" \
+  "$HERE/build/windows/x64/runner/Release/runtime/python"; do
+  if [ -d "$(dirname "$(dirname "$target")")" ] && [ -d "$HERE/assets/runtime/python" ]; then
+    mkdir -p "$target"
+    cp -r "$HERE/assets/runtime/python/." "$target/"
+    echo "已同步 $target"
+  fi
+done
+
+echo "完成。node.exe / python 已就位（不提交到 git）。"

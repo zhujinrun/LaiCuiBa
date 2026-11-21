@@ -51,3 +51,8 @@ app.*.map.json
 # 猫源宿主会把源的数据库/配置写进 bundle 的 data/ 下；夹具目录里同样会出现，
 # 那是运行时产物，不进 git。
 test/fixtures/**/data/
+
+# 原版包里的运行时二进制：node.exe 被全局 gitignore 的 *.exe 挡掉，CPython 整个
+# 发行版（39MB，含 Lib）也一并挡掉。它们由 tool/sync_runtime.sh 同步，宿主脚本
+# assets/runtime/pyhost/ 才是本仓库的代码。
+assets/runtime/python/

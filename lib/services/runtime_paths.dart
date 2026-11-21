@@ -45,3 +45,51 @@ class RuntimePaths {
     );
   }
 }
+
+/// Resolves the TVBox (Python) runtime: `python.exe` plus our `py_host.py`.
+///
+/// Two directories are involved because the interpreter is a 39 MB CPython
+/// distribution copied in from the original package (git-ignored, synced by
+/// `tool/sync_runtime.sh`), while the host script and its `base/` package are
+/// ours and live in the repo:
+///
+///   1. `<executable dir>/runtime/{python,pyhost}/` (packaged build);
+///   2. `<project root>/assets/runtime/{python,pyhost}/` (running from source).
+class PyRuntimePaths {
+  const PyRuntimePaths._(this.python, this.hostScript);
+
+  final String python;
+  final String hostScript;
+
+  bool get available =>
+      File(python).existsSync() && File(hostScript).existsSync();
+
+  /// [overridePython] is a `<root>/python/python.exe` path (tests point it at
+  /// a machine-wide CPython when the bundled one has not been synced yet).
+  static PyRuntimePaths resolve({
+    String? overridePython,
+    String? overrideScript,
+    String? executableDir,
+  }) {
+    final roots = <String>[
+      if (executableDir != null) p.join(executableDir, 'runtime'),
+      p.join(Directory.current.path, 'assets', 'runtime'),
+    ];
+    final script =
+        overrideScript ?? p.join(roots.last, 'pyhost', 'py_host.py');
+    if (overridePython != null) {
+      return PyRuntimePaths._(overridePython, script);
+    }
+    for (final root in roots) {
+      final candidate = PyRuntimePaths._(
+        p.join(root, 'python', 'python.exe'),
+        p.join(root, 'pyhost', 'py_host.py'),
+      );
+      if (candidate.available) return candidate;
+    }
+    return PyRuntimePaths._(
+      p.join(roots.last, 'python', 'python.exe'),
+      script,
+    );
+  }
+}

@@ -29,7 +29,7 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
 | --- | --- |
 | Phase 0 — 界面骨架 | ✅ 完成 |
 | Phase 1 — 数据层与页面闭环 | ✅ 完成（详情页 + 搜索页都已落地） |
-| Phase 2 — 源接入（灵魂） | 🔶 大部分（源→站点→联网拉取→spider 宿主→搜索/详情/播放/首页片单已通；Emby/Jellyfin 与 WebDAV/AList 挂载已通；TVBox python 宿主未做） |
+| Phase 2 — 源接入（灵魂） | 🔶 大部分（源→站点→联网拉取→猫源宿主→搜索/详情/播放/首页片单已通；Emby/Jellyfin 与 WebDAV/AList 挂载已通；**Python(TVBox) 宿主与客户端已通、未接进 store**） |
 | Phase 3 — 播放链路 | 🔶 核心（播放时钟 + 续播校验 + 位置可信度已落地；跳片头等数据、休眠锁未接） |
 | Phase 4 — 外设模块 | ⬜ 未开始 |
 | Phase 5 — 多端 | ⬜ 未开始 |
@@ -88,6 +88,11 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
 - **114 个测试全绿**（C2 真实数据接入后，含 `spider_session` 5 例 + `spider_client` 5 例）、
   `flutter analyze` 零问题
 - **201 个测试全绿**（夹具全关 + 首页并发探测 + WebDAV 挂载之后）、`flutter analyze` 零问题
+- **Python（TVBox）源宿主**：`assets/runtime/pyhost/py_host.py`（行-JSON 协议、每请求一线程、
+  stdout 只给协议）+ `base/spider.py`（按契约重写）+ `services/py_host.dart`（进程 + id 配对）
+  + `services/tvbox_source.dart`（home/category/search/detail/play → 模型）；
+  `test/py_host_e2e_test.dart` 真起 `python.exe` 跑夹具源 17 项断言。**还没接进 store**
+  （`tvbox` 类型、`/proxy` 与 `/cache` 端点）。**240 个测试全绿**。
 - **播放时钟落地（Phase 3 核心）**：`services/playback_clock.dart` 收口所有 seek，进度条在时长未知时
   不可拖动，续播位置带 `totalMs` 由播放器用真实时长复核（跨时间轴拒绝、漂移不落盘）；
   新增 `tool/verify_clock_live.dart` 真起 libmpv 自检 9 项；音量/倍速也随关闭持久化。
@@ -419,7 +424,7 @@ TV 焦点导航（原版 `ui/tv/*` 9 个文件）、Android 适配、AI 辅助�
 cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
-flutter test                    # 冒烟测试（当前 223 个全绿）
+flutter test                    # 冒烟测试（当前 240 个全绿）
 flutter analyze                 # 静态检查（当前零问题）
 dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 
@@ -430,6 +435,9 @@ bash tool/sync_runtime.sh
 # 播放时钟真机自检（真起 libmpv；先 flutter build windows --debug）
 dart run tool/verify_clock_live.dart /path/to/clip.mp4
 ```
+
+`tool/sync_runtime.sh` 现在同时同步 node.exe 与整份 CPython（39MB，git-ignored）到
+`assets/runtime/` 与 build 产物旁；宿主脚本在 `assets/runtime/pyhost/`（入库）。
 
 环境约束：
 - Flutter/Dart 版本锁在 `.fvmrc`、`.flutter-version`、`pubspec.yaml` 三处，勿升级。
