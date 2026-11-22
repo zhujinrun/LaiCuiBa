@@ -12,6 +12,7 @@ import '../../services/source_catalogue.dart';
 import '../../services/store.dart';
 import '../widgets/hero_banner.dart';
 import '../widgets/media_card.dart';
+import '../widgets/rail.dart';
 import '../widgets/site_picker_dialog.dart';
 
 class HomePage extends StatefulWidget {
@@ -223,29 +224,23 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        SizedBox(
+                        LcbRail(
                           height: landscapeHeight + 9 + 20 + 4 + 16,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.only(
-                              left: LcbMetrics.pagePadding,
-                            ),
-                            itemCount: continueWatching.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(width: 18),
-                            itemBuilder: (_, i) {
-                              final c = continueWatching[i];
-                              return LandscapeCard(
-                                item: c.media,
-                                episodeLabel: c.episodeLabel,
-                                positionLabel: c.positionLabel,
-                                progress: c.progress,
-                                width: landscapeWidth,
-                                onTap: () =>
-                                    LcbDetailScope.openOf(context, c.media),
-                              );
-                            },
-                          ),
+                          artHeight: landscapeHeight,
+                          cardWidth: landscapeWidth,
+                          itemCount: continueWatching.length,
+                          itemBuilder: (_, i) {
+                            final c = continueWatching[i];
+                            return LandscapeCard(
+                              item: c.media,
+                              episodeLabel: c.episodeLabel,
+                              positionLabel: c.positionLabel,
+                              progress: c.progress,
+                              width: landscapeWidth,
+                              onTap: () =>
+                                  LcbDetailScope.openOf(context, c.media),
+                            );
+                          },
                         ),
                       ],
                       for (final section in sections) ...[
@@ -268,23 +263,17 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ),
                         const SizedBox(height: 17),
-                        SizedBox(
+                        LcbRail(
                           height: posterWidth * 1.5 + 10 + 20,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.only(
-                              left: LcbMetrics.pagePadding,
-                            ),
-                            itemCount: section.items.length,
-                            separatorBuilder: (_, __) => const SizedBox(
-                                width: LcbMetrics.posterGap),
-                            itemBuilder: (_, i) => PosterCard(
-                              item: section.items[i],
-                              width: posterWidth,
-                              onTap: () => LcbDetailScope.openOf(
-                                context,
-                                section.items[i],
-                              ),
+                          artHeight: posterWidth * 1.5,
+                          cardWidth: posterWidth,
+                          itemCount: section.items.length,
+                          itemBuilder: (_, i) => PosterCard(
+                            item: section.items[i],
+                            width: posterWidth,
+                            onTap: () => LcbDetailScope.openOf(
+                              context,
+                              section.items[i],
                             ),
                           ),
                         ),
