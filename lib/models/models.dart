@@ -163,12 +163,18 @@ class ContinueWatching {
     required this.episodeLabel,
     required this.positionMs,
     required this.durationMs,
+    this.episodeIndex = 0,
   });
 
   final MediaItem media;
   final String episodeLabel;
   final int positionMs;
   final int durationMs;
+
+  /// Which episode was being watched. Carried along so the card can reopen the
+  /// work on that episode instead of always on the first one -- the label on
+  /// the card says 第39集, and the detail page used to preselect 第1集.
+  final int episodeIndex;
 
   double get progress =>
       durationMs <= 0 ? 0 : (positionMs / durationMs).clamp(0.0, 1.0);
@@ -281,13 +287,18 @@ class HistoryEntry {
       durationMs <= 0 ? 0 : (positionMs / durationMs).clamp(0.0, 1.0);
 
   /// A lightweight [MediaItem] view for grid rendering (favourites / follow).
+  ///
+  /// The id is the source's vod id, not [key]: the key is `sourceId|site|vodId`
+  /// and a detail lookup that sends it as `{id}` gets nothing back. Rows written
+  /// before the vod id was stored fall back to the key, which is all they have.
   MediaItem toMediaItem() => MediaItem(
-    id: key,
+    id: vodId ?? key,
     title: title,
     tag: episode,
     image: poster.isEmpty ? null : poster,
     posterSeed: key.hashCode,
     siteKey: siteKey,
+    sourceName: sourceName,
   );
 
   HistoryEntry copyWith({
@@ -606,7 +617,7 @@ class FavoriteEntry {
   final int addedAt;
 
   MediaItem toMediaItem() => MediaItem(
-    id: key,
+    id: vodId ?? key,
     title: title,
     tag: latest.isEmpty ? null : latest,
     image: poster.isEmpty ? null : poster,

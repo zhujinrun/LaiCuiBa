@@ -188,18 +188,34 @@ class _ShellState extends State<Shell> {
   }
 
   /// Plays a card that was not opened through the detail page -- the hero's
-  /// 播放 button, and anything else that starts playback straight from a rail.
+  /// 播放 button, the continue-watching rail, a history row's play button.
   ///
   /// A rail card only carries what the rail showed, so the full record is
-  /// resolved first: 播放 needs the episode list and play lines. A film starts
-  /// at the top; a series starts at its first episode, which is also the row
-  /// the resume point is keyed on.
-  void _playItem(MediaItem item) {
+  /// resolved first: 播放 needs the episode list and play lines. [episodeIndex]
+  /// is the caller's explicit choice (a history row knows its episode); without
+  /// it the work resumes the episode it was last watched on -- pressing 播放 on
+  /// a series used to always start 第1集, even with 第39集 in the history.
+  void _playItem(MediaItem item, {int? episodeIndex}) {
     _store.detailReal(item).then((full) {
       if (!mounted) return;
       final record = full ?? item;
-      _openPlayer(record, record.episodes.isEmpty ? null : 0, 0);
+      final index = episodeIndex ?? _store.startEpisodeFor(record);
+      // A film has no episode list: null is "the whole thing", not 第0集.
+      final at = record.episodes.isEmpty && index == 0 ? null : index;
+      _openPlayer(record, at, 0);
     });
+  }
+
+  /// True when the viewer has moved to a different title while a URL was being
+  /// resolved, so opening the player now would pop it over someone else's page.
+  ///
+  /// Only a real navigation counts: playback started from the home screen has
+  /// no detail page open at all, and the old check read that as "navigated
+  /// away" and dropped the request -- 播放 from the hero did nothing on any
+  /// source that resolves its URLs through `playerContent`.
+  bool _navigatedAway(MediaItem item) {
+    final detail = _detail;
+    return detail != null && detail.id != item.id;
   }
 
   /// Resolves a playable URL for [item]'s chosen episode (on [lineIndex]) and
@@ -243,7 +259,7 @@ class _ShellState extends State<Shell> {
           .playTargetReal(item, flag: line?.name, nid: episodeIndex)
           .then((target) {
             if (!mounted || target == null || target.url.isEmpty) return;
-            if (_detail?.id != item.id) return; // user navigated away
+            if (_navigatedAway(item)) return;
             _showPlayer(
               item,
               episodeIndex,
@@ -272,7 +288,7 @@ class _ShellState extends State<Shell> {
     // source shapes.
     _store.playReal(item, flag: line?.name, nid: episodeIndex).then((resolved) {
       if (!mounted || resolved == null || resolved.isEmpty) return;
-      if (_detail?.id != item.id) return; // user navigated away
+      if (_navigatedAway(item)) return;
       _showPlayer(item, episodeIndex, lineIndex, resolved, carry: carry);
     });
   }
@@ -303,6 +319,7 @@ class _ShellState extends State<Shell> {
         : '';
     setState(() {
       _player = _PlayerSession(
+        item: item,
         title: item.title,
         url: url,
         headers: {..._store.playbackHeaders, ...extraHeaders},
@@ -327,8 +344,7 @@ class _ShellState extends State<Shell> {
   /// minute before the credits.
   void _onOutro(_PlayerSession session) {
     final index = session.episodeIndex;
-    final detail = _detail;
-    if (index == null || detail == null) {
+    if (index == null) {
       _closePlayer();
       return;
     }
@@ -336,7 +352,7 @@ class _ShellState extends State<Shell> {
       _closePlayer();
       return;
     }
-    _openPlayer(detail, index + 1, session.lineIndex);
+    _openPlayer(session.item, index + 1, session.lineIndex);
   }
 
   void _closePlayer() {
@@ -348,9 +364,7 @@ class _ShellState extends State<Shell> {
   /// to be resolved again through the source, so this is a reopen — with the
   /// position carried over, so it feels like a switch and not a restart.
   void _switchLine(_PlayerSession session, int index, ResumePoint carry) {
-    final detail = _detail;
-    if (detail == null) return;
-    _openPlayer(detail, session.episodeIndex, index, carry: carry);
+    _openPlayer(session.item, session.episodeIndex, index, carry: carry);
   }
 
   /// Persists the final playback position when the player tears down. Only a
@@ -361,10 +375,11 @@ class _ShellState extends State<Shell> {
     required Duration position,
     required Duration duration,
   }) {
-    final detail = _detail;
-    if (detail == null) return;
     if (duration <= Duration.zero) return;
 
+    // The session's own record, not the open detail page: playing from the
+    // home screen has no detail page, and that path used to record nothing.
+    final detail = session.item;
     final lines = detail.playLines;
     String lineName = '';
     if (session.lineIndex >= 0 && session.lineIndex < lines.length) {
@@ -461,7 +476,7 @@ class _ShellState extends State<Shell> {
             danmakuService: _store.danmaku,
             onPrefs: (volume, rate) =>
                 _store.savePlaybackPrefs(volume: volume, rate: rate),
-            onEpisode: (i) => _openPlayer(_detail!, i, player.lineIndex),
+            onEpisode: (i) => _openPlayer(player.item, i, player.lineIndex),
             onOutro: () => _onOutro(player),
             onClose: _closePlayer,
             onProgress: (pos, dur) => _recordProgress(
@@ -559,6 +574,7 @@ class _ShellState extends State<Shell> {
 /// detail page can keep the spider resolution out of its own render path.
 class _PlayerSession {
   const _PlayerSession({
+    required this.item,
     required this.title,
     required this.url,
     required this.episodes,
@@ -571,6 +587,12 @@ class _PlayerSession {
     this.lineIndex = 0,
     this.resume,
   });
+
+  /// The record being played. Kept on the session because 播放 can start from
+  /// the home screen, where no detail page is open: next-episode, line
+  /// switching and the history write all used to read `_detail` and did nothing
+  /// (or recorded nothing) on that path.
+  final MediaItem item;
 
   final String title;
   final String url;

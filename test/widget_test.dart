@@ -944,7 +944,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: LcbPlayScope(
-          play: (item) => played = item,
+          play: (item, {int? episodeIndex}) => played = item,
           child: const Scaffold(
             body: HeroBanner(items: [MediaItem(id: 'hero-1', title: '封面片')]),
           ),

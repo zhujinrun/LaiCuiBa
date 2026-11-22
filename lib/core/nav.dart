@@ -7,18 +7,25 @@ import '../models/models.dart';
 /// The player is owned by the shell (it needs the store, the session keys and
 /// the resume point in one place), so a hero's 播放 button cannot open it
 /// itself. Without this the button existed and did nothing.
+///
+/// [episodeIndex] is only for callers that already know the episode they mean
+/// (a history row); everything else leaves it null and the shell resumes the
+/// episode the title was last watched on.
 class LcbPlayScope extends InheritedWidget {
   const LcbPlayScope({super.key, required this.play, required super.child});
 
   /// Starts playback for [item], resolving its full record first.
-  final void Function(MediaItem item) play;
+  final void Function(MediaItem item, {int? episodeIndex}) play;
 
   static LcbPlayScope? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<LcbPlayScope>();
 
   /// No-op when no shell is above (widget tests that render a page alone).
-  static void playOf(BuildContext context, MediaItem item) =>
-      maybeOf(context)?.play(item);
+  static void playOf(
+    BuildContext context,
+    MediaItem item, {
+    int? episodeIndex,
+  }) => maybeOf(context)?.play(item, episodeIndex: episodeIndex);
 
   @override
   bool updateShouldNotify(LcbPlayScope oldWidget) => play != oldWidget.play;

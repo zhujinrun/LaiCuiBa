@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/detail_nav.dart';
+import '../../core/nav.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
@@ -765,7 +766,15 @@ class _HistoryRowState extends State<_HistoryRow> {
                         ),
                       ),
                       const SizedBox(width: 10),
-                      _PlayButton(onTap: () {}),
+                      // 原版这一行右边的圆钮是「接着看」，不是装饰：以前 onTap
+                      // 是空的，按下去什么都不发生。
+                      _PlayButton(
+                        onTap: () => LcbPlayScope.playOf(
+                          context,
+                          entry.toMediaItem(),
+                          episodeIndex: entry.episodeIndex,
+                        ),
+                      ),
                     ],
                   ),
                 ),

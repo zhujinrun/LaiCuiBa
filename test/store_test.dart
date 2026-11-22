@@ -98,12 +98,17 @@ void main() {
       expect(fav.positionMs, e.positionMs);
     });
 
-    test('toMediaItem maps key/title/episode/image', () {
+    test('toMediaItem maps vod id/title/episode/image', () {
       final e = _entry();
       final m = e.toMediaItem();
-      expect(m.id, e.key);
+      // The id is the source's vod id: the composite key is not an id any
+      // source can look a title up by, and sending it as `{id}` returns
+      // nothing.
+      expect(m.id, '1');
+      expect(m.id, isNot(e.key));
       expect(m.title, '尚公主');
       expect(m.tag, '第39集');
+      expect(m.siteKey, 'nodejs_jianpian');
     });
   });
 
@@ -120,8 +125,9 @@ void main() {
       expect(back.latest, '共 2 集');
     });
 
-    test('toMediaItem maps title/latest/image', () {
+    test('toMediaItem maps vod id/title/latest/image', () {
       final m = _fav().toMediaItem();
+      expect(m.id, '9');
       expect(m.title, '欢迎来龙餐馆');
       expect(m.tag, '共 2 集');
     });

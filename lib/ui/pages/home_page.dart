@@ -237,8 +237,13 @@ class _HomePageState extends State<HomePage> {
                               positionLabel: c.positionLabel,
                               progress: c.progress,
                               width: landscapeWidth,
-                              onTap: () =>
-                                  LcbDetailScope.openOf(context, c.media),
+                              // 卡片上写的是第39集，点进去就该停在第39集；
+                              // 以前一律落到第1集，和卡片自己说的对不上。
+                              onTap: () => LcbDetailScope.openOf(
+                                context,
+                                c.media,
+                                episodeIndex: c.episodeIndex,
+                              ),
                             );
                           },
                         ),

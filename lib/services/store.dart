@@ -271,20 +271,60 @@ class AppStore extends ChangeNotifier {
   /// The home "继续观看" rail, derived from watch history (most recent first).
   /// Ties the home feed to the same store the history page reads, so clearing
   /// history also empties the rail — the Phase 1 data-loop goal.
+  ///
+  /// Each card is the history row's own record, so it carries the real vod id
+  /// (detail lookups work) and the episode that was being watched (the card
+  /// reopens that episode, not 第1集).
   List<ContinueWatching> get continueWatching => [
     for (final e in _history)
       ContinueWatching(
-        media: MediaItem(
-          id: e.key,
-          title: e.title,
-          image: e.poster.isEmpty ? null : e.poster,
-          posterSeed: e.key.hashCode,
-        ),
+        media: e.toMediaItem(),
         episodeLabel: e.episode,
+        episodeIndex: e.episodeIndex,
         positionMs: e.positionMs,
         durationMs: e.durationMs,
       ),
   ];
+
+  /// The history row for [item], if it has been watched.
+  ///
+  /// Matched by the source's own vod id first (and site, when both sides name
+  /// one), because that is the same identity the detail lookup uses. Rows from
+  /// before the vod id was stored only have a title to go on, so they are a
+  /// fallback -- and only those, otherwise a title clash across sites would
+  /// resume the wrong work.
+  HistoryEntry? historyFor(MediaItem item) {
+    HistoryEntry? legacy;
+    for (final e in _history) {
+      final vod = e.vodId;
+      if (vod == null || vod.isEmpty) {
+        if (legacy == null && e.title == item.title) legacy = e;
+        continue;
+      }
+      if (vod != item.id) continue;
+      if (item.siteKey != null &&
+          e.siteKey != null &&
+          e.siteKey != item.siteKey) {
+        continue;
+      }
+      return e;
+    }
+    return legacy;
+  }
+
+  /// Which episode 播放 opens for [item]: the one last watched, or the first.
+  ///
+  /// A hero card only shows a poster and a title, so pressing 播放 on a series
+  /// used to start 第1集 even when the viewer was on 第39集. The recorded index
+  /// is clamped to the episode list because a source can renumber between
+  /// visits; an unknown count leaves the index alone.
+  int startEpisodeFor(MediaItem item) {
+    final row = historyFor(item);
+    final index = row?.episodeIndex ?? 0;
+    if (index <= 0) return 0;
+    if (item.episodes.isEmpty) return index;
+    return index < item.episodes.length ? index : item.episodes.length - 1;
+  }
 
   Future<void> clearHistory() async {
     _history.clear();
