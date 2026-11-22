@@ -54,6 +54,12 @@ class SpiderClient {
 
   /// Category feed for one `tid`. Can legitimately come back empty when the
   /// upstream site has not published a fresh feed for that category.
+  ///
+  /// The body is `{id, page}`. TVBox's `{tid, pg}` -- which is what this sent
+  /// until 2026-11-22 -- is not rejected: the source answers
+  /// `{list: [], page: 1, pagecount: 1, total: 72}`. A silent empty list is
+  /// exactly why every rail looked dry while the original filled them, so the
+  /// field names are verified against the live source rather than assumed.
   Future<SpiderList> category(
     String storeKey,
     String type, {
@@ -61,8 +67,8 @@ class SpiderClient {
     String page = '1',
   }) async {
     final json = await _call(storeKey, type, 'category', {
-      'tid': tid,
-      'pg': page,
+      'id': tid,
+      'page': page,
     });
     if (json == null) return _emptyList;
     return _listFrom(json);

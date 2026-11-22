@@ -151,6 +151,32 @@ void main() {
     expect(result.total, 0);
   });
 
+  test('category asks with id and page, the names the source reads', () async {
+    // The live source answers `{id, page}`. TVBox's `{tid, pg}` is not an
+    // error either -- it just returns an empty list, which is how every rail
+    // stayed dry while the original filled them.
+    await serve((request) async {
+      expect(request.uri.path, '/spider/jianpian/3/category');
+      bodyCache = await utf8.decodeStream(request);
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(
+        jsonEncode({'page': 3, 'pagecount': 9, 'total': 144, 'list': []}),
+      );
+      await request.response.close();
+    });
+
+    final client = SpiderClient(port);
+    final result = await client.category('nodejs_jianpian', '3', tid: '24', page: '3');
+
+    expect(result.page, 3);
+    expect(result.pageCount, 9);
+    final body = jsonDecode(bodyCache!) as Map<String, dynamic>;
+    expect(body['id'], '24');
+    expect(body['page'], '3');
+    expect(body.containsKey('tid'), isFalse);
+    expect(body.containsKey('pg'), isFalse);
+  });
+
   test('play resolves a single-url response', () async {
     await serve((request) async {
       expect(request.uri.path, '/spider/jianpian/3/play');

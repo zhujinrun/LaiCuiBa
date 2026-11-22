@@ -109,11 +109,15 @@ async function start(config) {
         });
 
       case 'category': {
-        const wanted = String(body.tid ?? '1');
+        // 真实的猫源读 `{id, page}`。TVBox 的 `{tid, pg}` 不会被拒，而是静默
+        // 返回空列表 —— 夹具照抄这个行为，字段名写错时测试才会红。
+        const wanted = String(body.id ?? '');
         const list =
           wanted === '2'
             ? CATALOG.filter((v) => v.type_name === '电视剧')
-            : CATALOG.filter((v) => v.type_name === '电影');
+            : wanted === '1'
+              ? CATALOG.filter((v) => v.type_name === '电影')
+              : [];
         return json(res, {
           page: 1,
           pagecount: 1,
