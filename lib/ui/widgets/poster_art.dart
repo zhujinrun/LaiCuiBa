@@ -1,6 +1,9 @@
 import 'dart:math' as math;
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+
+import '../../core/theme.dart';
 
 /// Deterministic stand-in artwork so layout can be judged without real posters.
 /// Real covers will replace this via `coverUrl` once the source layer lands.
@@ -40,6 +43,7 @@ class PosterArt extends StatelessWidget {
     this.titleSize,
     this.alignment = Alignment.topCenter,
     this.fit = BoxFit.cover,
+    this.plain = true,
   });
 
   final int seed;
@@ -49,6 +53,14 @@ class PosterArt extends StatelessWidget {
   final String? title;
   final bool showTitle;
   final double? titleSize;
+
+  /// What to draw when there is no cover.
+  ///
+  /// True is the original's neutral grey card with a film glyph, which is what
+  /// every poster slot shows. False keeps the generated colour wash and is used
+  /// only by the hero's blurred backdrop, where it sits behind white headline
+  /// text rather than standing in for missing artwork.
+  final bool plain;
 
   /// A network cover (real sources hand back an `http(s)` `vod_pic`) rather than
   /// a bundled `assets/` path.
@@ -81,6 +93,7 @@ class PosterArt extends StatelessWidget {
   }
 
   Widget _placeholder() {
+    if (plain) return const _PlainCover();
     final p = PosterPalette.of(seed);
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -117,6 +130,32 @@ class PosterArt extends StatelessWidget {
               )
             : null,
       ),
+    );
+  }
+}
+
+/// The original's no-cover state: a flat grey card with a small film glyph.
+/// Nothing here suggests a title, because there is no title art to show.
+class _PlainCover extends StatelessWidget {
+  const _PlainCover();
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final side = constraints.biggest.shortestSide;
+        final size = (side * 0.16).clamp(16.0, 30.0);
+        return ColoredBox(
+          color: LcbColors.searchFill,
+          child: Center(
+            child: Icon(
+              CupertinoIcons.film,
+              size: size,
+              color: LcbColors.chevron,
+            ),
+          ),
+        );
+      },
     );
   }
 }

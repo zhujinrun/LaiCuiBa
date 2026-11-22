@@ -89,6 +89,9 @@ class _HeroBannerState extends State<HeroBanner> {
                             seed: item.posterSeed,
                             image: item.image,
                             alignment: Alignment.center,
+                            // The backdrop is a colour wash behind the
+                            // headline, not a stand-in cover.
+                            plain: false,
                           ),
                         ),
                       ),
