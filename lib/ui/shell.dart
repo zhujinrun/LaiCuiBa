@@ -463,6 +463,8 @@ class _ShellState extends State<Shell> {
             pictureAdjust: _store.pictureAdjust,
             onAspectFit: _store.saveAspectFit,
             onPictureAdjust: _store.savePictureAdjust,
+            infoFields: _store.playerInfoFields,
+            miniProgress: _store.miniProgress,
             subtitlePref: SubtitlePref.parse(_store.settings.subtitlePref),
             subtitleSize: _store.settings.subtitleSize,
             secondarySubtitle: SecondarySubtitle.parse(

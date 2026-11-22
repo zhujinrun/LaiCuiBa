@@ -717,6 +717,8 @@ class AppSettings {
     this.playerRate = 1.0,
     this.aspectFit = 'fit',
     this.pictureAdjust = const {},
+    this.playerInfoFields = '',
+    this.miniProgress = false,
     this.subtitlePref = 'auto',
     this.subtitleSize = 32,
     this.secondarySubtitle = 'off',
@@ -782,6 +784,15 @@ class AppSettings {
   /// 值域 -100..100，缺省 = 原始画面。语义在 `services/picture.dart` 的
   /// `PictureAdjust`，模型层只存原始 JSON。
   final Map<String, int> pictureAdjust;
+
+  /// 播放页常驻信息浮层要显示哪些信息（`resolution` / `frameRate` /
+  /// `bitrate`），逗号分隔、按此顺序排列。空串 = 不显示浮层。语义在
+  /// `services/player_info.dart` 的 `PlayerInfoField`，模型层只存短码串。
+  final String playerInfoFields;
+
+  /// 播放页最底下的「迷你进度条」：一条常驻细线（蓝=已播、浅蓝=已缓冲），
+  /// 不随操作菜单隐藏。原版在设置里叫「迷你进度条」。
+  final bool miniProgress;
 
   /// 默认字幕偏好：`auto` / `zh` / `zh-en` / `multi` / `en` / `ja` / `ko` /
   /// `off`。语义在 `services/track_choice.dart` 的 `SubtitlePref`，模型层只存
@@ -865,6 +876,8 @@ class AppSettings {
     double? playerRate,
     String? aspectFit,
     Map<String, int>? pictureAdjust,
+    String? playerInfoFields,
+    bool? miniProgress,
     String? subtitlePref,
     int? subtitleSize,
     String? secondarySubtitle,
@@ -906,6 +919,8 @@ class AppSettings {
       playerRate: playerRate ?? this.playerRate,
       aspectFit: aspectFit ?? this.aspectFit,
       pictureAdjust: pictureAdjust ?? this.pictureAdjust,
+      playerInfoFields: playerInfoFields ?? this.playerInfoFields,
+      miniProgress: miniProgress ?? this.miniProgress,
       subtitlePref: subtitlePref ?? this.subtitlePref,
       subtitleSize: subtitleSize ?? this.subtitleSize,
       secondarySubtitle: secondarySubtitle ?? this.secondarySubtitle,
@@ -951,6 +966,8 @@ class AppSettings {
     'playerRate': playerRate,
     'aspectFit': aspectFit,
     'pictureAdjust': pictureAdjust,
+    'playerInfoFields': playerInfoFields,
+    'miniProgress': miniProgress,
     'subtitlePref': subtitlePref,
     'subtitleSize': subtitleSize,
     'secondarySubtitle': secondarySubtitle,
@@ -1006,6 +1023,8 @@ class AppSettings {
       playerRate: pop('playerRate', 1.0),
       aspectFit: pop('aspectFit', 'fit'),
       pictureAdjust: _readIntMap(extra.remove('pictureAdjust')),
+      playerInfoFields: pop('playerInfoFields', ''),
+      miniProgress: pop('miniProgress', false),
       subtitlePref: _readSubtitlePref(extra.remove('subtitlePref')),
       subtitleSize: _readSubtitleSize(extra.remove('subtitleSize')),
       secondarySubtitle: _readSecondarySubtitle(

@@ -12,6 +12,7 @@ import '../../services/danmaku/danmaku_api.dart';
 import '../../services/danmaku/source_danmaku.dart';
 import '../../services/playback_clock.dart';
 import '../../services/picture.dart';
+import '../../services/player_info.dart';
 import '../../services/player/subtitle_file.dart';
 import '../../services/skip_rule.dart';
 import '../../services/track_choice.dart';
@@ -21,6 +22,7 @@ import '../widgets/subtitle_style.dart';
 import '../widgets/track_panel.dart';
 import '../widgets/picture_panel.dart';
 import '../widgets/danmaku_layer.dart';
+import '../widgets/player_info_overlay.dart';
 
 /// 播放页 — 全屏视频播放。
 ///
@@ -58,6 +60,8 @@ class PlayerPage extends StatefulWidget {
     this.pictureAdjust = PictureAdjust.none,
     this.onAspectFit,
     this.onPictureAdjust,
+    this.infoFields = const [],
+    this.miniProgress = false,
     this.subtitlePref = SubtitlePref.auto,
     this.subtitleSize = LcbSubtitleStyle.standard,
     this.secondarySubtitle = SecondarySubtitle.off,
@@ -140,6 +144,14 @@ class PlayerPage extends StatefulWidget {
   /// 改画面比例 / 调节时通知上层持久化。
   final ValueChanged<String>? onAspectFit;
   final ValueChanged<PictureAdjust>? onPictureAdjust;
+
+  /// 常驻信息浮层要显示的信息（有序）。空 = 不显示。这些信息来自 mpv 内核，
+  /// 帧率/码率拿不到时显示 `--`（原版 ExoPlayer 也是这么处理的）。
+  final List<PlayerInfoField> infoFields;
+
+  /// 画面最底下的「迷你进度条」：常驻细线（蓝=已播、浅蓝=已缓冲），不随
+  /// 操作菜单隐藏。
+  final bool miniProgress;
 
   /// 设置页里的默认字幕：新开一集时先按它挑一条。这部作品已经记住过一条
   /// （包括「关闭」）时以记住的为准，偏好不插手。
@@ -240,6 +252,8 @@ class _PlayerPageState extends State<PlayerPage> {
 
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration>? _durationSub;
+  StreamSubscription<Duration>? _bufferSub;
+  StreamSubscription<VideoParams>? _videoParamsSub;
   StreamSubscription<bool>? _playingSub;
   StreamSubscription<double>? _volumeSub;
   StreamSubscription<double>? _rateSub;
@@ -290,12 +304,22 @@ class _PlayerPageState extends State<PlayerPage> {
 
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  Duration _buffer = Duration.zero;
   bool _playing = true;
   bool _buffering = false;
   double _volume = 100;
   double _rate = 1.0;
   bool _seeking = false;
   double _seekValue = 0;
+
+  /// 常驻信息浮层的数据来源。分辨率从 `video-params` 来（首次解码出帧才有），
+  /// 帧率/码率走 mpv 属性（`estimated-vf-fps` / `video-bitrate`），都是异步、
+  /// 拿不到就空——浮层用 `--` 表示「还没有」。
+  int? _dw;
+  int? _dh;
+  String? _fps;
+  String? _bitrate;
+  bool _infoProbed = false;
 
   /// The tail cut-off already fired for this session, so the episode counts as
   /// finished rather than "stopped at 96%".
@@ -338,6 +362,20 @@ class _PlayerPageState extends State<PlayerPage> {
       if (d > Duration.zero) _duration = d;
       _pumpClock();
       if (mounted) setState(() {});
+    });
+    _bufferSub = _player.stream.buffer.listen((d) {
+      if (_buffer == d) return;
+      _buffer = d;
+      if (mounted) setState(() {});
+    });
+    // 分辨率：`video-params/dw × dh` 首次解码出帧才报，之前都是 null。
+    // 帧率/码率拿不到（或 mpv 还没算出来）时浮层显示 `--`，与原版一致。
+    _videoParamsSub = _player.stream.videoParams.listen((p) {
+      if (_dw == p.dw && _dh == p.dh) return;
+      _dw = p.dw;
+      _dh = p.dh;
+      if (mounted) setState(() {});
+      _probeInfo();
     });
     _playingSub = _player.stream.playing.listen((p) {
       _playing = p;
@@ -785,6 +823,33 @@ class _PlayerPageState extends State<PlayerPage> {
     widget.onPictureAdjust?.call(next);
   }
 
+  /// 读一次帧率 / 码率，喂给常驻信息浮层。
+  ///
+  /// 这两个没有对应的 media_kit stream，只能走 mpv 属性。它们要等流真正开始
+  /// 解码才有值，所以挂在「分辨率报上来」这件事之后触发；只读一次，之后的
+  /// 值对同一集不会变（换集是重新 mount 一个 PlayerPage，会重新触发）。
+  void _probeInfo() {
+    if (_infoProbed) return;
+    _infoProbed = true;
+    final platform = _player.platform;
+    if (platform is! NativePlayer) return;
+    unawaited(() async {
+      for (final (prop, set) in [
+        ('estimated-vf-fps', (String v) => _fps = v),
+        ('video-bitrate', (String v) => _bitrate = v),
+      ]) {
+        try {
+          final v = await platform.getProperty(prop);
+          if (!mounted) return;
+          set(v);
+        } catch (e) {
+          debugPrint('LcbPlayer: $prop probe failed: $e');
+        }
+      }
+      if (mounted) setState(() {});
+    }());
+  }
+
   /// A pick in the skip panel: hand it up to be stored, and adopt it here right
   /// away so a viewer who sets "90 秒" while sitting at 0:05 sees the jump now
   /// rather than at the next episode.
@@ -913,6 +978,19 @@ class _PlayerPageState extends State<PlayerPage> {
     return '${widget.title} · $label';
   }
 
+  /// 常驻信息浮层：一行小字，每项「分辨率 1920×1080」，没拿到的值显示 `--`。
+  Widget _buildInfoOverlay() {
+    final facts = widget.infoFields.map((f) {
+      final value = switch (f) {
+        PlayerInfoField.resolution => formatResolution(_dw, _dh),
+        PlayerInfoField.frameRate => formatFrameRate(_fps),
+        PlayerInfoField.bitrate => formatBitrate(_bitrate),
+      };
+      return PlayerInfoFact(f.label, value);
+    }).toList();
+    return PlayerInfoOverlay(facts: facts);
+  }
+
   /// The caller may hand in a different skip rule mid-session (the viewer set
   /// this work's intro from the panel, and the shell saved it). The clock has to
   /// adopt it — but [PlaybackClock.updateSkip] keeps the resume point untouched,
@@ -950,6 +1028,8 @@ class _PlayerPageState extends State<PlayerPage> {
     _noticeTimer?.cancel();
     _positionSub?.cancel();
     _durationSub?.cancel();
+    _bufferSub?.cancel();
+    _videoParamsSub?.cancel();
     _playingSub?.cancel();
     _volumeSub?.cancel();
     _rateSub?.cancel();
@@ -1071,6 +1151,29 @@ class _PlayerPageState extends State<PlayerPage> {
             onClose: widget.onClose,
             visible: _controlsVisible,
           ),
+          // 常驻信息浮层：选中的信息钉在画面右上角，不随操作菜单隐藏（原版
+          // 「信息显示」）。控制条消失时它还在，所以放在 _TopBar 之后、不受
+          // visible 约束。
+          if (widget.infoFields.isNotEmpty)
+            Positioned(
+              top: 76,
+              right: 24,
+              child: IgnorePointer(child: _buildInfoOverlay()),
+            ),
+          // 迷你进度条：画面最底下一根细线，蓝色=已播、浅蓝=已缓冲，常驻。
+          if (widget.miniProgress)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: IgnorePointer(
+                child: MiniProgressBar(
+                  position: _position,
+                  buffer: _buffer,
+                  duration: _duration,
+                ),
+              ),
+            ),
           // Tapping anywhere outside the panel closes it; it sits under the
           // panel but over the video, so the bar below keeps working.
           if (_trackPanel)

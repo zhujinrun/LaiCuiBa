@@ -16,6 +16,7 @@ import 'source_probe.dart';
 import 'media_mount.dart';
 import 'picture.dart';
 import 'play_target.dart';
+import 'player_info.dart';
 import 'skip_rule.dart';
 import 'script_runtime.dart';
 import 'spider_client.dart' show SpiderClass, SpiderHome, SpiderList;
@@ -556,6 +557,26 @@ class AppStore extends ChangeNotifier {
     final current = pictureAdjust;
     if (current == adjust) return;
     await updateSettings(_settings.copyWith(pictureAdjust: adjust.toJson()));
+  }
+
+  /// 播放页常驻信息浮层要显示的信息短码（有序），空列表 = 不显示浮层。
+  List<PlayerInfoField> get playerInfoFields =>
+      PlayerInfoField.parseList(_settings.playerInfoFields);
+
+  /// 记住信息浮层显示哪些信息。原版「信息显示」是设置页多选，这里先落到
+  /// 全局一档（跨剧沿用），不做按资源记忆。
+  Future<void> savePlayerInfoFields(List<PlayerInfoField> fields) async {
+    final next = fields.map((f) => f.slug).join(',');
+    if (next == _settings.playerInfoFields) return;
+    await updateSettings(_settings.copyWith(playerInfoFields: next));
+  }
+
+  /// 播放页最底下的「迷你进度条」开关（蓝=已播、浅蓝=已缓冲，常驻）。
+  bool get miniProgress => _settings.miniProgress;
+
+  Future<void> saveMiniProgress(bool on) async {
+    if (on == _settings.miniProgress) return;
+    await updateSettings(_settings.copyWith(miniProgress: on));
   }
 
   /// The tracks the viewer picked last time on the same work and line.

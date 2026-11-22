@@ -8,6 +8,7 @@ import 'package:lai_cui_ba/models/models.dart';
 import 'package:lai_cui_ba/services/danmaku/danmaku_api.dart';
 import 'package:lai_cui_ba/services/playback_clock.dart';
 import 'package:lai_cui_ba/services/picture.dart';
+import 'package:lai_cui_ba/services/player_info.dart';
 import 'package:lai_cui_ba/services/skip_rule.dart';
 import 'package:lai_cui_ba/services/store.dart';
 import 'package:lai_cui_ba/services/track_choice.dart';
@@ -261,6 +262,25 @@ void main() {
         'pictureAdjust': {'brightness': 500},
       });
       expect(clamped.pictureAdjust['brightness'], 100);
+    });
+
+    test('playerInfoFields and miniProgress round-trip', () {
+      final s = AppSettings.fromJson({
+        'playerInfoFields': 'frameRate,resolution',
+        'miniProgress': true,
+      });
+      expect(s.playerInfoFields, 'frameRate,resolution');
+      expect(s.miniProgress, isTrue);
+
+      final back = AppSettings.fromJson(s.toJson());
+      expect(back.playerInfoFields, 'frameRate,resolution');
+      expect(back.miniProgress, isTrue);
+    });
+
+    test('playerInfoFields/miniProgress default off', () {
+      final s = AppSettings.fromJson({});
+      expect(s.playerInfoFields, isEmpty);
+      expect(s.miniProgress, isFalse);
     });
   });
 
@@ -711,6 +731,32 @@ void main() {
       final reloaded = await AppStore.load();
       expect(reloaded.aspectFit, 'fitWidth');
       expect(reloaded.pictureAdjust.brightness, -30);
+    });
+
+    test('playerInfoFields and miniProgress remember across a reload', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      expect(store.playerInfoFields, isEmpty);
+      expect(store.miniProgress, isFalse);
+
+      await store.savePlayerInfoFields([
+        PlayerInfoField.frameRate,
+        PlayerInfoField.resolution,
+      ]);
+      await store.saveMiniProgress(true);
+
+      expect(
+        store.playerInfoFields,
+        [PlayerInfoField.frameRate, PlayerInfoField.resolution],
+      );
+      expect(store.miniProgress, isTrue);
+
+      final reloaded = await AppStore.load();
+      expect(
+        reloaded.playerInfoFields,
+        [PlayerInfoField.frameRate, PlayerInfoField.resolution],
+      );
+      expect(reloaded.miniProgress, isTrue);
     });
 
     test('track picks are remembered per line and survive a reload', () async {
