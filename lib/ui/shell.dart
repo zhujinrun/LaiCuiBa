@@ -22,6 +22,7 @@ import 'pages/settings_page.dart';
 import 'page_header.dart';
 import 'widgets/manage_folders_sheet.dart';
 import 'widgets/search_sources_dialog.dart';
+import 'widgets/browse_dialog.dart';
 import 'widgets/shell_header.dart';
 import 'widgets/add_source_menu.dart';
 import 'widgets/site_picker_dialog.dart';
@@ -58,7 +59,7 @@ class _ShellState extends State<Shell> {
   /// Non-null while a home rail's 「查看全部」 grid is open. The detail page
   /// can be pushed on top of it, so going back from a poster returns to the
   /// grid rather than to 首页.
-  ({String title, String typeId})? _grid;
+  ({String title, String typeId, Map<String, String> filters})? _grid;
 
   /// Non-null while the full-screen player is open on top of the shell.
   _PlayerSession? _player;
@@ -160,13 +161,24 @@ class _ShellState extends State<Shell> {
 
   /// Opens one category as a paged grid, replacing the page in the content
   /// column (the sidebar keeps its 首页 selection).
-  void _openGrid(String title, String typeId) {
+  void _openGrid(
+    String title,
+    String typeId,
+    Map<String, String> filters,
+  ) {
     setState(() {
       _detail = null;
       _detailEpisode = null;
-      _grid = (title: title, typeId: typeId);
+      _grid = (title: title, typeId: typeId, filters: filters);
     });
     _header.push(title, _closeGrid, showSearch: false);
+  }
+
+  /// The ⊞ button: pick a category and its conditions, then show that grid.
+  Future<void> _openBrowse() async {
+    final choice = await showBrowseDialog(context);
+    if (!mounted || choice == null) return;
+    _openGrid(choice.title, choice.typeId, choice.filters);
   }
 
   void _closeGrid() {
@@ -380,7 +392,12 @@ class _ShellState extends State<Shell> {
     }
     final grid = _grid;
     if (grid != null) {
-      return GridPage(title: grid.title, typeId: grid.typeId);
+      return GridPage(
+        key: ValueKey('grid-${grid.typeId}-${grid.filters.hashCode}'),
+        title: grid.title,
+        typeId: grid.typeId,
+        filters: grid.filters,
+      );
     }
     switch (_page) {
       case LcbPage.home:
@@ -495,6 +512,8 @@ class _ShellState extends State<Shell> {
                               onOpenSearch: _openSearch,
                               onCloseSearch: _closeSearch,
                               onSelectPage: _select,
+                              onOpenBrowse: _openBrowse,
+                              grid: _grid != null,
                             ),
                           ),
                           Expanded(
@@ -714,6 +733,8 @@ class _HeaderContent extends StatelessWidget {
     required this.onOpenSearch,
     required this.onCloseSearch,
     required this.onSelectPage,
+    required this.onOpenBrowse,
+    this.grid = false,
   });
 
   final LcbPage page;
@@ -722,20 +743,28 @@ class _HeaderContent extends StatelessWidget {
   /// plus the title and drops the page controls and the search field.
   final bool detail;
 
+  /// True while a category grid is open. The original's grid header is just
+  /// 「← 分类名」 -- no source chips, no search field.
+  final bool grid;
+
   final VoidCallback onOpenSearch;
   final VoidCallback onCloseSearch;
 
   /// The home header's source chip jumps to 资源, the way the original's does.
   final ValueChanged<LcbPage> onSelectPage;
 
+  /// The ⊞ button opens the browse panel (分类 + 筛选).
+  final VoidCallback onOpenBrowse;
+
   @override
   Widget build(BuildContext context) {
     final header = LcbPageHeaderScope.of(context);
     final onBack = header.onBack;
 
-    // Detail beats search: opening a detail from a search result shows the
-    // back-arrow bar, not the search field.
-    if (detail && onBack != null) {
+    // Detail and grid beat search: opening a detail from a search result, or a
+    // category from the ⊞ button, shows the back-arrow bar, not the search
+    // field and not the source chips.
+    if ((detail || grid) && onBack != null) {
       return Padding(
         padding: const EdgeInsets.only(left: 24),
         child: Row(
@@ -855,7 +884,10 @@ class _HeaderContent extends StatelessWidget {
               onTap: () => showSitePicker(context),
             ),
             const SizedBox(width: 8),
-            _IconGhost(icon: CupertinoIcons.square_grid_2x2, onTap: () {}),
+            _IconGhost(
+              icon: CupertinoIcons.square_grid_2x2,
+              onTap: onOpenBrowse,
+            ),
           ],
         );
       case LcbPage.favorites:

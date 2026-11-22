@@ -261,4 +261,82 @@ void main() {
     expect(SpiderClient.parsePlayLines(null, null), isEmpty);
     expect(SpiderClient.parsePlayLines('', ''), isEmpty);
   });
+
+  test('home keeps the per-category filter groups', () async {
+    await serve((request) async {
+      expect(request.uri.path, '/spider/jianpian/3/home');
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(
+        jsonEncode({
+          'class': [
+            {'type_id': '1', 'type_name': '电影'},
+            {'type_id': '2', 'type_name': '剧集'},
+          ],
+          'filters': {
+            '1': [
+              {
+                'key': 'class',
+                'init': '',
+                'value': [
+                  {'n': '全部', 'v': ''},
+                  {'n': '喜剧', 'v': '喜剧'},
+                ],
+              },
+              {
+                'key': 'by',
+                'init': 'time',
+                'value': [
+                  {'n': '时间', 'v': 'time'},
+                  {'n': '评分', 'v': 'score'},
+                ],
+              },
+            ],
+          },
+        }),
+      );
+      await request.response.close();
+    });
+
+    final home = await SpiderClient(port).homeFull('nodejs_jianpian', '3');
+
+    expect(home, isNotNull);
+    expect(home!.classes.map((c) => c.name), ['电影', '剧集']);
+    final groups = home.groupsFor('1');
+    expect(groups.map((g) => g.key), ['class', 'by']);
+    expect(groups.first.options.map((o) => o.label), ['全部', '喜剧']);
+    // The source's by group really has no 全部 -- the panel adds one, so this
+    // records the absence rather than pretending the source declared it.
+    expect(groups[1].options.any((o) => o.value.isEmpty), isFalse);
+    expect(groups[1].init, 'time');
+    expect(home.groupsFor('2'), isEmpty);
+  });
+
+  test('category sends the browse picks under filters', () async {
+    String? seen;
+    await serve((request) async {
+      seen = await utf8.decodeStream(request);
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(
+        jsonEncode({'page': 1, 'pagecount': 1, 'total': 0, 'list': []}),
+      );
+      await request.response.close();
+    });
+
+    await SpiderClient(port).category(
+      'nodejs_jianpian',
+      '3',
+      tid: '1',
+      filters: {'class': '喜剧', 'by': 'score'},
+    );
+    expect(jsonDecode(seen!), {
+      'id': '1',
+      'page': '1',
+      'filters': {'class': '喜剧', 'by': 'score'},
+    });
+
+    // No picks: the key is left out entirely, so a plain category request is
+    // byte-for-byte what it was before the panel existed.
+    await SpiderClient(port).category('nodejs_jianpian', '3', tid: '1');
+    expect(jsonDecode(seen!), {'id': '1', 'page': '1'});
+  });
 }

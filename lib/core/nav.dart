@@ -41,7 +41,8 @@ class LcbNavScope extends InheritedWidget {
       openPage != oldWidget.openPage;
 }
 
-/// Lets a rail's 「查看全部」open the category grid.
+/// Lets a rail's 「查看全部」open the category grid, and the browse panel hand
+/// its picks to the same grid.
 ///
 /// Opening is refused when there is no category id: a mount's 影片库 is not a
 /// site category, and inventing an id for it would ask the source for
@@ -49,14 +50,24 @@ class LcbNavScope extends InheritedWidget {
 class LcbGridScope extends InheritedWidget {
   const LcbGridScope({super.key, required this.open, required super.child});
 
-  final void Function(String title, String typeId) open;
+  final void Function(
+    String title,
+    String typeId,
+    Map<String, String> filters,
+  )
+  open;
 
   static LcbGridScope? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<LcbGridScope>();
 
-  static void openOf(BuildContext context, String? title, String? typeId) {
+  static void openOf(
+    BuildContext context,
+    String? title,
+    String? typeId, {
+    Map<String, String> filters = const {},
+  }) {
     if (title == null || typeId == null || typeId.isEmpty) return;
-    maybeOf(context)?.open(title, typeId);
+    maybeOf(context)?.open(title, typeId, filters);
   }
 
   @override

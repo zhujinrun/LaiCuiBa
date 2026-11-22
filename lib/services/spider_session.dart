@@ -237,6 +237,17 @@ class SpiderSession {
     return _client!.home(site.key, site.type);
   }
 
+  /// The whole `home` answer -- categories plus the browse panel's filter
+  /// groups. Null when the site refused the call.
+  Future<SpiderHome?> homeFull({
+    required String sourceId,
+    required String md5Url,
+    required SiteInfo site,
+  }) async {
+    if (!await ensureLoaded(id: sourceId, md5Url: md5Url)) return null;
+    return _client!.homeFull(site.key, site.type);
+  }
+
   /// Category feed for one `tid`. May come back empty when the upstream site
   /// has no fresh feed for that category.
   Future<SpiderList> category({
@@ -245,11 +256,18 @@ class SpiderSession {
     required SiteInfo site,
     required String tid,
     String page = '1',
+    Map<String, String> filters = const {},
   }) async {
     if (!await ensureLoaded(id: sourceId, md5Url: md5Url)) {
       return const SpiderList(items: [], page: 1, pageCount: 1, total: 0);
     }
-    return _client!.category(site.key, site.type, tid: tid, page: page);
+    return _client!.category(
+      site.key,
+      site.type,
+      tid: tid,
+      page: page,
+      filters: filters,
+    );
   }
 
   /// Unloads the source and shuts the host down, freeing node.exe.

@@ -47,19 +47,26 @@ class TvBoxSource {
   /// because detail and play need to come back to the same site's api.
   final String? siteKey;
 
-  /// `home` → categories. Filters are dropped: the original's 筛选 panel is
-  /// not built yet, and inventing a UI for them would be a guess.
-  Future<List<SpiderClass>> home() async {
+  /// `home` → categories. A TVBox source may also declare `filters`; the
+  /// browse panel shows them when it does, and just the categories when not.
+  Future<List<SpiderClass>> home() async =>
+      (await homeFull())?.classes ?? const [];
+
+  Future<SpiderHome?> homeFull() async {
     final json = await _map('home', [true]);
-    final classes = (json?['class'] as List?) ?? const [];
-    return [
-      for (final raw in classes)
-        if (raw is Map)
-          SpiderClass(
-            typeId: '${raw['type_id'] ?? ''}',
-            name: '${raw['type_name'] ?? ''}',
-          ),
-    ].where((c) => c.name.isNotEmpty).toList(growable: false);
+    if (json == null) return null;
+    final classes = (json['class'] as List?) ?? const [];
+    return SpiderHome(
+      classes: [
+        for (final raw in classes)
+          if (raw is Map)
+            SpiderClass(
+              typeId: '${raw['type_id'] ?? ''}',
+              name: '${raw['type_name'] ?? ''}',
+            ),
+      ].where((c) => c.name.isNotEmpty).toList(growable: false),
+      filters: SpiderClient.parseFilters(json['filters']),
+    );
   }
 
   Future<SpiderList> category(

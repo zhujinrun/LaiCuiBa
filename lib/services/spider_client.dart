@@ -38,18 +38,71 @@ class SpiderClient {
   /// A reply without a `class` key is not an empty site: it is the host or the
   /// site refusing the call (a wrong key returns `{error}`), and the home page
   /// says "没答上来" for that instead of "没有推荐内容".
-  Future<List<SpiderClass>?> home(String storeKey, String type) async {
+  Future<List<SpiderClass>?> home(String storeKey, String type) async =>
+      (await homeFull(storeKey, type))?.classes;
+
+  /// The whole `home` answer: categories plus the per-category filter groups
+  /// the browse panel needs.
+  ///
+  /// `filters` is keyed by the category's `type_id` and each group looks like
+  /// `{key:'class'|'area'|'year'|'by', init:'time', value:[{n:'全部', v:''}]}`.
+  /// Verified against the live 豆儿猫源: group `by` ships no "全部" option, so
+  /// the panel adds one rather than inventing a default the source never had.
+  Future<SpiderHome?> homeFull(String storeKey, String type) async {
     final json = await _call(storeKey, type, 'home');
     if (json == null || !json.containsKey('class')) return null;
     final classes = (json['class'] as List?) ?? const [];
-    return [
-      for (final raw in classes)
-        if (raw is Map)
-          SpiderClass(
-            typeId: '${raw['type_id'] ?? ''}',
-            name: raw['type_name'] as String? ?? '',
+    return SpiderHome(
+      classes: [
+        for (final raw in classes)
+          if (raw is Map)
+            SpiderClass(
+              typeId: '${raw['type_id'] ?? ''}',
+              name: raw['type_name'] as String? ?? '',
+            ),
+      ],
+      filters: parseFilters(json['filters']),
+    );
+  }
+
+  /// Parses the `filters` block of a `home` answer. Public because a TVBox
+  /// (Python/JS) source answers with the very same shape.
+  static Map<String, List<SpiderFilterGroup>> parseFilters(Object? raw) {
+    final out = <String, List<SpiderFilterGroup>>{};
+    if (raw is! Map) return out;
+    for (final entry in raw.entries) {
+      final list = entry.value;
+      if (list is! List) continue;
+      final groups = <SpiderFilterGroup>[];
+      for (final rawGroup in list) {
+        if (rawGroup is! Map) continue;
+        final options = <SpiderFilterOption>[];
+        final values = rawGroup['value'];
+        if (values is List) {
+          for (final rawOption in values) {
+            if (rawOption is! Map) continue;
+            final label = '${rawOption['n'] ?? ''}'.trim();
+            if (label.isEmpty) continue;
+            options.add(
+              SpiderFilterOption(
+                label: label,
+                value: '${rawOption['v'] ?? ''}'.trim(),
+              ),
+            );
+          }
+        }
+        if (options.isEmpty) continue;
+        groups.add(
+          SpiderFilterGroup(
+            key: '${rawGroup['key'] ?? ''}'.trim(),
+            init: '${rawGroup['init'] ?? ''}'.trim(),
+            options: options,
           ),
-    ];
+        );
+      }
+      if (groups.isNotEmpty) out['${entry.key}'] = groups;
+    }
+    return out;
   }
 
   /// Category feed for one `tid`. Can legitimately come back empty when the
@@ -65,10 +118,16 @@ class SpiderClient {
     String type, {
     String tid = '1',
     String page = '1',
+    Map<String, String> filters = const {},
   }) async {
     final json = await _call(storeKey, type, 'category', {
       'id': tid,
       'page': page,
+      // The source reads the browse panel's conditions from `filters`, not from
+      // TVBox's `extend`. Measured on the live source: `{by:'score'}` reorders
+      // the same 144 titles (first card 牢笼鬼魂 -> 阴风诡影), `{class:'喜剧'}`
+      // narrows the list, while `extend` in either shape changes nothing.
+      if (filters.isNotEmpty) 'filters': filters,
     });
     if (json == null) return _emptyList;
     return _listFrom(json);
@@ -288,6 +347,45 @@ class SpiderClass {
 
   final String typeId;
   final String name;
+}
+
+/// What `home` answers: the site's categories and, per category id, the
+/// filter groups its browse page offers.
+class SpiderHome {
+  const SpiderHome({required this.classes, this.filters = const {}});
+
+  final List<SpiderClass> classes;
+
+  /// `type_id` -> groups. Empty when the site declared no filters.
+  final Map<String, List<SpiderFilterGroup>> filters;
+
+  /// The groups to show for [typeId]; empty when that category has none.
+  List<SpiderFilterGroup> groupsFor(String typeId) =>
+      filters[typeId] ?? const [];
+}
+
+/// One row of chips in the browse panel, e.g. 类型 / 地区 / 年份 / 排序.
+class SpiderFilterGroup {
+  const SpiderFilterGroup({
+    required this.key,
+    required this.init,
+    required this.options,
+  });
+
+  /// The body key this group travels under (`class` / `area` / `year` / `by`).
+  final String key;
+
+  /// The source's own default, when it declares one.
+  final String init;
+
+  final List<SpiderFilterOption> options;
+}
+
+class SpiderFilterOption {
+  const SpiderFilterOption({required this.label, required this.value});
+
+  final String label;
+  final String value;
 }
 
 class SpiderList {

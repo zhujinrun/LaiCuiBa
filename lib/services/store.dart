@@ -17,7 +17,7 @@ import 'media_mount.dart';
 import 'play_target.dart';
 import 'skip_rule.dart';
 import 'script_runtime.dart';
-import 'spider_client.dart' show SpiderClass, SpiderList;
+import 'spider_client.dart' show SpiderClass, SpiderHome, SpiderList;
 import 'tvbox_catalogue.dart';
 import 'tvbox_source.dart';
 import 'webdav_client.dart';
@@ -1374,12 +1374,39 @@ class AppStore extends ChangeNotifier {
         const [];
   }
 
+  /// The browse panel's data: the home site's categories and, per category, the
+  /// filter groups it offers.
+  ///
+  /// This asks for the whole `home` answer rather than reusing [spiderCatalogue],
+  /// because the catalogue only needs the rails and drops `filters` on the
+  /// floor. Null when no site is selected or the source did not answer.
+  Future<SpiderHome?> browseHome() async {
+    final source = currentSource;
+    final site = homeSite;
+    if (source == null || site == null) return null;
+    if (hasScriptHome) {
+      final client = await _scriptClientFor(source, site);
+      return client?.homeFull();
+    }
+    final session = spider;
+    final js = _jsSource();
+    if (session == null || js == null) return null;
+    return session.homeFull(sourceId: js.$1, md5Url: js.$2, site: site);
+  }
+
   /// One page of category [tid] on the home site, for the grid page.
   ///
   /// Both runtimes answer through this method -- which one serves the source is
   /// not the grid's business. Items carry their site key so a detail page
   /// opened from the grid plays from the same site the grid asked.
-  Future<CategoryPage> categoryPageReal(String tid, {int page = 1}) async {
+  ///
+  /// [filters] are the browse panel's picks (`class` / `area` / `year` / `by`);
+  /// an empty map asks for the category as-is.
+  Future<CategoryPage> categoryPageReal(
+    String tid, {
+    int page = 1,
+    Map<String, String> filters = const {},
+  }) async {
     final source = currentSource;
     final site = homeSite;
     if (source == null || site == null) {
@@ -1390,7 +1417,17 @@ class AppStore extends ChangeNotifier {
       if (client == null) {
         return CategoryPage.failure(scripts?.lastError ?? '脚本宿主没有启动');
       }
-      return _pageOf(await client.category(tid, page: '$page'), site.key);
+      // A TVBox source takes the same conditions as its `extend`, with
+      // `filter` telling it the conditions are real.
+      return _pageOf(
+        await client.category(
+          tid,
+          page: '$page',
+          filter: filters.isNotEmpty,
+          extend: filters,
+        ),
+        site.key,
+      );
     }
     final session = spider;
     final js = _jsSource();
@@ -1404,6 +1441,7 @@ class AppStore extends ChangeNotifier {
         site: site,
         tid: tid,
         page: '$page',
+        filters: filters,
       ),
       site.key,
     );
