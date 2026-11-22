@@ -3,7 +3,14 @@ import 'dart:ui' show Size;
 
 import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoSwitch;
 import 'package:flutter/material.dart'
-    show CircularProgressIndicator, Icons, TextField, ValueKey, Wrap;
+    show CircularProgressIndicator,
+        Icons,
+        MaterialApp,
+        Scaffold,
+        SizedBox,
+        TextField,
+        ValueKey,
+        Wrap;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,9 +24,41 @@ import 'package:lai_cui_ba/services/source_probe.dart';
 import 'package:lai_cui_ba/services/spider_session.dart';
 import 'package:lai_cui_ba/services/store.dart';
 import 'package:lai_cui_ba/services/track_choice.dart';
+import 'package:lai_cui_ba/core/nav.dart';
+import 'package:lai_cui_ba/ui/pages/grid_page.dart';
 import 'package:lai_cui_ba/ui/shell.dart';
+import 'package:lai_cui_ba/ui/widgets/hero_banner.dart';
 
 import 'support/fake_py_host.dart';
+
+/// Answers 首页 per site: `path` is the site's api, so 甲站 and 乙站 can hand
+/// back different rails. [emptySite] makes one of them declare no titles.
+class _PerSiteHost extends FakePyHost {
+  _PerSiteHost({this.emptySite}) : super(bodies: const {});
+
+  final String? emptySite;
+
+  @override
+  Future<String> call({
+    required String key,
+    required String path,
+    required String method,
+    String ext = '',
+    List<Object?> args = const [],
+  }) async {
+    calls.add(method);
+    if (method == 'home') {
+      return '{"class":[{"type_id":"1","type_name":"$path分类"}]}';
+    }
+    if (method == 'category') {
+      if (path == emptySite) return '{"list":[]}';
+      final title = path == 'a.py' ? '甲站片' : '乙站片';
+      return '{"list":[{"vod_id":"$path-1","vod_name":"$title",'
+          '"vod_pic":"http://example.invalid/a.jpg","vod_remarks":"HD"}]}';
+    }
+    throw StateError('没有实现 $method');
+  }
+}
 
 /// Stands in for the cat host's detail action: fills in the fields a result row
 /// cannot carry (episode list, cast, genres) the way a source does. The detail
@@ -898,6 +937,155 @@ void main() {
     expect(find.text('夹具电影'), findsWidgets);
     // The bundled rails are off; their first title would give them away.
     expect(find.text(demo.homeSections.first.items.first.title), findsNothing);
+  });
+
+  testWidgets('首页大图的播放按钮真的开播', (tester) async {
+    MediaItem? played;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LcbPlayScope(
+          play: (item) => played = item,
+          child: const Scaffold(
+            body: HeroBanner(items: [MediaItem(id: 'hero-1', title: '封面片')]),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('播放'));
+    await tester.pump();
+
+    // 以前这个按钮的 onTap 是空的：首页最显眼的按钮按下去什么都不发生。
+    expect(played?.id, 'hero-1');
+
+    // 轮播的 7 秒定时器要走完，否则测试结束会报未清理的 Timer。
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('首页分区的查看全部打开那个分类的网格页', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+    store.scripts = FakeScriptSources(
+      FakePyHost(
+        bodies: {
+          'home': (_) => '{"class":[{"type_id":"7","type_name":"纪录片"}]}',
+          'category': (_) =>
+              '{"list":[{"vod_id":"1001","vod_name":"夹具电影",'
+                  '"vod_pic":"http://example.invalid/m.jpg"}]}',
+        },
+      ),
+    );
+    await store.addSource(
+      const SourceInfo(
+        id: 'py-grid-home',
+        type: 'py',
+        name: '本地 Python 源',
+        url: r'D://sources//main.py',
+      ),
+    );
+    await store.selectSource('py-grid-home');
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // 分区的「查看全部」以前是空回调，点下去什么都不发生。
+    await tester.tap(find.text('查看全部').last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byType(GridPage), findsOneWidget);
+    expect(find.text('纪录片'), findsWidgets);
+    expect(find.text('夹具电影'), findsWidgets);
+  });
+
+  testWidgets('换站点之后首页换成那个站的片单', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+    final host = _PerSiteHost();
+    final scripts = FakeScriptSources(host);
+    store.scripts = scripts;
+    await store.addSource(
+      const SourceInfo(
+        id: 'py-two-sites',
+        type: 'py',
+        name: '双站源',
+        url: r'D://sources//main.py',
+        homeSite: 'a',
+        sites: [
+          SiteInfo(key: 'a', name: '甲站', api: 'a.py'),
+          SiteInfo(key: 'b', name: '乙站', api: 'b.py'),
+        ],
+      ),
+    );
+    await store.selectSource('py-two-sites');
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // 首页按 homeSite 取：一开始是甲站。
+    expect(find.text('甲站片'), findsWidgets);
+    expect(find.text('乙站片'), findsNothing);
+    expect(scripts.asked.last.key, 'a');
+
+    // 顶栏换站之后，页面必须重新问一次源 —— 之前这里只认源 id，换了站
+    // 片单一点都不动。
+    await store.selectHomeSite('b');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('乙站片'), findsWidgets);
+    expect(find.text('甲站片'), findsNothing);
+    expect(scripts.asked.last.key, 'b');
+    // 顶栏也跟着换成新站名，页面上下的说法一致。
+    expect(find.text('乙站'), findsOneWidget);
+  });
+
+  testWidgets('一个站没有片单时说清楚，并给出换站入口', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+    store.scripts = FakeScriptSources(_PerSiteHost(emptySite: 'a.py'));
+    await store.addSource(
+      const SourceInfo(
+        id: 'py-empty-site',
+        type: 'py',
+        name: '空站源',
+        url: r'D://sources//main.py',
+        homeSite: 'a',
+        sites: [
+          SiteInfo(key: 'a', name: '甲站', api: 'a.py'),
+          SiteInfo(key: 'b', name: '乙站', api: 'b.py'),
+        ],
+      ),
+    );
+    await store.selectSource('py-empty-site');
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // 原版的话：换一个站点试试。这里不能说「源坏了」，也不能端出乙站的片单
+    // 顶在甲站名下。
+    expect(find.textContaining('甲站'), findsWidgets);
+    expect(find.text('换个站点'), findsOneWidget);
+    expect(find.text('乙站片'), findsNothing);
   });
 
   testWidgets('a 猫源 that cannot answer says so on 首页', (

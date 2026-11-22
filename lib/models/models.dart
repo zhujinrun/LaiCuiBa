@@ -206,10 +206,17 @@ class ResumePoint {
 }
 
 class HomeSection {
-  const HomeSection({required this.title, required this.items});
+  const HomeSection({required this.title, required this.items, this.typeId});
 
   final String title;
   final List<MediaItem> items;
+
+  /// The site's own category id behind this rail, when it has one.
+  ///
+  /// 「查看全部」opens that category as a paged grid, and the grid is asked for
+  /// by id, not by the rail's display name -- names repeat across sites and are
+  /// localised. Null for a rail that is not a real category (a mount's 影片库).
+  final String? typeId;
 }
 
 enum LcbPage { home, resources, favorites, history, settings }

@@ -97,10 +97,11 @@ class SourceProbe {
 
     final site = _pickSite(source, sites);
     final classes = await session.home(
-      sourceId: source.id,
-      md5Url: md5Url,
-      site: site,
-    );
+          sourceId: source.id,
+          md5Url: md5Url,
+          site: site,
+        ) ??
+        const [];
 
     final titles = <String>{};
     for (final category in classes.take(maxCategories)) {

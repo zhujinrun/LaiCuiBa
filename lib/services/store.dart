@@ -17,7 +17,7 @@ import 'media_mount.dart';
 import 'play_target.dart';
 import 'skip_rule.dart';
 import 'script_runtime.dart';
-import 'spider_client.dart' show SpiderClass;
+import 'spider_client.dart' show SpiderClass, SpiderList;
 import 'tvbox_catalogue.dart';
 import 'tvbox_source.dart';
 import 'webdav_client.dart';
@@ -955,7 +955,11 @@ class AppStore extends ChangeNotifier {
     if (session == null || source == null) return null;
     final address = spiderAddressOf(source);
     if (address == null) return null;
-    return SourceCatalogue(session).load(source: source, md5Url: address);
+    // 首页画的就是 [homeSite] 这一个站点。换站之后这里跟着换，页面才不会一边
+    // 顶着新站的名字、一边摆着旧站的片单。
+    return SourceCatalogue(
+      session,
+    ).load(source: source, md5Url: address, site: homeSite);
   }
 
   /// Runs a keyword search against every enabled site behind the active source.
@@ -1362,8 +1366,55 @@ class AppStore extends ChangeNotifier {
     final js = _jsSource();
     final site = homeSite;
     if (session == null || js == null || site == null) return const [];
-    return session.home(sourceId: js.$1, md5Url: js.$2, site: site);
+    return await session.home(
+          sourceId: js.$1,
+          md5Url: js.$2,
+          site: site,
+        ) ??
+        const [];
   }
+
+  /// One page of category [tid] on the home site, for the grid page.
+  ///
+  /// Both runtimes answer through this method -- which one serves the source is
+  /// not the grid's business. Items carry their site key so a detail page
+  /// opened from the grid plays from the same site the grid asked.
+  Future<CategoryPage> categoryPageReal(String tid, {int page = 1}) async {
+    final source = currentSource;
+    final site = homeSite;
+    if (source == null || site == null) {
+      return const CategoryPage.failure('没有可用的站点');
+    }
+    if (hasScriptHome) {
+      final client = await _scriptClientFor(source, site);
+      if (client == null) {
+        return CategoryPage.failure(scripts?.lastError ?? '脚本宿主没有启动');
+      }
+      return _pageOf(await client.category(tid, page: '$page'), site.key);
+    }
+    final session = spider;
+    final js = _jsSource();
+    if (session == null || js == null) {
+      return const CategoryPage.failure('猫源宿主没有启动');
+    }
+    return _pageOf(
+      await session.category(
+        sourceId: js.$1,
+        md5Url: js.$2,
+        site: site,
+        tid: tid,
+        page: '$page',
+      ),
+      site.key,
+    );
+  }
+
+  CategoryPage _pageOf(SpiderList list, String siteKey) => CategoryPage(
+    items: [for (final item in list.items) item.withSiteKey(siteKey)],
+    page: list.page,
+    pageCount: list.pageCount,
+    total: list.total,
+  );
 
   /// Category feed for one `tid`. Empty when the upstream site has no fresh
   /// feed for that category.
@@ -1426,19 +1477,34 @@ class AppStore extends ChangeNotifier {
   SiteInfo? get homeSite {
     final source = currentSource;
     if (source == null) return null;
-    for (final site in source.sites) {
+    // A single-file script source (`main.py`, `main.js`) declares no sites of
+    // its own -- it *is* one site, synthesised by [scriptSitesOf]. Reading only
+    // `source.sites` here left the header saying 「全部站点」 for a source that
+    // was answering the front page from one perfectly real site.
+    final declared = _declaredSites(source);
+    for (final site in declared) {
       if (site.key == source.homeSite && site.enabled) return site;
     }
-    final enabled = source.searchableSites;
+    final enabled = [
+      for (final site in declared)
+        if (site.enabled) site,
+    ];
     return enabled.isEmpty ? null : enabled.first;
   }
+
+  /// The sites a source really has: the declared list, or the single site a
+  /// one-file script source stands for. Everything that resolves a key to a
+  /// name goes through this, so a `main.py` source is not nameless everywhere
+  /// except the header.
+  List<SiteInfo> _declaredSites(SourceInfo source) =>
+      source.sites.isNotEmpty ? source.sites : scriptSitesOf(source);
 
   /// One site of one source by key, enabled or not.
   SiteInfo? siteOf(String sourceId, String? siteKey) {
     if (siteKey == null || siteKey.isEmpty) return null;
     for (final source in _sources) {
       if (source.id != sourceId) continue;
-      for (final site in source.sites) {
+      for (final site in _declaredSites(source)) {
         if (site.key == siteKey) return site;
       }
     }
@@ -1458,7 +1524,7 @@ class AppStore extends ChangeNotifier {
   String siteNameOfKey(String? siteKey, {String fallback = ''}) {
     if (siteKey == null || siteKey.isEmpty) return fallback;
     for (final source in _sources) {
-      for (final site in source.sites) {
+      for (final site in _declaredSites(source)) {
         if (site.key == siteKey) return site.name;
       }
     }

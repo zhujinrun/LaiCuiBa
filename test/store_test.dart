@@ -888,6 +888,26 @@ void main() {
       expect(store.homeSections, isEmpty);
     });
 
+    test('单文件脚本源的站点也是有名有姓的首页站点', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      // `main.py` 自己就是一个站点：source.sites 是空的，但首页确实有一个
+      // 站点在答，顶栏不能写成「全部站点」。
+      final id = await store.addSource(
+        const SourceInfo(
+          id: 'py-single',
+          type: 'py',
+          name: '单文件源',
+          url: r'D://sources//main.py',
+        ),
+      );
+      await store.selectSource(id);
+
+      expect(store.homeSite?.key, 'py-single');
+      expect(store.homeSite?.name, '单文件源');
+      expect(store.siteNameOfKey('py-single'), '单文件源');
+    });
+
     test('a disabled home site falls back to the first enabled one', () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();

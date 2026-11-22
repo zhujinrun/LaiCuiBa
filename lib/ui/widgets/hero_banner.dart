@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../core/detail_nav.dart';
+import '../../core/nav.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
 import 'poster_art.dart';
@@ -248,7 +249,9 @@ class _HeroCopy extends StatelessWidget {
               icon: Icons.play_arrow_rounded,
               label: '播放',
               filled: true,
-              onTap: () {},
+              // 首页的封面本来只带海报上的那点信息，播放在 shell 里解析完整
+              // 记录后再开播；这里不再是个按不动的按钮。
+              onTap: () => LcbPlayScope.playOf(context, item),
             ),
             const SizedBox(width: 12),
             _PillButton(

@@ -53,7 +53,7 @@ void main() {
 
     test('home 返回站点分类', () async {
       final classes = await client!.home('fixture', 'fixture');
-      expect(classes.map((c) => c.name).toList(), ['电影', '电视剧']);
+      expect(classes!.map((c) => c.name).toList(), ['电影', '电视剧']);
     });
 
     test('search 把 vod 行映射成 MediaItem', () async {
@@ -107,9 +107,10 @@ void main() {
         expect(before, isNotEmpty);
 
         await solo.unloadSource('fixture');
-        // 端口关掉后，客户端拿不到任何结果（连接被拒 → 空列表）。
+        // 端口关掉后客户端拿不到任何分类。null 而不是空列表：宿主没答上来
+        // 和「这个站没有分类」是两句不同的话，首页据此说「没有答上来」。
         final after = await probe.home('fixture', 'fixture');
-        expect(after, isEmpty);
+        expect(after, isNull);
       } finally {
         await solo.stop();
       }

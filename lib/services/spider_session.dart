@@ -226,12 +226,14 @@ class SpiderSession {
   }
 
   /// Home categories for the home site, e.g. 电影 / 电视剧 / 动漫 / 综艺.
-  Future<List<SpiderClass>> home({
+  /// Null when the site refused the call; an empty list when it genuinely
+  /// declared no categories. The home page words those two differently.
+  Future<List<SpiderClass>?> home({
     required String sourceId,
     required String md5Url,
     required SiteInfo site,
   }) async {
-    if (!await ensureLoaded(id: sourceId, md5Url: md5Url)) return const [];
+    if (!await ensureLoaded(id: sourceId, md5Url: md5Url)) return null;
     return _client!.home(site.key, site.type);
   }
 

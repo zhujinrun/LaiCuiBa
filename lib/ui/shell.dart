@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/detail_nav.dart';
+import '../core/nav.dart';
 import '../core/search_state.dart';
 import '../core/store_scope.dart';
 import '../core/theme.dart';
@@ -13,6 +14,7 @@ import '../services/store.dart';
 import '../services/track_choice.dart';
 import 'pages/common_pages.dart';
 import 'pages/detail_page.dart';
+import 'pages/grid_page.dart';
 import 'pages/home_page.dart';
 import 'pages/player_page.dart';
 import 'pages/search_page.dart';
@@ -53,6 +55,11 @@ class _ShellState extends State<Shell> {
   MediaItem? _detail;
   int? _detailEpisode;
 
+  /// Non-null while a home rail's 「查看全部」 grid is open. The detail page
+  /// can be pushed on top of it, so going back from a poster returns to the
+  /// grid rather than to 首页.
+  ({String title, String typeId})? _grid;
+
   /// Non-null while the full-screen player is open on top of the shell.
   _PlayerSession? _player;
 
@@ -87,6 +94,7 @@ class _ShellState extends State<Shell> {
       _page = page;
       _detail = null;
       _detailEpisode = null;
+      _grid = null;
     });
     _search.close();
     _header.reset(_titles[page]!);
@@ -137,11 +145,49 @@ class _ShellState extends State<Shell> {
 
   void _closeDetail() {
     if (!mounted) return;
+    final grid = _grid;
     setState(() {
       _detail = null;
       _detailEpisode = null;
     });
+    if (grid != null) {
+      // Came from a grid: back lands on that category, not on 首页.
+      _header.push(grid.title, _closeGrid, showSearch: false);
+      return;
+    }
     _header.reset(_titles[_page]!);
+  }
+
+  /// Opens one category as a paged grid, replacing the page in the content
+  /// column (the sidebar keeps its 首页 selection).
+  void _openGrid(String title, String typeId) {
+    setState(() {
+      _detail = null;
+      _detailEpisode = null;
+      _grid = (title: title, typeId: typeId);
+    });
+    _header.push(title, _closeGrid, showSearch: false);
+  }
+
+  void _closeGrid() {
+    if (!mounted) return;
+    setState(() => _grid = null);
+    _header.reset(_titles[_page]!);
+  }
+
+  /// Plays a card that was not opened through the detail page -- the hero's
+  /// 播放 button, and anything else that starts playback straight from a rail.
+  ///
+  /// A rail card only carries what the rail showed, so the full record is
+  /// resolved first: 播放 needs the episode list and play lines. A film starts
+  /// at the top; a series starts at its first episode, which is also the row
+  /// the resume point is keyed on.
+  void _playItem(MediaItem item) {
+    _store.detailReal(item).then((full) {
+      if (!mounted) return;
+      final record = full ?? item;
+      _openPlayer(record, record.episodes.isEmpty ? null : 0, 0);
+    });
   }
 
   /// Resolves a playable URL for [item]'s chosen episode (on [lineIndex]) and
@@ -332,6 +378,10 @@ class _ShellState extends State<Shell> {
         onPlay: (i, line) => _openPlayer(detail, i, line),
       );
     }
+    final grid = _grid;
+    if (grid != null) {
+      return GridPage(title: grid.title, typeId: grid.typeId);
+    }
     switch (_page) {
       case LcbPage.home:
         return const HomePage();
@@ -414,52 +464,67 @@ class _ShellState extends State<Shell> {
         search: _search,
         child: LcbDetailScope(
           open: _openDetail,
-          child: LcbPageHeaderScope(
-            controller: _header,
-            child: CallbackShortcuts(
-              bindings: {
-                // The field advertises Ctrl+K, so it has to work from anywhere.
-                const SingleActivator(LogicalKeyboardKey.keyK, control: true):
-                    _openSearch,
-                const SingleActivator(LogicalKeyboardKey.escape): _closeSearch,
-              },
-              child: Focus(
-                autofocus: true,
-                child: Column(
-                  children: [
-                    ShellHeader(
-                      content: _HeaderContent(
-                        page: _page,
-                        detail: _detail != null,
-                        onOpenSearch: _openSearch,
-                        onCloseSearch: _closeSearch,
-                        onSelectPage: _select,
-                      ),
-                    ),
-                    Expanded(
-                      child: Row(
-                        // Stretch, otherwise a page whose content is shorter
-                        // than the viewport (the detail page) gets centred and
-                        // floats down.
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+          child: LcbNavScope(
+            openPage: _select,
+            child: LcbPlayScope(
+              play: _playItem,
+              child: LcbGridScope(
+                open: _openGrid,
+                child: LcbPageHeaderScope(
+                  controller: _header,
+                  child: CallbackShortcuts(
+                    bindings: {
+                      // The field advertises Ctrl+K, so it has to work from
+                      // anywhere.
+                      const SingleActivator(
+                        LogicalKeyboardKey.keyK,
+                        control: true,
+                      ): _openSearch,
+                      const SingleActivator(
+                        LogicalKeyboardKey.escape,
+                      ): _closeSearch,
+                    },
+                    child: Focus(
+                      autofocus: true,
+                      child: Column(
                         children: [
-                          _Sidebar(current: _page, onSelect: _select),
+                          ShellHeader(
+                            content: _HeaderContent(
+                              page: _page,
+                              detail: _detail != null,
+                              onOpenSearch: _openSearch,
+                              onCloseSearch: _closeSearch,
+                              onSelectPage: _select,
+                            ),
+                          ),
                           Expanded(
-                            child: Builder(
-                              // Detail wins over search: tapping a result opens
-                              // the detail page while the search stays open, so
-                              // going back returns to the results.
-                              builder: (ctx) => _detail != null
-                                  ? _body()
-                                  : (LcbSearchScope.of(ctx).isOpen
-                                        ? const SearchPage()
-                                        : _body()),
+                            child: Row(
+                              // Stretch, otherwise a page whose content is
+                              // shorter than the viewport (the detail page)
+                              // gets centred and floats down.
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _Sidebar(current: _page, onSelect: _select),
+                                Expanded(
+                                  child: Builder(
+                                    // Detail wins over search: tapping a result
+                                    // opens the detail page while the search
+                                    // stays open, so going back returns to the
+                                    // results.
+                                    builder: (ctx) => _detail != null
+                                        ? _body()
+                                        : (LcbSearchScope.of(ctx).isOpen
+                                              ? const SearchPage()
+                                              : _body()),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),

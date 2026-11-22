@@ -174,7 +174,7 @@ void main() {
     );
 
     expect(classes, hasLength(2));
-    expect(classes[0].name, '电影');
+    expect(classes![0].name, '电影');
   });
 
   test('search reports failure when the session is not ready', () async {

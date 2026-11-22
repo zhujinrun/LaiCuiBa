@@ -131,7 +131,7 @@ void main() {
     final classes = await client.home('nodejs_jianpian', '3');
 
     expect(classes, hasLength(2));
-    expect(classes[0].typeId, '1');
+    expect(classes![0].typeId, '1');
     expect(classes[0].name, '电影');
   });
 

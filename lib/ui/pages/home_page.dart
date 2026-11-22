@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
 import '../../core/detail_nav.dart';
+import '../../core/nav.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
@@ -11,6 +12,7 @@ import '../../services/source_catalogue.dart';
 import '../../services/store.dart';
 import '../widgets/hero_banner.dart';
 import '../widgets/media_card.dart';
+import '../widgets/site_picker_dialog.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -32,6 +34,11 @@ class _HomePageState extends State<HomePage> {
   /// the page in that state, and it is shown as such rather than papered over.
   String? _askedId;
 
+  /// The site the rails were requested from. Switching the site in the header
+  /// is a change of subject for this page, not a reload of the same thing --
+  /// keeping only the source id here was why the rails never moved.
+  String? _askedSite;
+
   /// True when the answer comes from a mount rather than a 猫源. Only used to
   /// word the empty and error states ("影片库" vs "首页片单"), since both types
   /// now own the page outright while they load.
@@ -44,6 +51,10 @@ class _HomePageState extends State<HomePage> {
 
   /// Why the rails are empty, when the source said something specific.
   String? _feedError;
+
+  /// Whose site answered (or failed to). The notices name it instead of
+  /// blaming the whole source.
+  String _feedSite = '';
 
   bool _failed = false;
 
@@ -59,21 +70,30 @@ class _HomePageState extends State<HomePage> {
   void _syncFeed(AppStore store) {
     final answers = store.hasMount || store.hasSpiderHome || store.hasScriptHome;
     final id = answers ? store.currentSource?.id : null;
-    if (id == _askedId) return;
+    // Home is drawn from one site, so the site is half of the identity of what
+    // is on screen. Two keys, not one.
+    final site = answers ? store.homeSite?.key : null;
+    if (id == _askedId && site == _askedSite) return;
     setState(() {
       _askedId = id;
+      _askedSite = site;
       _sections = null;
       _feedError = null;
+      _feedSite = '';
       _failed = false;
       _mount = id != null && store.hasMount;
     });
-    if (id != null) _loadFeed(store, id);
+    if (id != null) _loadFeed(store, id, site);
   }
 
-  Future<void> _loadFeed(AppStore store, String id) async {
+  /// True when this answer still belongs to what the page is asking for.
+  bool _current(String id, String? site) =>
+      mounted && _askedId == id && _askedSite == site;
+
+  Future<void> _loadFeed(AppStore store, String id, String? site) async {
     if (store.hasMount) {
       final items = await store.mountLibrary(limit: 30);
-      if (!mounted || _askedId != id) return;
+      if (!_current(id, site)) return;
       setState(() {
         _sections = items.isEmpty
             ? const <HomeSection>[]
@@ -87,8 +107,9 @@ class _HomePageState extends State<HomePage> {
     final feed = store.hasScriptHome
         ? await store.scriptCatalogue()
         : await store.spiderCatalogue();
-    if (!mounted || _askedId != id) return;
+    if (!_current(id, site)) return;
     setState(() {
+      _feedSite = feed?.siteName ?? '';
       if (feed == null || !feed.ok) {
         // Say it failed. Keeping fixtures on screen here was the old behaviour,
         // and it made a dead source look exactly like a working one -- the whole
@@ -98,7 +119,7 @@ class _HomePageState extends State<HomePage> {
         return;
       }
       _sections = feed.sections;
-      _feedError = feed.error;
+      _feedError = feed.error ?? feed.note;
     });
   }
 
@@ -110,12 +131,14 @@ class _HomePageState extends State<HomePage> {
   void _retry(AppStore store) {
     final id = _askedId;
     if (id == null) return;
+    final site = _askedSite;
     setState(() {
       _failed = false;
       _feedError = null;
+      _feedSite = '';
       _sections = null;
     });
-    _loadFeed(store, id);
+    _loadFeed(store, id, site);
   }
 
   @override
@@ -154,13 +177,19 @@ class _HomePageState extends State<HomePage> {
             else if (_failed)
               _HomeNotice(
                 icon: CupertinoIcons.exclamationmark_triangle,
-                title: '${_sourceNameOf(store)} 没有答上来',
+                title: '${_feedSite.isEmpty ? _sourceNameOf(store) : _feedSite} 没有答上来',
                 subtitle: _feedError ?? '宿主请求超时，可能站点暂时不可用。',
-                hint: '可以重试一次，或在「资源」里点「重新检测」确认它还能不能用。',
+                hint: '可以重试一次，或者换一个站点看看它有没有片单。',
                 onRetry: () => _retry(store),
+                onPickSite: _mount ? null : () => showSitePicker(context),
               )
             else if (answered != null && answered.isEmpty)
-              _EmptyCatalogue(spider: !_mount, reason: _feedError),
+              _EmptyCatalogue(
+                spider: !_mount,
+                siteName: _mount ? _sourceNameOf(store) : _feedSite,
+                reason: _feedError,
+                onPickSite: _mount ? null : () => showSitePicker(context),
+              ),
             LayoutBuilder(
               builder: (context, constraints) {
                 final contentWidth = constraints.maxWidth;
@@ -184,7 +213,14 @@ class _HomePageState extends State<HomePage> {
                           padding: const EdgeInsets.symmetric(
                             horizontal: LcbMetrics.pagePadding,
                           ),
-                          child: SectionHeader(title: '继续观看', onMore: () {}),
+                          child: SectionHeader(
+                            title: '继续观看',
+                            // 原版这一行通向完整的观看记录，不是一个死按钮。
+                            onMore: () => LcbNavScope.openOf(
+                              context,
+                              LcbPage.history,
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 16),
                         SizedBox(
@@ -220,7 +256,15 @@ class _HomePageState extends State<HomePage> {
                           ),
                           child: SectionHeader(
                             title: section.title,
-                            onMore: () {},
+                            // 影院库（挂载）这类不是站点分类，没有 id 就不该
+                            // 假装点得进去。
+                            onMore: section.typeId == null
+                                ? null
+                                : () => LcbGridScope.openOf(
+                                    context,
+                                    section.title,
+                                    section.typeId,
+                                  ),
                           ),
                         ),
                         const SizedBox(height: 17),
@@ -267,6 +311,7 @@ class _HomeNotice extends StatelessWidget {
     required this.subtitle,
     this.hint,
     this.onRetry,
+    this.onPickSite,
   });
 
   final IconData icon;
@@ -274,6 +319,10 @@ class _HomeNotice extends StatelessWidget {
   final String subtitle;
   final String? hint;
   final VoidCallback? onRetry;
+
+  /// Opens the site chip's picker. This is the remedy the empty state names,
+  /// so it sits right under the sentence instead of only in the header.
+  final VoidCallback? onPickSite;
 
   @override
   Widget build(BuildContext context) {
@@ -316,11 +365,24 @@ class _HomeNotice extends StatelessWidget {
                 ),
               ),
             ],
-            if (onRetry != null) ...[
-              const SizedBox(height: 18),
-              TextButton(
-                onPressed: onRetry,
-                child: const Text('重试'),
+            if (onRetry != null || onPickSite != null) ...[
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (onRetry != null)
+                    TextButton(
+                      onPressed: onRetry,
+                      child: const Text('重试'),
+                    ),
+                  if (onRetry != null && onPickSite != null)
+                    const SizedBox(width: 8),
+                  if (onPickSite != null)
+                    TextButton(
+                      onPressed: onPickSite,
+                      child: const Text('换个站点'),
+                    ),
+                ],
               ),
             ],
           ],
@@ -360,24 +422,35 @@ class _HeroPlaceholder extends StatelessWidget {
   }
 }
 
-/// Shown when the active source answered but had nothing to put on the home
-/// screen. Says whose source it is and what to try next, because "nothing here"
-/// on the front page otherwise reads like a bug.
+/// Shown when the site answered but had nothing to put on the home screen.
+///
+/// Names the site instead of the whole source -- the site is what the user just
+/// picked, and the sentence under it is the original's own advice: pick another
+/// one. Nothing here suggests the app is broken when a single site is dry.
 class _EmptyCatalogue extends StatelessWidget {
-  const _EmptyCatalogue({required this.spider, this.reason});
+  const _EmptyCatalogue({
+    required this.spider,
+    this.siteName = '',
+    this.reason,
+    this.onPickSite,
+  });
 
   final bool spider;
+
+  /// The site that answered, as the source named it.
+  final String siteName;
+
   final String? reason;
+  final VoidCallback? onPickSite;
 
   @override
   Widget build(BuildContext context) {
-    final source = StoreScope.of(context).currentSource;
-    final name = source?.name ?? (spider ? '这个源' : '这个服务器');
+    final name = siteName.isEmpty ? '这个站点' : siteName;
     final head = spider ? '$name 的首页没有取到片单' : '$name 的影片库里还没有内容';
     final detail = spider
         ? (reason ?? '站点今天可能没有更新')
         : '在服务器上添加电影或剧集后，重新选择一次这个源即可刷新';
-    final hint = spider ? '在资源页点「重新检测」可以确认它还能不能用' : null;
+    final hint = spider ? '换一个站点，或者过一会儿再回来看看。' : null;
 
     return SizedBox(
       height: 260,
@@ -409,6 +482,13 @@ class _EmptyCatalogue extends StatelessWidget {
                   fontSize: 13,
                   color: LcbColors.textSecondary.withValues(alpha: 0.6),
                 ),
+              ),
+            ],
+            if (onPickSite != null) ...[
+              const SizedBox(height: 14),
+              TextButton(
+                onPressed: onPickSite,
+                child: const Text('换个站点'),
               ),
             ],
           ],

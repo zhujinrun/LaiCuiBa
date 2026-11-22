@@ -186,13 +186,15 @@ void main() {
     );
 
     test('turns home categories into rails', () async {
+      const site = SiteInfo(key: 'fixture', name: '夹具', type: 'fixture');
       final feed = await SourceCatalogue(session!).load(
         source: sourceWith(
           id: 'fixture-rails',
           homeSite: 'fixture',
-          sites: const [SiteInfo(key: 'fixture', name: '夹具', type: 'fixture')],
+          sites: const [site],
         ),
         md5Url: subscription(),
+        site: site,
       );
 
       expect(feed.ok, isTrue, reason: feed.error);
@@ -205,22 +207,50 @@ void main() {
       expect(feed.hero.map((e) => e.title).toList(), ['夹具片甲', '夹具片乙']);
     });
 
-    test('falls through a dead nominated site instead of giving up', () async {
-      final feed = await SourceCatalogue(session!).load(
-        source: sourceWith(
-          id: 'fixture-fallback',
-          homeSite: 'dead',
-          sites: const [
-            SiteInfo(key: 'dead', name: '死站', type: 'dead'),
-            SiteInfo(key: 'fixture', name: '夹具', type: 'fixture'),
-          ],
-        ),
-        md5Url: subscription(),
+    test('首页只问选中的那个站点，不去别的站偷内容', () async {
+      // 源配置把首页指在死站上，用户在 header 里改成了活站：片单必须来自
+      // 活站，而且只能来自活站 —— 页面上顶着哪个站的名字，就得是哪个站的
+      // 内容。
+      const dead = SiteInfo(key: 'dead', name: '死站', type: 'dead');
+      const live = SiteInfo(key: 'fixture', name: '夹具', type: 'fixture');
+      final source = sourceWith(
+        id: 'fixture-picked',
+        homeSite: 'dead',
+        sites: const [dead, live],
       );
 
+      final feed = await SourceCatalogue(session!).load(
+        source: source,
+        md5Url: subscription(),
+        site: live,
+      );
       expect(feed.ok, isTrue, reason: feed.error);
       expect(feed.siteName, '夹具');
       expect(feed.sections, isNotEmpty);
+      expect(feed.sections.first.items.single.siteKey, 'fixture');
+    });
+
+    test('选中站点没内容就如实说，不换成别的站', () async {
+      // 这是修「换站不更新」时最容易做错的一半：探测别的站能让页面看起来
+      // 有内容，但那份内容的站点名和顶栏写的不一样，等于撒谎。
+      const dead = SiteInfo(key: 'dead', name: '死站', type: 'dead');
+      const live = SiteInfo(key: 'fixture', name: '夹具', type: 'fixture');
+      final feed = await SourceCatalogue(session!).load(
+        source: sourceWith(
+          id: 'fixture-dead',
+          homeSite: 'dead',
+          sites: const [dead, live],
+        ),
+        md5Url: subscription(),
+        site: dead,
+      );
+
+      expect(feed.ok, isFalse);
+      expect(feed.siteName, '死站');
+      expect(feed.sections, isEmpty);
+      // 是「没答上来」，不是「没有推荐内容」——这两句话不是一回事。
+      expect(feed.error, contains('首页加载失败'));
+      expect(feed.error, contains('死站'));
     });
 
     test('a source with no enabled site says so without booting', () async {
@@ -229,7 +259,7 @@ void main() {
         md5Url: subscription(),
       );
       expect(feed.ok, isFalse);
-      expect(feed.error, contains('没有启用的站点'));
+      expect(feed.error, contains('没有可用的站点'));
       expect(feed.sections, isEmpty);
     });
   }, skip: ready ? false : '缺少 assets/runtime/node 时跳过（先跑 tool/sync_runtime.sh）');

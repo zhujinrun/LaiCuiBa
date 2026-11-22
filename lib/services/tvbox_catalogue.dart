@@ -56,7 +56,13 @@ class TvBoxCatalogue {
           .take(maxItemsPerSection)
           .toList(growable: false);
       if (items.isEmpty) continue;
-      sections.add(HomeSection(title: picked[i].name, items: items));
+      sections.add(
+        HomeSection(
+          title: picked[i].name,
+          items: items,
+          typeId: picked[i].typeId,
+        ),
+      );
     }
     if (sections.isEmpty) {
       return CatalogueFeed(

@@ -33,9 +33,14 @@ class SpiderClient {
       : storeKey;
 
   /// A category row from `home` (`class`).
-  Future<List<SpiderClass>> home(String storeKey, String type) async {
+  /// The site's categories, or null when the site did not answer at all.
+  ///
+  /// A reply without a `class` key is not an empty site: it is the host or the
+  /// site refusing the call (a wrong key returns `{error}`), and the home page
+  /// says "没答上来" for that instead of "没有推荐内容".
+  Future<List<SpiderClass>?> home(String storeKey, String type) async {
     final json = await _call(storeKey, type, 'home');
-    if (json == null) return const [];
+    if (json == null || !json.containsKey('class')) return null;
     final classes = (json['class'] as List?) ?? const [];
     return [
       for (final raw in classes)
