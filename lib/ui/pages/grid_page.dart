@@ -10,18 +10,27 @@ import '../widgets/media_card.dart';
 
 /// One category, as a paged poster grid.
 ///
-/// The original's 「查看全部」 on a home rail opens this (its `grid_page.dart`):
-/// the rail is a sample of page one, and this is where the rest of the category
-/// lives. Paging stops at the page count the source reports -- scrolling into a
-/// void and firing requests forever is not paging.
+/// The original's 「查看全部」 on a home rail opens this, and so does the ⊞
+/// browse panel with its picks as [filters]. The rail is a sample of page one,
+/// and this is where the rest of the category lives. Paging stops at the page
+/// count the source reports -- scrolling into a void and firing requests
+/// forever is not paging.
 class GridPage extends StatefulWidget {
-  const GridPage({super.key, required this.title, required this.typeId});
+  const GridPage({
+    super.key,
+    required this.title,
+    required this.typeId,
+    this.filters = const {},
+  });
 
   /// The rail's title, which is also the category's display name.
   final String title;
 
   /// The site's category id behind that rail.
   final String typeId;
+
+  /// The browse panel's narrowing picks (`class` / `area` / `year` / `by`).
+  final Map<String, String> filters;
 
   @override
   State<GridPage> createState() => _GridPageState();
@@ -77,7 +86,11 @@ class _GridPageState extends State<GridPage> {
 
     final store = StoreScope.of(context);
     final next = _page + 1;
-    final page = await store.categoryPageReal(widget.typeId, page: next);
+    final page = await store.categoryPageReal(
+      widget.typeId,
+      page: next,
+      filters: widget.filters,
+    );
     if (!mounted) return;
 
     setState(() {
@@ -166,12 +179,21 @@ class _GridPageState extends State<GridPage> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        const pad = LcbMetrics.pagePadding;
-        const gap = LcbMetrics.posterGap;
+        // Measured off the original's category page: 9 covers across a 1920
+        // window, each 175 wide with an 11 gutter and a 16 content inset. The
+        // home rails breathe at 40/18, but this page packs them tighter so the
+        // grid reads as a library rather than a shelf.
+        const pad = 16.0;
+        const gap = 11.0;
+        const target = 175.0;
         final available = constraints.maxWidth - pad * 2;
+        // Round, not floor: the sidebar plus the hairline leaves the content
+        // column one pixel short of 9 x (175 + 11), and flooring there silently
+        // drops a whole column. Rounding keeps the measured 9 across while
+        // still giving up a column as the window narrows.
         final columns = math.max(
           2,
-          ((available + gap) / (LcbMetrics.posterWidth + gap)).floor(),
+          ((available + gap) / (target + gap)).round(),
         );
         final width = (available - gap * (columns - 1)) / columns;
 
@@ -180,16 +202,17 @@ class _GridPageState extends State<GridPage> {
           child: CustomScrollView(
             controller: _scroll,
             slivers: [
-              const SliverToBoxAdapter(child: SizedBox(height: 24)),
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(pad, 0, pad, 12),
                 sliver: SliverGrid(
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: columns,
                     crossAxisSpacing: gap,
-                    mainAxisSpacing: 26,
-                    // Poster is 3:2 tall plus its two text lines.
-                    childAspectRatio: width / (width * 3 / 2 + 34),
+                    // The original's rows sit 333px apart at this size: a
+                    // 262.5 cover, a 30 caption block and 40 of air.
+                    mainAxisSpacing: 40,
+                    // Poster is 3:2 tall plus its caption.
+                    childAspectRatio: width / (width * 3 / 2 + 30),
                   ),
                   delegate: SliverChildBuilderDelegate(
                     (context, i) => PosterCard(

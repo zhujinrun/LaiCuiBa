@@ -74,6 +74,33 @@ void main() {
     expect(fake.pages, ['1', '2']);
   });
 
+  testWidgets('面板挑的条件原样交给源', (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final fake = _PagedHost();
+    final store = await storeWith(fake);
+
+    await tester.pumpWidget(
+      host(
+        store,
+        const GridPage(
+          title: '电影',
+          typeId: '1',
+          filters: {'class': '喜剧', 'by': 'score'},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // TVBox 源把条件放在 extend 里；filter 要一起置真，源才会用。
+    expect(fake.lastFilter, isTrue);
+    expect(fake.lastExtend, {'class': '喜剧', 'by': 'score'});
+    expect(find.text('第1页甲'), findsOneWidget);
+  });
+
   testWidgets('没有宿主时第一页直接说加载失败，并给重试', (tester) async {
     tester.view.physicalSize = const Size(1400, 900);
     tester.view.devicePixelRatio = 1.0;
@@ -100,6 +127,10 @@ class _PagedHost extends FakePyHost {
   /// 每次 category 请求带上的页码，按顺序记下来。
   final List<String> pages = [];
 
+  /// The last `[filter, extend]` a category call carried.
+  bool? lastFilter;
+  Object? lastExtend;
+
   @override
   Future<String> call({
     required String key,
@@ -112,6 +143,8 @@ class _PagedHost extends FakePyHost {
     if (method != 'category') throw StateError('没有实现 $method');
     final page = '${args[1] ?? '1'}';
     pages.add(page);
+    lastFilter = args[2] as bool?;
+    lastExtend = args[3];
     if (page == '2') {
       return '{"page":2,"pagecount":2,"total":3,"list":[{"vod_id":"3",'
           '"vod_name":"第2页丙","vod_pic":"http://example.invalid/c.jpg"}]}';
