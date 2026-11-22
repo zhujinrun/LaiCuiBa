@@ -76,4 +76,51 @@ void main() {
       expect(rule.plausibleFor(episode), isFalse);
     });
   });
+
+  group('SkipOverride — 本剧覆盖', () {
+    const global = SkipRule(
+      intro: Duration(seconds: 90),
+      outro: Duration(seconds: 60),
+    );
+
+    test('没设过就完全等于全局', () {
+      expect(SkipOverride.none.isEmpty, isTrue);
+      expect(global.mergeOverride(SkipOverride.none), global);
+      expect(global.mergeOverride(null), global);
+    });
+
+    test('只覆盖片头时片尾仍跟全局', () {
+      const own = SkipOverride(introMs: 15000);
+      final merged = global.mergeOverride(own);
+      expect(merged.intro, const Duration(seconds: 15));
+      expect(merged.outro, const Duration(seconds: 60));
+    });
+
+    test('显式 0 表示这部剧没有片头，而不是跟随全局', () {
+      const own = SkipOverride(introMs: 0);
+      final merged = global.mergeOverride(own);
+      expect(merged.intro, Duration.zero);
+      expect(merged.isEmpty, isFalse, reason: '0 是一个明确的设置，不是"没设"');
+      expect(merged.outro, const Duration(seconds: 60));
+    });
+
+    test('withIntro / withOutro 只动一半', () {
+      const own = SkipOverride(introMs: 30000, outroMs: 45000);
+      expect(own.withIntro(60000).outroMs, 45000);
+      expect(own.withOutro(90000).introMs, 30000);
+      expect(own.withIntro(null), const SkipOverride(outroMs: 45000));
+    });
+
+    test('JSON 往返，0 能存下来，负数被丢掉', () {
+      const own = SkipOverride(introMs: 0, outroMs: 45000);
+      final back = SkipOverride.fromJson(own.toJson());
+      expect(back, own);
+
+      final bad = SkipOverride.fromJson(const {'intro': -5, 'outro': 30000});
+      expect(bad.introMs, isNull);
+      expect(bad.outroMs, 30000);
+      expect(const SkipOverride(introMs: -1, outroMs: -1).isEmpty, isFalse,
+          reason: '负数是坏值，但也要能构造出来给解析层过滤');
+    });
+  });
 }

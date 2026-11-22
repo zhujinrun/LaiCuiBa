@@ -685,6 +685,7 @@ class AppSettings {
     this.skipIntroOutro = true,
     this.introSkipMs = 0,
     this.outroSkipMs = 0,
+    this.skipOverrides = const {},
     this.shortDramaPreload = false,
     this.secondHome = true,
     this.homeCategoryButton = true,
@@ -720,6 +721,15 @@ class AppSettings {
   /// because the sources do not report one.
   final int introSkipMs;
   final int outroSkipMs;
+
+  /// 每个作品单独设的片头/片尾，按作品名索引：
+  /// `{'三体': {'intro': 90000}}`。没在这张表里的作品用上面那一组全局值。
+  ///
+  /// 只存用户显式改过的那一半——`{'outro': 60000}` 表示片头仍跟随全局。
+  /// 保持成原始 JSON 的原因和 [trackPrefs] 一样：模型层不能 import services，
+  /// 语义解释（[SkipOverride]）在 `services/skip_rule.dart`。
+  final Map<String, Map<String, int>> skipOverrides;
+
   final bool shortDramaPreload;
   final bool secondHome;
   final bool homeCategoryButton;
@@ -772,6 +782,7 @@ class AppSettings {
     bool? skipIntroOutro,
     int? introSkipMs,
     int? outroSkipMs,
+    Map<String, Map<String, int>>? skipOverrides,
     bool? shortDramaPreload,
     bool? secondHome,
     bool? homeCategoryButton,
@@ -802,6 +813,7 @@ class AppSettings {
       skipIntroOutro: skipIntroOutro ?? this.skipIntroOutro,
       introSkipMs: introSkipMs ?? this.introSkipMs,
       outroSkipMs: outroSkipMs ?? this.outroSkipMs,
+      skipOverrides: skipOverrides ?? this.skipOverrides,
       shortDramaPreload: shortDramaPreload ?? this.shortDramaPreload,
       secondHome: secondHome ?? this.secondHome,
       homeCategoryButton: homeCategoryButton ?? this.homeCategoryButton,
@@ -836,6 +848,7 @@ class AppSettings {
     'skipIntroOutro': skipIntroOutro,
     'introSkipMs': introSkipMs,
     'outroSkipMs': outroSkipMs,
+    'skipOverrides': skipOverrides,
     'shortDramaPreload': shortDramaPreload,
     'secondHome': secondHome,
     'homeCategoryButton': homeCategoryButton,
@@ -880,6 +893,7 @@ class AppSettings {
       skipIntroOutro: pop('skipIntroOutro', true),
       introSkipMs: pop('introSkipMs', 0),
       outroSkipMs: pop('outroSkipMs', 0),
+      skipOverrides: _readSkipOverrides(extra.remove('skipOverrides')),
       shortDramaPreload: pop('shortDramaPreload', false),
       secondHome: pop('secondHome', true),
       homeCategoryButton: pop('homeCategoryButton', true),
@@ -917,6 +931,28 @@ Map<String, Map<String, String>> _readTrackPrefs(Object? raw) {
         entry[k] = v.toInt().toString();
       }
     });
+    if (entry.isNotEmpty) out[key] = entry;
+  });
+  return out;
+}
+
+/// `{'三体': {'intro': 90000}}` → 强类型。作品名为空、值不是正数、两个字段
+/// 都没有的条目整条丢掉——一条坏掉的本剧设置只该让那部剧回到全局值。
+Map<String, Map<String, int>> _readSkipOverrides(Object? raw) {
+  if (raw is! Map) return const {};
+  final out = <String, Map<String, int>>{};
+  raw.forEach((key, value) {
+    if (key is! String || key.isEmpty || value is! Map) return;
+    final entry = <String, int>{};
+    for (final field in const ['intro', 'outro']) {
+      final v = value[field];
+      if (v is num) {
+        // 0 is meaningful here: "this work explicitly has no intro", which is
+        // different from "inherit the global value".
+        final ms = v.toInt();
+        if (ms >= 0) entry[field] = ms;
+      }
+    }
     if (entry.isNotEmpty) out[key] = entry;
   });
   return out;

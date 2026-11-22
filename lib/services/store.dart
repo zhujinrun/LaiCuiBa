@@ -425,6 +425,59 @@ class AppStore extends ChangeNotifier {
     );
   }
 
+  /// 一部作品在「本剧设置」里的键。
+  ///
+  /// 用作品名而不是 vod id：同一部剧在不同站点有不同的 id，换了线路就认不出
+  /// 是同一部剧了；而片头长短是作品自身的属性，跟从哪个站点播没关系。代价是
+  /// 同名作品会共用一组设置——这比"换线路就丢设置"更少见，也不会造成实际伤害
+  /// （[SkipRule] 的护栏会拦住对不上的秒数）。
+  String skipKeyOf(String title) => title.trim();
+
+  /// 这部作品自己设过的片头片尾，没设过就是空覆盖（全跟随全局）。
+  SkipOverride skipOverrideFor(String title) {
+    final raw = _settings.skipOverrides[skipKeyOf(title)];
+    if (raw == null) return SkipOverride.none;
+    return SkipOverride.fromJson(raw);
+  }
+
+  /// 这部作品实际生效的跳过规则：全局值 + 本剧覆盖，逐字段合并。
+  ///
+  /// 总开关关掉时一律 [SkipRule.none]——本剧覆盖不能绕过那个开关，否则用户
+  /// 在设置里关掉"跳过片头片尾"之后，某些剧还会继续跳。
+  SkipRule skipRuleFor(String title) {
+    if (!_settings.skipIntroOutro) return SkipRule.none;
+    return skipRule.mergeOverride(skipOverrideFor(title));
+  }
+
+  /// 记住本剧的片头片尾。两个字段都为空时等于"取消本剧设置"，会把条目删掉。
+  Future<void> setSkipOverride(String title, SkipOverride override) async {
+    final key = skipKeyOf(title);
+    if (key.isEmpty) return;
+    final next = Map<String, Map<String, int>>.from(_settings.skipOverrides);
+    if (override.isEmpty) {
+      if (!next.containsKey(key)) return;
+      next.remove(key);
+    } else {
+      if (next[key] != null && _sameOverride(next[key]!, override)) return;
+      next[key] = override.toJson();
+    }
+    await updateSettings(_settings.copyWith(skipOverrides: next));
+  }
+
+  /// 有多少部作品单独设过，设置页拿它显示条数。
+  int get skipOverrideCount => _settings.skipOverrides.length;
+
+  /// 把所有本剧设置清掉，全部回到全局那一组。
+  Future<void> clearSkipOverrides() async {
+    if (_settings.skipOverrides.isEmpty) return;
+    await updateSettings(_settings.copyWith(skipOverrides: const {}));
+  }
+
+  bool _sameOverride(Map<String, int> raw, SkipOverride override) {
+    final current = SkipOverride.fromJson(raw);
+    return current == override;
+  }
+
   /// Remembers the volume and speed the player was left at, so the next
   /// episode opens the same way. Written once when the player closes, not on
   /// every slider tick.

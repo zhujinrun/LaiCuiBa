@@ -11,6 +11,7 @@ import '../../services/playback_clock.dart';
 import '../../services/skip_rule.dart';
 import '../../services/track_choice.dart';
 import '../../services/track_map.dart';
+import '../widgets/skip_panel.dart';
 import '../widgets/track_panel.dart';
 
 /// 播放页 — 全屏视频播放。
@@ -39,7 +40,10 @@ class PlayerPage extends StatefulWidget {
     this.episodes = const [],
     this.episodeIndex,
     this.resume,
-    this.skip = SkipRule.none,
+    this.skipGlobal = SkipRule.none,
+    this.skipOverride = SkipOverride.none,
+    this.skipEnabled = true,
+    this.onSkip,
     this.initialVolume = 100,
     this.initialRate = 1.0,
     this.lines = const [],
@@ -80,10 +84,25 @@ class PlayerPage extends StatefulWidget {
   /// so the clock can refuse it when the stream is a different cut.
   final ResumePoint? resume;
 
-  /// How much of the head and tail the viewer asked to skip. [SkipRule.none]
-  /// when the feature is off or nothing was configured — the player never
-  /// guesses where an intro ends.
-  final SkipRule skip;
+  /// How much of the head and tail the viewer asked to skip, from the settings
+  /// page — the value every work uses unless it has an [skipOverride] of its own.
+  /// [SkipRule.none] when the feature is off or nothing was configured; the
+  /// player never guesses where an intro ends.
+  final SkipRule skipGlobal;
+
+  /// What this work set for itself; [SkipOverride.none] means "follow global".
+  /// The rule actually in force is `skipGlobal.mergeOverride(skipOverride)`,
+  /// derived here so the two halves cannot drift out of sync in the caller.
+  final SkipOverride skipOverride;
+
+  /// The 跳过片头片尾 master switch, so the panel can explain why a pick would
+  /// have no effect instead of silently doing nothing.
+  final bool skipEnabled;
+
+  /// Called when the viewer picks an intro/outro for this work. The caller
+  /// persists it and rebuilds with the merged [skip], which the clock adopts
+  /// mid-session.
+  final ValueChanged<SkipOverride>? onSkip;
 
   /// Volume (0-100) and speed to open with — the values the last session was
   /// left at, not a hardcoded 100 / 1.0×.
@@ -143,8 +162,18 @@ class _PlayerPageState extends State<PlayerPage> {
   /// Decides every seek this session makes. Fed from the two streams below.
   late final PlaybackClock _clock = PlaybackClock(
     resume: widget.resume,
-    skip: widget.skip,
+    skip: _mergedSkip,
   );
+
+  /// The rule in force right now, and the one the clock was last told about.
+  ///
+  /// The master switch gates the merge as well, so a work's own override can
+  /// never outlive "跳过片头片尾: 关" — otherwise turning the feature off in
+  /// settings would leave some shows still jumping.
+  SkipRule get _mergedSkip => widget.skipEnabled
+      ? widget.skipGlobal.mergeOverride(widget.skipOverride)
+      : SkipRule.none;
+  late SkipRule _appliedSkip = _mergedSkip;
 
   late final Awake _awake = widget.awake ?? SystemAwake();
 
@@ -171,6 +200,10 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _restored = false;
 
   bool _trackPanel = false;
+
+  /// The 本剧片头片尾 panel. Shares the slot with [_trackPanel]: both are bottom
+  /// right pop-ups and stacking them would bury the lower one.
+  bool _skipPanel = false;
 
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
@@ -362,8 +395,38 @@ class _PlayerPageState extends State<PlayerPage> {
     setState(() {
       _controlsVisible = true;
       _trackPanel = !_trackPanel;
+      if (_trackPanel) _skipPanel = false;
     });
   }
+
+  void _toggleSkipPanel() {
+    _hideTimer?.cancel();
+    setState(() {
+      _controlsVisible = true;
+      _skipPanel = !_skipPanel;
+      if (_skipPanel) _trackPanel = false;
+    });
+  }
+
+  /// A pick in the skip panel: hand it up to be stored, and adopt it here right
+  /// away so a viewer who sets "90 秒" while sitting at 0:05 sees the jump now
+  /// rather than at the next episode.
+  void _pickSkip(SkipOverride next) {
+    final merged = widget.skipGlobal.mergeOverride(next);
+    _appliedSkip = merged;
+    _clock.updateSkip(merged);
+    setState(() => _skipPanel = false);
+    widget.onSkip?.call(next);
+    _pumpClock();
+    _showNotice(
+      next.isEmpty
+          ? '已恢复跟随全局设置'
+          : '已记住本剧：片头 ${_skipSeconds(merged.intro)} · 片尾 ${_skipSeconds(merged.outro)}',
+    );
+  }
+
+  String _skipSeconds(Duration d) =>
+      d <= Duration.zero ? '不跳' : '${d.inSeconds} 秒';
 
   /// Another line means another URL: the caller resolves it and reopens the
   /// page. The viewer's position rides along so the switch looks like a track
@@ -391,7 +454,7 @@ class _PlayerPageState extends State<PlayerPage> {
     // Show where we asked to be, not the frame the player was still painting —
     // the label would otherwise flash 0:00 over a resumed episode.
     _position = target;
-    final intro = widget.skip.introFor(_clock.duration);
+    final intro = _clock.skip.introFor(_clock.duration);
     if (intro != null && target == intro) {
       _showNotice('已跳过片头 ${intro.inSeconds} 秒');
     }
@@ -471,6 +534,26 @@ class _PlayerPageState extends State<PlayerPage> {
     final label = _currentLabel;
     if (label.isEmpty) return widget.title;
     return '${widget.title} · $label';
+  }
+
+  /// The caller may hand in a different skip rule mid-session (the viewer set
+  /// this work's intro from the panel, and the shell saved it). The clock has to
+  /// adopt it — but [PlaybackClock.updateSkip] keeps the resume point untouched,
+  /// so this never yanks a viewer back to where they stopped.
+  @override
+  void didUpdateWidget(PlayerPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final next = _mergedSkip;
+    if (next != _appliedSkip) {
+      _appliedSkip = next;
+      _clock.updateSkip(next);
+    }
+    if (oldWidget.url != widget.url) {
+      // Same state object, new stream: nothing about the old timeline carries
+      // over, so drop the panels rather than leaving stale choices on screen.
+      _trackPanel = false;
+      _skipPanel = false;
+    }
   }
 
   @override
@@ -574,6 +657,13 @@ class _PlayerPageState extends State<PlayerPage> {
                 onTap: () => setState(() => _trackPanel = false),
               ),
             ),
+          if (_skipPanel)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _skipPanel = false),
+              ),
+            ),
           if (_trackPanel)
             Positioned(
               right: 20,
@@ -586,6 +676,18 @@ class _PlayerPageState extends State<PlayerPage> {
                 onVideo: (t) => _setVideo(t.id),
                 onAudio: (t) => _setAudio(t.id),
                 onSubtitle: (t) => _setSubtitle(t.id),
+              ),
+            ),
+          if (_skipPanel)
+            Positioned(
+              right: 20,
+              bottom: 132,
+              child: SkipPanel(
+                global: widget.skipGlobal,
+                own: widget.skipOverride,
+                effective: _clock.skip,
+                enabled: widget.skipEnabled,
+                onPicked: _pickSkip,
               ),
             ),
           _BottomBar(
@@ -615,6 +717,11 @@ class _PlayerPageState extends State<PlayerPage> {
             onRate: (r) => _player.setRate(r),
             onTracks: _toggleTrackPanel,
             tracksOpen: _trackPanel,
+            onSkip: _toggleSkipPanel,
+            skipOpen: _skipPanel,
+            skipLabel: _clock.skip.intro > Duration.zero
+                ? '片头 ${_clock.skip.intro.inSeconds}s'
+                : '片头 关',
             onNext: _hasNext
                 ? () => widget.onEpisode!(widget.episodeIndex! + 1)
                 : null,
@@ -723,6 +830,9 @@ class _BottomBar extends StatelessWidget {
     required this.onRate,
     required this.onTracks,
     required this.tracksOpen,
+    required this.onSkip,
+    required this.skipOpen,
+    required this.skipLabel,
     this.onNext,
     this.onPrev,
   });
@@ -744,6 +854,13 @@ class _BottomBar extends StatelessWidget {
   final ValueChanged<double> onRate;
   final VoidCallback onTracks;
   final bool tracksOpen;
+
+  /// Opens the 本剧片头片尾 panel, and the label it wears — `片头 90s` when one
+  /// is in force for this work, `片头 关` when nothing is being skipped, so the
+  /// bar states the current value instead of hiding it behind a menu.
+  final VoidCallback onSkip;
+  final bool skipOpen;
+  final String skipLabel;
   final VoidCallback? onNext;
   final VoidCallback? onPrev;
 
@@ -843,7 +960,19 @@ class _BottomBar extends StatelessWidget {
                         ),
                       ),
                     const Spacer(),
-                    _TracksButton(open: tracksOpen, onTap: onTracks),
+                    _PanelButton(
+                      icon: Icons.content_cut,
+                      label: skipLabel,
+                      open: skipOpen,
+                      onTap: onSkip,
+                    ),
+                    const SizedBox(width: 8),
+                    _PanelButton(
+                      icon: Icons.tune,
+                      label: '轨道',
+                      open: tracksOpen,
+                      onTap: onTracks,
+                    ),
                     const SizedBox(width: 12),
                     _RateButton(rate: rate, onRate: onRate),
                     const SizedBox(width: 16),
@@ -904,9 +1033,18 @@ class _RoundButtonState extends State<_RoundButton> {
   }
 }
 
-class _TracksButton extends StatelessWidget {
-  const _TracksButton({required this.open, required this.onTap});
+/// A pill in the bottom bar that opens a pop-up panel: an icon plus a short
+/// label, filled purple while its panel is open. Used for 片头 and 轨道.
+class _PanelButton extends StatelessWidget {
+  const _PanelButton({
+    required this.icon,
+    required this.label,
+    required this.open,
+    required this.onTap,
+  });
 
+  final IconData icon;
+  final String label;
   final bool open;
   final VoidCallback onTap;
 
@@ -927,13 +1065,13 @@ class _TracksButton extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                Icons.tune,
+                icon,
                 size: 15,
                 color: open ? LcbColors.primary : Colors.white,
               ),
               const SizedBox(width: 5),
               Text(
-                '轨道',
+                label,
                 style: TextStyle(
                   fontSize: 12,
                   color: open ? LcbColors.primary : Colors.white,

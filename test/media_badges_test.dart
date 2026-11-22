@@ -98,7 +98,7 @@ void main() {
               item: item,
               settings: AppSettings(
                 mediaBadgesEnabled: true,
-                badgeSpecs: const {'uhd': false, 'hevc': false},
+                badgeSpecs: {'uhd': false, 'hevc': false},
               ),
             ),
           ),

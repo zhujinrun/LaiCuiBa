@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:lai_cui_ba/models/models.dart';
 import 'package:lai_cui_ba/services/playback_clock.dart';
+import 'package:lai_cui_ba/services/skip_rule.dart';
 import 'package:lai_cui_ba/services/store.dart';
 import 'package:lai_cui_ba/services/track_choice.dart';
 
@@ -1066,6 +1067,88 @@ void main() {
         sites.firstWhere((site) => site.key == 'nodejs_muou').enabled,
         isTrue,
       );
+    });
+  });
+
+  group('AppStore — 本剧片头片尾', () {
+    Future<AppStore> fresh() async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      await store.updateSettings(
+        store.settings.copyWith(introSkipMs: 90000, outroSkipMs: 60000),
+      );
+      return store;
+    }
+
+    test('没单独设过的剧用全局那一组', () async {
+      final store = await fresh();
+      final rule = store.skipRuleFor('三体');
+      expect(rule.intro, const Duration(seconds: 90));
+      expect(rule.outro, const Duration(seconds: 60));
+      expect(store.skipOverrideCount, 0);
+    });
+
+    test('只改片头的那部剧，片尾还是全局的', () async {
+      final store = await fresh();
+      await store.setSkipOverride('三体', const SkipOverride(introMs: 15000));
+
+      expect(store.skipRuleFor('三体').intro, const Duration(seconds: 15));
+      expect(store.skipRuleFor('三体').outro, const Duration(seconds: 60));
+      // 别的剧不受影响。
+      expect(store.skipRuleFor('狂飙').intro, const Duration(seconds: 90));
+      expect(store.skipOverrideCount, 1);
+    });
+
+    test('单独设置能跨重启留住', () async {
+      final store = await fresh();
+      await store.setSkipOverride('三体', const SkipOverride(introMs: 15000));
+
+      final reloaded = await AppStore.load();
+      expect(reloaded.skipOverrideFor('三体').introMs, 15000);
+      expect(reloaded.skipRuleFor('三体').intro, const Duration(seconds: 15));
+    });
+
+    test('明确设 0 能让一部剧不跳，而不是回到全局', () async {
+      final store = await fresh();
+      await store.setSkipOverride('三体', const SkipOverride(introMs: 0));
+      expect(store.skipRuleFor('三体').intro, Duration.zero);
+      expect(store.skipRuleFor('三体').outro, const Duration(seconds: 60));
+    });
+
+    test('总开关关掉时本剧设置也不能绕过', () async {
+      final store = await fresh();
+      await store.setSkipOverride('三体', const SkipOverride(introMs: 15000));
+      await store.updateSettings(
+        store.settings.copyWith(skipIntroOutro: false),
+      );
+
+      expect(store.skipRuleFor('三体'), SkipRule.none);
+      // 关掉不等于删掉：再打开还是原来那组。
+      expect(store.skipOverrideCount, 1);
+      await store.updateSettings(store.settings.copyWith(skipIntroOutro: true));
+      expect(store.skipRuleFor('三体').intro, const Duration(seconds: 15));
+    });
+
+    test('清除本剧设置会整条删掉，不留空壳', () async {
+      final store = await fresh();
+      await store.setSkipOverride('三体', const SkipOverride(introMs: 15000));
+      await store.setSkipOverride('狂飙', const SkipOverride(outroMs: 30000));
+      expect(store.skipOverrideCount, 2);
+
+      await store.setSkipOverride('三体', SkipOverride.none);
+      expect(store.skipOverrideCount, 1);
+      expect(store.skipRuleFor('三体').intro, const Duration(seconds: 90));
+
+      await store.clearSkipOverrides();
+      expect(store.skipOverrideCount, 0);
+      expect(store.skipRuleFor('狂飙').outro, const Duration(seconds: 60));
+    });
+
+    test('作品名前后的空格不算另一部剧', () async {
+      final store = await fresh();
+      await store.setSkipOverride(' 三体 ', const SkipOverride(introMs: 15000));
+      expect(store.skipOverrideFor('三体').introMs, 15000);
+      expect(store.skipOverrideCount, 1);
     });
   });
 }

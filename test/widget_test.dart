@@ -12,6 +12,7 @@ import 'package:lai_cui_ba/main.dart';
 import 'package:lai_cui_ba/models/models.dart';
 import 'package:lai_cui_ba/services/backup.dart';
 import 'package:lai_cui_ba/services/demo_data.dart' as demo;
+import 'package:lai_cui_ba/services/skip_rule.dart';
 import 'package:lai_cui_ba/services/source_probe.dart';
 import 'package:lai_cui_ba/services/spider_session.dart';
 import 'package:lai_cui_ba/services/store.dart';
@@ -551,6 +552,43 @@ void main() {
     await tester.pumpAndSettle();
     expect(store.settings.skipIntroOutro, isFalse);
     expect(store.skipRule.isEmpty, isTrue);
+  });
+
+  testWidgets('播放 settings show per-work overrides and the real rate', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+    await store.updateSettings(store.settings.copyWith(playerRate: 1.5));
+    await store.setSkipOverride('三体', const SkipOverride(introMs: 30000));
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('设置').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('播放'));
+    await tester.pumpAndSettle();
+
+    // The row used to be a hardcoded "1.0x" that ignored the player entirely.
+    expect(find.text('1.50x'), findsOneWidget);
+    // And the per-work shelf says how many works carry their own numbers.
+    expect(find.text('1 部'), findsOneWidget);
+    expect(find.text('这些剧不再跟随上面的全局时长'), findsOneWidget);
+
+    await tester.tap(find.text('本剧单独设置'));
+    await tester.pumpAndSettle();
+    expect(find.text('清除本剧设置？'), findsOneWidget);
+    await tester.tap(find.text('清除'));
+    await tester.pumpAndSettle();
+
+    expect(store.skipOverrideCount, 0);
+    expect(find.text('无'), findsOneWidget);
   });
 
   testWidgets('媒体徽章 settings carry real switches and spot', (

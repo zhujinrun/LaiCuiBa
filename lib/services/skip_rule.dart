@@ -26,6 +26,20 @@ class SkipRule {
 
   bool get isEmpty => intro <= Duration.zero && outro <= Duration.zero;
 
+  /// 拿某个作品自己的设置覆盖这一组全局值，逐字段生效。
+  ///
+  /// 覆盖里为 null 的字段表示"这个字段仍跟着全局走"——所以一部只改过片头的
+  /// 剧，片尾用的还是设置页那个值，不会因为改了片头就把片尾清掉。
+  SkipRule mergeOverride(SkipOverride? override) {
+    if (override == null || override.isEmpty) return this;
+    final i = override.introMs;
+    final o = override.outroMs;
+    return SkipRule(
+      intro: i == null ? intro : Duration(milliseconds: i < 0 ? 0 : i),
+      outro: o == null ? outro : Duration(milliseconds: o < 0 ? 0 : o),
+    );
+  }
+
   /// 这个规则对该全片时长是否成立。直播（时长为零）永远不成立。
   bool plausibleFor(Duration total) {
     final ms = total.inMilliseconds;
@@ -55,5 +69,71 @@ class SkipRule {
   }
 
   @override
+  bool operator ==(Object other) =>
+      other is SkipRule && other.intro == intro && other.outro == outro;
+
+  @override
+  int get hashCode => Object.hash(intro, outro);
+
+  @override
   String toString() => 'SkipRule(intro: $intro, outro: $outro)';
+}
+
+/// 某个作品（一部剧 / 一部电影）单独设的片头片尾。
+///
+/// 为什么需要它：每部剧的片头长短不一样。设置页那一组是"没单独设过的作品都用
+/// 这个"，而一部 90 秒片头的动画和一部 15 秒片头的国产剧混在一起时，只能全局
+/// 一个值就一定有一边是错的。这里给每个作品留一组覆盖值。
+///
+/// 字段为 null 表示该字段**没有覆盖**，仍按全局走；两个都为 null 等于没设过，
+/// 存储层会把这条整个删掉，不留空壳。
+class SkipOverride {
+  const SkipOverride({this.introMs, this.outroMs});
+
+  /// 本剧片头毫秒数。null = 跟随全局。
+  final int? introMs;
+
+  /// 本剧片尾毫秒数。null = 跟随全局。
+  final int? outroMs;
+
+  static const SkipOverride none = SkipOverride();
+
+  bool get isEmpty => introMs == null && outroMs == null;
+  bool get isNotEmpty => !isEmpty;
+
+  /// 只改片头，保留片尾那半边的覆盖状态。
+  SkipOverride withIntro(int? ms) => SkipOverride(introMs: ms, outroMs: outroMs);
+
+  /// 只改片尾，保留片头那半边的覆盖状态。
+  SkipOverride withOutro(int? ms) =>
+      SkipOverride(introMs: introMs, outroMs: ms);
+
+  Map<String, int> toJson() => {
+        if (introMs != null) 'intro': introMs!,
+        if (outroMs != null) 'outro': outroMs!,
+      };
+
+  /// 坏值整条丢：非数字、负数都不认，宁可不覆盖也不要按一个乱数去跳。
+  /// 0 是合法值，含义是"这部剧明确没有片头/片尾"，和 null（跟随全局）不同。
+  factory SkipOverride.fromJson(Map<String, int> raw) {
+    int? pick(String key) {
+      final v = raw[key];
+      if (v == null || v < 0) return null;
+      return v;
+    }
+
+    return SkipOverride(introMs: pick('intro'), outroMs: pick('outro'));
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is SkipOverride &&
+      other.introMs == introMs &&
+      other.outroMs == outroMs;
+
+  @override
+  int get hashCode => Object.hash(introMs, outroMs);
+
+  @override
+  String toString() => 'SkipOverride(intro: $introMs, outro: $outroMs)';
 }

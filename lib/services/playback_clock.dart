@@ -36,7 +36,28 @@ class PlaybackClock {
   /// Folded into this clock rather than handled by a second timer on purpose:
   /// the opening resume and the automatic skip-intro want the same instant, and
   /// two independent seekers would race for it. Here they are one decision.
-  final SkipRule skip;
+  ///
+  /// Not final: the viewer can set this work's intro *while* it is playing, and
+  /// that has to take effect now rather than at the next episode. See
+  /// [updateSkip].
+  SkipRule skip;
+
+  /// Adopts a new rule mid-session.
+  ///
+  /// Only the head is re-decided, and only when the viewer has not already
+  /// passed the new intro: setting "90 秒" while sitting at 0:05 jumps there,
+  /// while setting it at 10:00 does nothing. The opening resume is deliberately
+  /// *not* replayed — that would yank a viewer who is 20 minutes in back to
+  /// where they stopped, which is exactly the kind of jump this class exists to
+  /// prevent.
+  void updateSkip(SkipRule next) {
+    skip = next;
+    // The tail is a point in time, not a one-shot: a newly set outro must get a
+    // fresh chance to fire on the current timeline.
+    _outroFired = false;
+    final head = next.introFor(_duration);
+    if (head != null && _position + landingSlack < head) requestSeek(head);
+  }
 
   /// How much the duration may change before the timeline counts as a different
   /// one. 20% per the playback spec: an episode that suddenly claims to be

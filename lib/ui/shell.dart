@@ -360,7 +360,12 @@ class _ShellState extends State<Shell> {
             episodes: player.episodes,
             episodeIndex: player.episodeIndex,
             resume: player.resume,
-            skip: _store.skipRule,
+            // 全局值 + 本剧覆盖分两份交进去：播放页自己合并，面板才能说清
+            // 「这 90 秒是你给本剧设的，还是设置页那个默认值」。
+            skipGlobal: _store.skipRule,
+            skipOverride: _store.skipOverrideFor(player.title),
+            skipEnabled: _store.settings.skipIntroOutro,
+            onSkip: (o) => _store.setSkipOverride(player.title, o),
             awake: _awake,
             lines: player.lines,
             lineIndex: player.lineIndex,

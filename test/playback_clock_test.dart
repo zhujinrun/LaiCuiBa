@@ -326,4 +326,65 @@ void main() {
       expect(timelinesAgree(0, 2700), isTrue); // nothing to compare
     });
   });
+
+  group('PlaybackClock — 播放中改跳过规则', () {
+    test('坐在片头里时，新设的片头立刻生效', () {
+      final clock = PlaybackClock();
+      clock.onDuration(film);
+      clock.onPosition(const Duration(seconds: 5));
+      expect(clock.pendingSeek(), isNull); // 没有规则，不动
+
+      clock.updateSkip(const SkipRule(intro: Duration(seconds: 90)));
+      expect(clock.pendingSeek(), const Duration(seconds: 90));
+      expect(clock.pendingSeek(), isNull, reason: '只跳一次');
+    });
+
+    test('已经过了片头就不再往回跳', () {
+      final clock = PlaybackClock();
+      clock.onDuration(film);
+      clock.onPosition(const Duration(minutes: 10));
+      clock.pendingSeek();
+
+      clock.updateSkip(const SkipRule(intro: Duration(seconds: 90)));
+      expect(clock.pendingSeek(), isNull);
+    });
+
+    test('改规则不会重放续播点', () {
+      final clock = PlaybackClock(
+        resume: const ResumePoint(positionMs: 1200000, totalMs: 2700000),
+      );
+      clock.onDuration(film);
+      expect(clock.pendingSeek(), const Duration(minutes: 20));
+      clock.onPosition(const Duration(minutes: 20));
+
+      // 20 分钟处给这部剧设个 90 秒片头：既不该跳片头（早过了），也不该
+      // 重新跳回 20 分钟（本来就在那儿，且续播只该发生一次）。
+      clock.updateSkip(const SkipRule(intro: Duration(seconds: 90)));
+      expect(clock.pendingSeek(), isNull);
+    });
+
+    test('时长还不知道时不排队任何 seek', () {
+      final clock = PlaybackClock();
+      clock.updateSkip(const SkipRule(intro: Duration(seconds: 90)));
+      expect(clock.pendingSeek(), isNull);
+
+      // 时长到了之后，开播那一次决策仍按新规则算。
+      clock.onPosition(const Duration(seconds: 2));
+      clock.onDuration(film);
+      expect(clock.pendingSeek(), const Duration(seconds: 90));
+    });
+
+    test('新设的片尾拿到一次新的触发机会', () {
+      final clock = PlaybackClock(
+        skip: const SkipRule(outro: Duration(seconds: 30)),
+      );
+      clock.onDuration(film);
+      clock.onPosition(film - const Duration(seconds: 20));
+      expect(clock.takeOutro(), isTrue);
+      expect(clock.takeOutro(), isFalse, reason: '同一条时间轴只报一次');
+
+      clock.updateSkip(const SkipRule(outro: Duration(minutes: 2)));
+      expect(clock.takeOutro(), isTrue, reason: '新的片尾线在当前位置之前');
+    });
+  });
 }

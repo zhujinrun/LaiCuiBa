@@ -383,10 +383,93 @@ class _SettingsPageState extends State<SettingsPage> {
     _toast(seconds == 0 ? '已清除$what时长' : '$what已设为 $seconds 秒');
   }
 
+  /// Drops every per-work intro/outro override, so all works fall back to the
+  /// global durations above. Confirmed first: a viewer who tuned five shows
+  /// should not lose that to one mis-tap.
+  Future<void> _clearSkipOverrides(AppStore store) async {
+    final count = store.skipOverrideCount;
+    if (count == 0) {
+      _toast('还没有哪部剧单独设过片头片尾');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: const Color(0x78000000),
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          '清除本剧设置？',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          '共 $count 部剧的单独时长，清除后全部回到上面的全局值。',
+          style: const TextStyle(fontSize: 13.5, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('清除', style: TextStyle(color: LcbColors.sysRed)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await store.clearSkipOverrides();
+    if (!mounted) return;
+    _toast('已清除 $count 部剧的单独设置');
+  }
+
+  /// 倍速写的是和播放页同一个字段，所以这里读到的就是上次退出时的速度，
+  /// 不会出现"设置页说 1.0x、播起来是 1.5x"。
+  String _rateLabel(double rate) => '${rate.toStringAsFixed(2)}x';
+
+  Future<void> _editRate(AppStore store) async {
+    const rates = <double>[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+    final picked = await showDialog<double>(
+      context: context,
+      barrierColor: const Color(0x78000000),
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          '默认倍速',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final r in rates)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: Text(_rateLabel(r)),
+                trailing: (store.settings.playerRate - r).abs() < 0.001
+                    ? const Icon(
+                        Icons.check,
+                        color: LcbColors.primary,
+                        size: 18,
+                      )
+                    : null,
+                onTap: () => Navigator.of(ctx).pop(r),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    await store.updateSettings(store.settings.copyWith(playerRate: picked));
+    if (!mounted) return;
+    _toast('默认倍速已设为 ${_rateLabel(picked)}');
+  }
+
   /// Empties the watch history after a confirmation, so the row's count, the
   /// history page and the home rail all drop to zero together.
-  Future<void> _clearHistory(AppStore store) async {
-    final count = store.history.length;
+  Future<void> _clearHistory(AppStore store) async {    final count = store.history.length;
     if (count == 0) {
       _toast('观看历史已经是空的');
       return;
@@ -670,12 +753,24 @@ class _SettingsPageState extends State<SettingsPage> {
               onTap: () => _editSkip(store, intro: false),
             ),
             _Row(
+              icon: CupertinoIcons.collections,
+              color: LcbColors.sysOrange,
+              title: '本剧单独设置',
+              subtitle: store.skipOverrideCount == 0
+                  ? '播放时点底栏「片头」可给单部剧另设一组'
+                  : '这些剧不再跟随上面的全局时长',
+              value: store.skipOverrideCount == 0
+                  ? '无'
+                  : '${store.skipOverrideCount} 部',
+              onTap: () => _clearSkipOverrides(store),
+            ),
+            _Row(
               icon: CupertinoIcons.speedometer,
               color: LcbColors.sysPurple,
               title: '默认倍速',
-              subtitle: '开始播放时的速度',
-              value: '1.0x',
-              onTap: () {},
+              subtitle: '播放页改过的倍速也会记在这里',
+              value: _rateLabel(store.settings.playerRate),
+              onTap: () => _editRate(store),
             ),
             _Row(
               icon: CupertinoIcons.captions_bubble,
