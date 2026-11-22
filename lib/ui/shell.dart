@@ -257,6 +257,7 @@ class _ShellState extends State<Shell> {
         lineIndex: lineIndex,
         lines: lines,
         trackKey: '${item.id}|$lineName',
+        subtitleKey: '${item.id}|ep${episodeIndex ?? 0}',
         resume: resume,
       );
     });
@@ -378,6 +379,14 @@ class _ShellState extends State<Shell> {
             initialRate: _store.settings.playerRate,
             subtitlePref: SubtitlePref.parse(_store.settings.subtitlePref),
             subtitleSize: _store.settings.subtitleSize,
+            secondarySubtitle: SecondarySubtitle.parse(
+              _store.settings.secondarySubtitle,
+            ),
+            initialSubtitleFile: _store.externalSubtitleFor(
+              player.subtitleKey,
+            ),
+            onSubtitleFile: (path) =>
+                _store.saveExternalSubtitle(player.subtitleKey, path),
             danmakuSources: _store.danmakuSources,
             danmakuEnabled: _store.settings.danmakuEnabled,
             danmakuBlockTop: _store.settings.danmakuBlockTop,
@@ -470,6 +479,7 @@ class _PlayerSession {
     required this.url,
     required this.episodes,
     required this.trackKey,
+    required this.subtitleKey,
     this.lines = const [],
     this.subtitle,
     this.headers = const {},
@@ -497,6 +507,10 @@ class _PlayerSession {
 
   /// `'<item id>|<line name>'` — the key track picks are remembered under.
   final String trackKey;
+
+  /// `'<item id>|ep<集>'` — 外挂字幕挂在「这一集」上，不跟线路走：换线路还是
+  /// 同一集，字幕文件当然还该在。
+  final String subtitleKey;
 
   /// Where to seek on open, for 续播, and the total it was recorded against.
   final ResumePoint? resume;

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -521,6 +522,45 @@ class AppStore extends ChangeNotifier {
 
   /// 有多少条线路记过轨道选择，设置页拿它显示条数。
   int get trackPrefCount => _settings.trackPrefs.length;
+
+  /// 这一集挂过的外挂字幕（本地文件路径）。文件被删掉时返回 null——记着的
+  /// 路径还在，但播放页不该拿一个不存在的文件去开。
+  String? externalSubtitleFor(String key) {
+    final path = _settings.externalSubtitles[key];
+    if (path == null || path.isEmpty) return null;
+    return File(path).existsSync() ? path : null;
+  }
+
+  /// 把字幕记在这一集上。传 null 表示「这一集不要外挂字幕了」。
+  Future<void> saveExternalSubtitle(String key, String? path) async {
+    if (key.isEmpty) return;
+    final current = _settings.externalSubtitles;
+    if (path == null || path.isEmpty) {
+      if (!current.containsKey(key)) return;
+      final next = Map<String, String>.from(current)..remove(key);
+      await updateSettings(_settings.copyWith(externalSubtitles: next));
+      return;
+    }
+    if (current[key] == path) return;
+    final next = Map<String, String>.from(current)..[key] = path;
+    await updateSettings(_settings.copyWith(externalSubtitles: next));
+  }
+
+  /// 有多少集的外挂字幕文件还在。文件被删掉的那些不算——设置页说的是
+  /// 「下次打开会自己挂上」，已经不存在的文件不配这句话。
+  int get externalSubtitleCount {
+    var live = 0;
+    for (final path in _settings.externalSubtitles.values) {
+      if (path.isNotEmpty && File(path).existsSync()) live++;
+    }
+    return live;
+  }
+
+  /// 把所有记下来的外挂字幕清掉（文件本身不动）。
+  Future<void> clearExternalSubtitles() async {
+    if (_settings.externalSubtitles.isEmpty) return;
+    await updateSettings(_settings.copyWith(externalSubtitles: const {}));
+  }
 
   /// 把所有记住的轨道选择清掉，全部回到各线路的默认轨道。
   Future<void> clearTrackPrefs() async {

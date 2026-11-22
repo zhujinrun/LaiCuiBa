@@ -856,6 +856,16 @@ class _SettingsPageState extends State<SettingsPage> {
                   '${store.settings.subtitleSize}',
               onTap: () => _pickSubtitleSize(store),
             ),
+            _Row(
+              icon: CupertinoIcons.rectangle_on_rectangle_angled,
+              color: LcbColors.sysTeal,
+              title: '次字幕',
+              subtitle: '显示在画面上方，和主字幕组成双语对照',
+              value: SecondarySubtitle.parse(
+                store.settings.secondarySubtitle,
+              ).label,
+              onTap: () => _pickSecondarySubtitle(store),
+            ),
           ],
         ),
         const SizedBox(height: 23),
@@ -872,13 +882,25 @@ class _SettingsPageState extends State<SettingsPage> {
               value: store.trackPrefCount == 0 ? '无' : '${store.trackPrefCount} 条',
               onTap: () => _clearTrackPrefs(store),
             ),
+            _Row(
+              icon: CupertinoIcons.doc_text,
+              color: LcbColors.sysGreen,
+              title: '记着的外挂字幕',
+              subtitle: store.externalSubtitleCount == 0
+                  ? '在播放页的轨道面板里选过本地字幕的集会记在这里'
+                  : '这些集下次打开会自己挂上同一个文件',
+              value: store.externalSubtitleCount == 0
+                  ? '无'
+                  : '${store.externalSubtitleCount} 集',
+              onTap: () => _clearExternalSubtitles(store),
+            ),
           ],
         ),
         const SizedBox(height: 23),
         const _Note(
           '「默认字幕」只在一条线路还没有你的选择时生效。在播放页右下角的轨道'
           '面板里点过任何一条（包括「关闭」），那部剧就按你点的来，不会再被这里'
-          '的默认值改回去。',
+          '的默认值改回去。次字幕是另一条轨，挑不到就只显示主字幕。',
         ),
       ];
 
@@ -1028,27 +1050,16 @@ class _SettingsPageState extends State<SettingsPage> {
     _toast(result.isBuiltin ? '已保存弹弹play 的设置' : '已保存「${result.name}」');
   }
 
-  String _subtitlePrefLabel(String raw) {
-    switch (SubtitlePref.parse(raw)) {
-      case SubtitlePref.auto:
-        return '自动';
-      case SubtitlePref.chinese:
-        return '中文优先';
-      case SubtitlePref.english:
-        return '英文优先';
-      case SubtitlePref.off:
-        return '关闭';
-    }
-  }
+  /// 选项上那一行字直接用 [SubtitlePref.label]——它和原版逐字一致，别在这里
+  /// 另起一套叫法，两处一起看会对不上。
+  String _subtitlePrefLabel(String raw) => SubtitlePref.parse(raw).short;
 
   Future<void> _pickSubtitlePref(AppStore store) async {
     final picked = await _choose<SubtitlePref>(
       '默认字幕',
-      const [
-        (value: SubtitlePref.auto, label: '自动', hint: '不干预，跟着文件和播放器的默认走'),
-        (value: SubtitlePref.chinese, label: '中文优先', hint: '有中文字幕就用中文（含粤语）'),
-        (value: SubtitlePref.english, label: '英文优先', hint: '有英文字幕就用英文'),
-        (value: SubtitlePref.off, label: '关闭', hint: '打开时不要字幕，要看再在播放页打开'),
+      [
+        for (final p in SubtitlePref.values)
+          (value: p, label: p.label, hint: p.hint),
       ],
       isCurrent: (v) => v == SubtitlePref.parse(store.settings.subtitlePref),
     );
@@ -1056,6 +1067,25 @@ class _SettingsPageState extends State<SettingsPage> {
     await store.updateSettings(store.settings.copyWith(subtitlePref: picked.slug));
     if (!mounted) return;
     _toast('默认字幕：${_subtitlePrefLabel(picked.slug)}');
+  }
+
+  /// 次字幕：和主字幕组成双语对照，显示在画面上方。
+  Future<void> _pickSecondarySubtitle(AppStore store) async {
+    final picked = await _choose<SecondarySubtitle>(
+      '次字幕',
+      [
+        for (final s in SecondarySubtitle.values)
+          (value: s, label: s.label, hint: s == SecondarySubtitle.off ? null : '显示在画面上方'),
+      ],
+      isCurrent: (v) =>
+          v == SecondarySubtitle.parse(store.settings.secondarySubtitle),
+    );
+    if (picked == null) return;
+    await store.updateSettings(
+      store.settings.copyWith(secondarySubtitle: picked.slug),
+    );
+    if (!mounted) return;
+    _toast('次字幕：${picked.label}');
   }
 
   Future<void> _pickSubtitleSize(AppStore store) async {
@@ -1071,6 +1101,47 @@ class _SettingsPageState extends State<SettingsPage> {
     await store.updateSettings(store.settings.copyWith(subtitleSize: picked));
     if (!mounted) return;
     _toast('字幕字号：${LcbSubtitleStyle.labelOf(picked)}（$picked）');
+  }
+
+  /// 清掉「这一集挂过哪个字幕文件」的记忆。文件本身不删——那是用户的文件。
+  Future<void> _clearExternalSubtitles(AppStore store) async {
+    final has = store.settings.externalSubtitles;
+    if (has.isEmpty) {
+      _toast('还没有哪一集记过外挂字幕');
+      return;
+    }
+    final live = store.externalSubtitleCount;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: const Color(0x78000000),
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          '清除外挂字幕记录？',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          '共 ${has.length} 集（其中 $live 集的文件还在）。清除后这些集下次打开'
+          '不会再自动挂字幕，磁盘上的字幕文件不会被删除。',
+          style: const TextStyle(fontSize: 13.5, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await store.clearExternalSubtitles();
+    if (!mounted) return;
+    _toast('已清除外挂字幕记录');
   }
 
   /// 清掉所有「这条线路上次选了哪条轨」的记忆，各线路回到播放器默认。
@@ -1117,7 +1188,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// 单选弹窗：一行主文字 + 一行说明，当前值打勾。
   Future<T?> _choose<T>(
     String title,
-    List<({T value, String label, String hint})> options, {
+    List<({T value, String label, String? hint})> options, {
     required bool Function(T value) isCurrent,
   }) {
     return showDialog<T>(
@@ -1138,13 +1209,15 @@ class _SettingsPageState extends State<SettingsPage> {
                 contentPadding: EdgeInsets.zero,
                 dense: true,
                 title: Text(o.label),
-                subtitle: Text(
-                  o.hint,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: LcbColors.settingsQuiet,
-                  ),
-                ),
+                subtitle: o.hint == null || o.hint!.isEmpty
+                    ? null
+                    : Text(
+                        o.hint!,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: LcbColors.settingsQuiet,
+                        ),
+                      ),
                 trailing: isCurrent(o.value)
                     ? const Icon(
                         Icons.check,

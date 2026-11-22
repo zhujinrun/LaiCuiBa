@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -735,6 +736,48 @@ void main() {
       // The clear is persisted, not just an in-memory edit.
       final reloaded = await AppStore.load();
       expect(reloaded.trackPrefCount, 0);
+    });
+
+    test('外挂字幕记在这集上，文件还在才交回去', () async {
+      SharedPreferences.setMockInitialValues({});
+      final dir = Directory.systemTemp.createTempSync('lcb-store-subs');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}${Platform.pathSeparator}01.ass')
+        ..writeAsStringSync('x');
+
+      final store = await AppStore.load();
+      expect(store.externalSubtitleFor('777|ep0'), isNull);
+
+      await store.saveExternalSubtitle('777|ep0', file.path);
+      expect(store.externalSubtitleFor('777|ep0'), file.path);
+      expect(store.externalSubtitleCount, 1);
+
+      // 另一集不受影响。
+      expect(store.externalSubtitleFor('777|ep1'), isNull);
+
+      // 存进去了，重新加载还在。
+      final reloaded = await AppStore.load();
+      expect(reloaded.externalSubtitleFor('777|ep0'), file.path);
+
+      // 文件被删掉：记忆还在，但不再交给播放页，也不计入条数。
+      file.deleteSync();
+      expect(store.externalSubtitleFor('777|ep0'), isNull);
+      expect(store.externalSubtitleCount, 0);
+      expect(store.settings.externalSubtitles.containsKey('777|ep0'), isTrue);
+    });
+
+    test('取消外挂字幕就把那一集的记忆删掉，不动别的集', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      await store.saveExternalSubtitle('a|ep0', '/no/such/a.srt');
+      await store.saveExternalSubtitle('b|ep0', '/no/such/b.srt');
+      await store.saveExternalSubtitle('a|ep0', null);
+
+      expect(store.settings.externalSubtitles.containsKey('a|ep0'), isFalse);
+      expect(store.settings.externalSubtitles['b|ep0'], '/no/such/b.srt');
+      // 空键不写。
+      await store.saveExternalSubtitle('', '/x.srt');
+      expect(store.settings.externalSubtitles.length, 1);
     });
 
     test('resume survives a reload with its total intact', () async {

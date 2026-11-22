@@ -61,6 +61,109 @@ void main() {
     });
   });
 
+  group('原版档位（简繁 / 中英 / 多语 / 日韩）', () {
+    const simplified = TrackOption(id: '2', title: '简体中文');
+    const traditional = TrackOption(id: '3', title: '繁體中文');
+    const bilingual = TrackOption(id: '4', title: '中英字幕');
+    const multi = TrackOption(id: '5', title: '多语字幕');
+    const japanese = TrackOption(id: '6', language: 'jpn');
+    const korean = TrackOption(id: '7', language: 'kor');
+
+    test('简体优先：繁体在前也先挑简体', () {
+      // 「任意中文字幕，简体优先」——两条都看得懂时，简体更省力。
+      expect(
+        SubtitlePref.chinese.pick(const [traditional, simplified]),
+        '2',
+      );
+    });
+
+    test('没有简体时退而用其他中文字幕', () {
+      expect(SubtitlePref.chinese.pick(const [english, traditional]), '3');
+      // 语言码是 zh 但没写简繁时，也是「其他中文字幕」。
+      expect(SubtitlePref.chinese.pick(const [TrackOption(id: '8', language: 'chi')]), '8');
+    });
+
+    test('中英字幕优先挑双语轨，没有时退到中文字幕', () {
+      expect(SubtitlePref.bilingual.pick(const [chinese, bilingual]), '4');
+      expect(SubtitlePref.bilingual.pick(const [english, chinese]), '2');
+      expect(SubtitlePref.bilingual.pick(const [english]), isNull);
+    });
+
+    test('多语字幕只认真的写了多语的轨', () {
+      expect(SubtitlePref.multi.pick(const [chinese, multi]), '5');
+      // 宁可什么都不选，也不把「中文字幕」当成「多语」。
+      expect(SubtitlePref.multi.pick(const [chinese]), isNull);
+    });
+
+    test('日文 / 韩文按语言码或标题挑', () {
+      expect(SubtitlePref.japanese.pick(const [english, japanese]), '6');
+      expect(SubtitlePref.korean.pick(const [english, korean]), '7');
+      expect(
+        SubtitlePref.japanese.pick(const [TrackOption(id: '9', title: '日语')]),
+        '9',
+      );
+    });
+
+    test('每个档位都有原版那一行字，界面上不用另起名字', () {
+      expect(SubtitlePref.auto.label, '不自动切换，用片源默认的字幕');
+      expect(SubtitlePref.chinese.label, '任意中文字幕，简体优先');
+      expect(SubtitlePref.bilingual.label, '中英字幕');
+      expect(SubtitlePref.multi.label, '多语字幕');
+      expect(SubtitlePref.english.label, '英文字幕');
+      expect(SubtitlePref.japanese.label, '日文字幕');
+      expect(SubtitlePref.korean.label, '韩文字幕');
+      expect(SubtitlePref.off.label, '关闭字幕');
+    });
+  });
+
+  group('SecondarySubtitle（次字幕）', () {
+    const chinese = TrackOption(id: '2', language: 'zh');
+    const english = TrackOption(id: '3', language: 'eng');
+
+    test('关掉时一条都不选', () {
+      expect(SecondarySubtitle.off.pick(const [chinese, english]), isNull);
+    });
+
+    test('挑的语言在，就用它', () {
+      expect(
+        SecondarySubtitle.english.pick(const [chinese, english]),
+        '3',
+      );
+    });
+
+    test('不会把主字幕那条又选成次字幕', () {
+      // 只有一条中文轨，主字幕已经用了它：次字幕只能是「没有」。
+      expect(
+        SecondarySubtitle.chinese.pick(const [chinese], primaryId: '2'),
+        isNull,
+      );
+      // 有两条中文轨时挑另一条。
+      const chinese2 = TrackOption(id: '4', title: '简体');
+      expect(
+        SecondarySubtitle.chinese.pick(
+          const [chinese, chinese2],
+          primaryId: '2',
+        ),
+        '4',
+      );
+    });
+
+    test('挑不到就不出声，绝不拿错的语言凑数', () {
+      expect(
+        SecondarySubtitle.japanese.pick(const [chinese, english]),
+        isNull,
+      );
+    });
+
+    test('存的是短码，认不出退回关闭', () {
+      for (final s in SecondarySubtitle.values) {
+        expect(SecondarySubtitle.parse(s.slug), s);
+      }
+      expect(SecondarySubtitle.parse(null), SecondarySubtitle.off);
+      expect(SecondarySubtitle.parse('de'), SecondarySubtitle.off);
+    });
+  });
+
   group('SubtitlePref.parse', () {
     test('the stored short code round-trips', () {
       for (final p in SubtitlePref.values) {
@@ -101,6 +204,26 @@ void main() {
       expect(back.subtitlePref, 'auto');
     });
 
+    test('secondary subtitle and the per-episode subtitle files round-trip', () {
+      const s = AppSettings(
+        secondarySubtitle: 'ja',
+        externalSubtitles: {'123|ep0': 'D:/subs/01.ass'},
+      );
+      final back = AppSettings.fromJson(s.toJson());
+      expect(back.secondarySubtitle, 'ja');
+      expect(back.externalSubtitles, {'123|ep0': 'D:/subs/01.ass'});
+      expect(back.extra, isEmpty);
+    });
+
+    test('a bad secondary value and a broken subtitle table fall back', () {
+      final back = AppSettings.fromJson(const {
+        'secondarySubtitle': 'tlh',
+        'externalSubtitles': {'a': 1, 2: 'b', 'c': ''},
+      });
+      expect(back.secondarySubtitle, 'off');
+      expect(back.externalSubtitles, isEmpty);
+    });
+
     test('a silly font size is clamped into a readable range', () {
       expect(AppSettings.fromJson(const {'subtitleSize': 4}).subtitleSize, 16);
       expect(AppSettings.fromJson(const {'subtitleSize': 400}).subtitleSize, 96);
@@ -135,6 +258,16 @@ void main() {
     test('out-of-range values are clamped, not passed to layout', () {
       expect(LcbSubtitleStyle.of(0).style.fontSize, 16);
       expect(LcbSubtitleStyle.of(999).style.fontSize, 96);
+    });
+
+    test('次字幕比主字幕小一号，带描边但不上底块', () {
+      final main = LcbSubtitleStyle.of(42).style;
+      final second = LcbSubtitleStyle.secondaryOf(42);
+      expect(second.fontSize! < main.fontSize!, isTrue);
+      expect(second.backgroundColor, isNull);
+      expect(second.shadows, isNotEmpty);
+      // 极值也夹在可读区间里。
+      expect(LcbSubtitleStyle.secondaryOf(4).fontSize, 14);
     });
   });
 }

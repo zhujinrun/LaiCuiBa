@@ -18,6 +18,9 @@ class TrackPanel extends StatelessWidget {
     this.onVideo,
     this.onAudio,
     this.onSubtitle,
+    this.externalSubtitleLabel,
+    this.onPickSubtitleFile,
+    this.onClearSubtitleFile,
   });
 
   final TrackChoices choices;
@@ -32,13 +35,27 @@ class TrackPanel extends StatelessWidget {
   final ValueChanged<TrackOption>? onAudio;
   final ValueChanged<TrackOption>? onSubtitle;
 
+  /// 这一集挂着的外挂字幕文件名；null 表示没挂。
+  final String? externalSubtitleLabel;
+
+  /// 打开本地字幕文件选择器。桌面才有，手机上这里是 null。
+  final VoidCallback? onPickSubtitleFile;
+
+  /// 取消外挂字幕；没挂时是 null。
+  final VoidCallback? onClearSubtitleFile;
+
   bool get _hasLines => lines.length > 1 && onLine != null;
+
+  /// 字幕区永远有意义：即使这条流一条字幕都没有，也还能自己选一个本地文件，
+  /// 而那正是一个被内嵌字幕坑过的人最想找的入口。
+  bool get _hasSubtitles =>
+      choices.hasSubtitleChoice || onPickSubtitleFile != null;
 
   bool get _hasAnything =>
       _hasLines ||
       choices.hasVideoChoice ||
       choices.hasAudioChoice ||
-      choices.hasSubtitleChoice;
+      _hasSubtitles;
 
   @override
   Widget build(BuildContext context) {
@@ -102,21 +119,39 @@ class TrackPanel extends StatelessWidget {
                         onTap: () => onAudio?.call(t),
                       ),
                   ],
-                  if (choices.hasSubtitleChoice) ...[
+                  if (_hasSubtitles) ...[
                     const _GroupHeader('字幕'),
-                    _Row(
-                      label: '关闭',
-                      selected: choices.subtitleOff,
-                      onTap: () => onSubtitle?.call(
-                        const TrackOption(id: 'no'),
-                      ),
-                    ),
-                    for (final t in choices.subtitle)
+                    if (choices.hasSubtitleChoice) ...[
                       _Row(
-                        label: t.label,
-                        detail: t.detail,
-                        selected: t.id == choices.subtitleId,
-                        onTap: () => onSubtitle?.call(t),
+                        label: '关闭',
+                        selected: choices.subtitleOff &&
+                            externalSubtitleLabel == null,
+                        onTap: () => onSubtitle?.call(
+                          const TrackOption(id: 'no'),
+                        ),
+                      ),
+                      for (final t in choices.subtitle)
+                        _Row(
+                          label: t.label,
+                          detail: t.detail,
+                          selected: t.id == choices.subtitleId,
+                          onTap: () => onSubtitle?.call(t),
+                        ),
+                    ],
+                    if (onPickSubtitleFile != null)
+                      _Row(
+                        label: externalSubtitleLabel == null
+                            ? '选择本地字幕文件…'
+                            : '外挂：$externalSubtitleLabel',
+                        selected: externalSubtitleLabel != null,
+                        onTap: onPickSubtitleFile!,
+                      ),
+                    if (externalSubtitleLabel != null &&
+                        onClearSubtitleFile != null)
+                      _Row(
+                        label: '不再使用外挂字幕',
+                        selected: false,
+                        onTap: onClearSubtitleFile!,
                       ),
                   ],
                 ],

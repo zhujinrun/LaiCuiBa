@@ -699,6 +699,8 @@ class AppSettings {
     this.playerRate = 1.0,
     this.subtitlePref = 'auto',
     this.subtitleSize = 32,
+    this.secondarySubtitle = 'off',
+    this.externalSubtitles = const {},
     this.danmakuEnabled = true,
     this.danmakuBlockTop = false,
     this.danmakuBlockBottom = false,
@@ -752,13 +754,24 @@ class AppSettings {
   final int playerVolume;
   final double playerRate;
 
-  /// 默认字幕偏好：`auto` / `zh` / `en` / `off`。语义在
-  /// `services/track_choice.dart` 的 `SubtitlePref`，模型层只存这个短码。
+  /// 默认字幕偏好：`auto` / `zh` / `zh-en` / `multi` / `en` / `ja` / `ko` /
+  /// `off`。语义在 `services/track_choice.dart` 的 `SubtitlePref`，模型层只存
+  /// 这个短码。
   final String subtitlePref;
 
   /// 字幕文字大小（逻辑像素）。media_kit 在桌面上把字幕当 Flutter 文本画，
   /// 所以这是一个真实的排版值，不是 mpv 的属性。
   final int subtitleSize;
+
+  /// 次字幕：`off` / `zh` / `en` / `ja` / `ko`。显示在画面上方，和主字幕组成
+  /// 双语对照；语义在 `SecondarySubtitle`。
+  final String secondarySubtitle;
+
+  /// 这一集挂过的本地字幕文件：`{'<作品id>|ep<集>': 'D:/subs/01.ass'}`。
+  ///
+  /// 原版的说法是「下载的字幕记在这一集上，下次播这一集会自动挂上」，
+  /// 所以这里按集存路径，不按作品。文件被删掉时播放页会当作没记过。
+  final Map<String, String> externalSubtitles;
 
   /// 弹幕总开关。关掉之后播放页不再向弹幕源发请求，画面上也不再叠一层。
   final bool danmakuEnabled;
@@ -823,6 +836,8 @@ class AppSettings {
     double? playerRate,
     String? subtitlePref,
     int? subtitleSize,
+    String? secondarySubtitle,
+    Map<String, String>? externalSubtitles,
     bool? danmakuEnabled,
     bool? danmakuBlockTop,
     bool? danmakuBlockBottom,
@@ -860,6 +875,8 @@ class AppSettings {
       playerRate: playerRate ?? this.playerRate,
       subtitlePref: subtitlePref ?? this.subtitlePref,
       subtitleSize: subtitleSize ?? this.subtitleSize,
+      secondarySubtitle: secondarySubtitle ?? this.secondarySubtitle,
+      externalSubtitles: externalSubtitles ?? this.externalSubtitles,
       danmakuEnabled: danmakuEnabled ?? this.danmakuEnabled,
       danmakuBlockTop: danmakuBlockTop ?? this.danmakuBlockTop,
       danmakuBlockBottom: danmakuBlockBottom ?? this.danmakuBlockBottom,
@@ -901,6 +918,8 @@ class AppSettings {
     'playerRate': playerRate,
     'subtitlePref': subtitlePref,
     'subtitleSize': subtitleSize,
+    'secondarySubtitle': secondarySubtitle,
+    'externalSubtitles': externalSubtitles,
     'danmakuEnabled': danmakuEnabled,
     'danmakuBlockTop': danmakuBlockTop,
     'danmakuBlockBottom': danmakuBlockBottom,
@@ -952,6 +971,10 @@ class AppSettings {
       playerRate: pop('playerRate', 1.0),
       subtitlePref: _readSubtitlePref(extra.remove('subtitlePref')),
       subtitleSize: _readSubtitleSize(extra.remove('subtitleSize')),
+      secondarySubtitle: _readSecondarySubtitle(
+        extra.remove('secondarySubtitle'),
+      ),
+      externalSubtitles: _readStringMap(extra.remove('externalSubtitles')),
       danmakuEnabled: pop('danmakuEnabled', true),
       danmakuBlockTop: pop('danmakuBlockTop', false),
       danmakuBlockBottom: pop('danmakuBlockBottom', false),
@@ -967,10 +990,37 @@ class AppSettings {
 }
 
 /// 字幕偏好的合法短码。认不出的值退回 `auto`，写坏一个偏好不该拖垮设置。
-const _subtitlePrefSlugs = {'auto', 'zh', 'en', 'off'};
+const _subtitlePrefSlugs = {
+  'auto',
+  'zh',
+  'zh-en',
+  'multi',
+  'en',
+  'ja',
+  'ko',
+  'off',
+};
 
 String _readSubtitlePref(Object? raw) =>
     raw is String && _subtitlePrefSlugs.contains(raw) ? raw : 'auto';
+
+const _secondarySubtitleSlugs = {'off', 'zh', 'en', 'ja', 'ko'};
+
+String _readSecondarySubtitle(Object? raw) =>
+    raw is String && _secondarySubtitleSlugs.contains(raw) ? raw : 'off';
+
+/// 只收「键和值都是非空字符串」的条目；一张写坏的表退回空表，而不是让设置
+/// 整体加载失败。
+Map<String, String> _readStringMap(Object? raw) {
+  if (raw is! Map) return const {};
+  final out = <String, String>{};
+  raw.forEach((k, v) {
+    if (k is String && k.isNotEmpty && v is String && v.isNotEmpty) {
+      out[k] = v;
+    }
+  });
+  return out;
+}
 
 /// 字号限制在 16–96 之间：更小的看不清，更大的会盖住半个画面。
 int _readSubtitleSize(Object? raw) {

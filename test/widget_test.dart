@@ -1057,12 +1057,16 @@ void main() {
 
     await tester.tap(find.text('默认字幕'));
     await tester.pumpAndSettle();
-    expect(find.text('有中文字幕就用中文（含粤语）'), findsOneWidget);
-    await tester.tap(find.text('中文优先'));
+    // 选项就是原版那八条，逐字一致。
+    expect(find.text('任意中文字幕，简体优先'), findsOneWidget);
+    expect(find.text('没有简体时退而用其他中文字幕，包括繁体与粤语'), findsOneWidget);
+    expect(find.text('中英字幕'), findsOneWidget);
+    expect(find.text('关闭字幕'), findsOneWidget);
+    await tester.tap(find.text('任意中文字幕，简体优先'));
     await tester.pumpAndSettle();
 
     expect(store.settings.subtitlePref, 'zh');
-    expect(find.text('中文优先'), findsOneWidget);
+    expect(find.text('中文'), findsOneWidget);
 
     await tester.tap(find.text('字号'));
     await tester.pumpAndSettle();
@@ -1073,10 +1077,19 @@ void main() {
     expect(store.settings.subtitleSize, 42);
     expect(find.text('大 42'), findsOneWidget);
 
+    // 次字幕是另一条轨：设置里能选语言，也有「关闭次字幕」这一档。
+    expect(find.text('关闭次字幕'), findsOneWidget);
+    await tester.tap(find.text('次字幕'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('日文字幕'));
+    await tester.pumpAndSettle();
+    expect(store.settings.secondarySubtitle, 'ja');
+    expect(find.text('日文字幕'), findsOneWidget);
+
     // 返回只回上一级（播放），不是一步跳回根列表。
     await tester.tap(find.byIcon(Icons.arrow_back));
     await tester.pumpAndSettle();
-    expect(find.text('中文优先 · 大'), findsOneWidget);
+    expect(find.text('中文 · 大'), findsOneWidget);
     expect(find.text('片头时长'), findsOneWidget);
 
     // 再返回才回到根列表。
@@ -1119,7 +1132,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(store.trackPrefCount, 0);
-    expect(find.text('无'), findsOneWidget);
+    // 轨道选择与外挂字幕都回到「无」。
+    expect(find.text('无'), findsNWidgets(2));
   });
 
 

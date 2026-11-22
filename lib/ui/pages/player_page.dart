@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
@@ -10,6 +11,7 @@ import '../../services/awake.dart';
 import '../../services/danmaku/danmaku_api.dart';
 import '../../services/danmaku/source_danmaku.dart';
 import '../../services/playback_clock.dart';
+import '../../services/player/subtitle_file.dart';
 import '../../services/skip_rule.dart';
 import '../../services/track_choice.dart';
 import '../../services/track_map.dart';
@@ -52,6 +54,8 @@ class PlayerPage extends StatefulWidget {
     this.initialRate = 1.0,
     this.subtitlePref = SubtitlePref.auto,
     this.subtitleSize = LcbSubtitleStyle.standard,
+    this.secondarySubtitle = SecondarySubtitle.off,
+    this.initialSubtitleFile,
     this.danmakuSources = const [],
     this.danmakuEnabled = false,
     this.danmakuBlockTop = false,
@@ -68,6 +72,7 @@ class PlayerPage extends StatefulWidget {
     this.onProgress,
     this.onPrefs,
     this.onOutro,
+    this.onSubtitleFile,
     this.awake,
   });
 
@@ -128,6 +133,13 @@ class PlayerPage extends StatefulWidget {
   /// 所以这个值直接进 `Video` 的 `subtitleViewConfiguration`。
   final int subtitleSize;
 
+  /// 次字幕：显示在画面上方，和主字幕组成双语对照。关掉就一条都不画。
+  final SecondarySubtitle secondarySubtitle;
+
+  /// 这一集记着的本地字幕文件。null 表示没挂过；文件被删掉时由这里再核一次，
+  /// 核不过就当作没记过，并把记忆清掉。
+  final String? initialSubtitleFile;
+
   /// 弹幕源（内置源在前）与总开关。开关来自设置页，播放页底栏可以临时改；
   /// 关掉时一个请求都不发。
   final List<DanmakuSource> danmakuSources;
@@ -175,6 +187,10 @@ class PlayerPage extends StatefulWidget {
   /// the stream playing to its natural end.
   final VoidCallback? onOutro;
 
+  /// 挂上 / 取消外挂字幕时通知上层，让它把这件事记在这一集上（原版的说法是
+  /// 「下载的字幕记在这一集上，下次播这一集会自动挂上」）。
+  final ValueChanged<String?>? onSubtitleFile;
+
   /// Screen-sleep guard. The shell passes one shared instance so switching
   /// episodes — which mounts the next player before disposing this one — cannot
   /// end with the lock released. Null falls back to a private one.
@@ -213,6 +229,7 @@ class _PlayerPageState extends State<PlayerPage> {
   StreamSubscription<double>? _rateSub;
   StreamSubscription<Tracks>? _tracksSub;
   StreamSubscription<Track>? _trackSub;
+  StreamSubscription<List<String>>? _subtitleSub;
 
   /// media_kit's track objects, indexed by mpv's track id, plus the options the
   /// panel renders — one mapping serves both, see [MappedTracks].
@@ -227,6 +244,19 @@ class _PlayerPageState extends State<PlayerPage> {
   /// its own default; without this flag the second event would overwrite the
   /// viewer's choice right after they made it.
   bool _restored = false;
+
+  /// 次字幕：mpv 用 `secondary-sid` 选第二条轨，当前这一句从 media_kit 的
+  /// `secondary-sub-text` 报出来，我们照主字幕的字号在画面上方自己画——两条
+  /// 字幕走同一个渲染器，字号设置对它们才是一致的。
+  String _secondaryText = '';
+  String? _secondaryId;
+  bool _secondaryNoticed = false;
+
+  /// 外挂字幕：当前挂着的文件、它的显示名，以及是否已经交给 mpv。
+  String? _externalPath;
+  String? _externalLabel;
+  bool _externalAttached = false;
+  bool _pickingSubtitle = false;
 
   bool _trackPanel = false;
 
@@ -302,6 +332,19 @@ class _PlayerPageState extends State<PlayerPage> {
       if (mounted) setState(() {});
     });
     _tracksSub = _player.stream.tracks.listen(_onTracks);
+    // [0] 是主字幕（Video 自己画），[1] 是 `secondary-sub-text`。次字幕只能由
+    // 我们画：media_kit 只把主字幕交给 `SubtitleViewConfiguration`。
+    _subtitleSub = _player.stream.subtitle.listen((lines) {
+      if (!mounted) return;
+      // mpv 关掉 `secondary-sid` 之后仍会保留最后一行 `secondary-sub-text`，
+      // 所以「关」这件事由这里拦：没有选次字幕轨时，一个字段都不画。
+      final text = _secondaryId == null
+          ? ''
+          : (lines.length > 1 ? lines[1] : '');
+      if (text == _secondaryText) return;
+      setState(() => _secondaryText = text);
+    });
+    _externalPath = widget.initialSubtitleFile;
     _trackSub = _player.stream.track.listen((t) {
       if (!mounted) return;
       // Together with the empty track list, mpv resets the selection to
@@ -320,6 +363,8 @@ class _PlayerPageState extends State<PlayerPage> {
           subtitleId: t.subtitle.id,
         );
       });
+      // 主字幕变了，次字幕要重新核一遍——不能和主字幕用同一条轨。
+      _applySecondary();
     });
 
     // A viewer who starts an episode and walks away should come back to a
@@ -437,6 +482,9 @@ class _PlayerPageState extends State<PlayerPage> {
       _choices = mapped.choicesFor(_player.state.track);
     });
     _restorePicks();
+    // 轨道到齐说明文件已经加载完，这时候 sub-add 才会被 mpv 接受。
+    _attachExternalIfNeeded();
+    _applySecondary();
   }
 
   /// Applies the remembered picks once, and only to tracks that still exist.
@@ -486,6 +534,158 @@ class _PlayerPageState extends State<PlayerPage> {
     if (track == null) return;
     _player.setSubtitleTrack(track);
     if (remember) _remember(_prefs.withSubtitle(id));
+    // 主字幕换了，次字幕可能正好换成了同一条：同一句话画两遍没有意义。
+    _applySecondary();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 次字幕（secondary-sub）
+  // ---------------------------------------------------------------------------
+
+  /// 按设置挑一条次字幕交给 mpv，再把它报出来的文字画在画面上方。
+  ///
+  /// 挑不到就什么都不做——宁可只显示主字幕，也不要拿一条错的语言凑数。
+  void _applySecondary() {
+    final want = widget.secondarySubtitle;
+    if (want == SecondarySubtitle.off) {
+      if (_secondaryText.isNotEmpty) setState(() => _secondaryText = '');
+      if (_secondaryId != null) _setSecondary('no');
+      return;
+    }
+    if (_choices.subtitle.isEmpty) return;
+    final id = want.pick(_choices.subtitle, primaryId: _choices.subtitleId);
+    if (id == null) {
+      // 设了次字幕却挑不到，得说一声——否则观众只会以为设置没生效。
+      if (!_secondaryNoticed) {
+        _secondaryNoticed = true;
+        _showNotice('这条流没有可用的次字幕');
+      }
+      return;
+    }
+    if (id == _secondaryId) return;
+    _setSecondary(id);
+  }
+
+  void _setSecondary(String id) {
+    _secondaryId = id == 'no' ? null : id;
+    final platform = _player.platform;
+    if (platform is! NativePlayer) return;
+    // media_kit 没有暴露次字幕轨的 API，但 mpv 的属性可以直接设。
+    unawaited(
+      platform.command(['set', 'secondary-sid', id]).catchError((Object e) {
+        debugPrint('LcbPlayer: secondary-sid failed: $e');
+      }),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 外挂字幕（本地文件）
+  // ---------------------------------------------------------------------------
+
+  /// 打开文件选择器，把挑中的字幕挂上去并记在这一集上。
+  Future<void> _pickSubtitleFile() async {
+    if (_pickingSubtitle) return;
+    _pickingSubtitle = true;
+    try {
+      final path = await chooseSubtitlePath();
+      if (path == null || !mounted) return;
+      final files = await openSubtitleFiles(path);
+      if (files.isEmpty || !mounted) return;
+      final picked = files.length == 1
+          ? files.first
+          : await _chooseFromArchive(files);
+      if (picked == null || !mounted) return;
+      await _useSubtitleFile(picked);
+    } on SubtitleFileException catch (e) {
+      _showNotice(e.message);
+    } catch (e) {
+      debugPrint('LcbPlayer: subtitle file failed: $e');
+      _showNotice('字幕文件读取失败');
+    } finally {
+      _pickingSubtitle = false;
+    }
+  }
+
+  /// 压缩包里有不止一条字幕时让用户挑；取消返回 null。
+  Future<SubtitleFile?> _chooseFromArchive(List<SubtitleFile> files) {
+    return showDialog<SubtitleFile>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        title: Text(
+          '这个字幕包里有 ${files.length} 个字幕',
+          style: const TextStyle(fontSize: 15, color: Colors.white),
+        ),
+        content: SizedBox(
+          width: 360,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final f in files)
+                ListTile(
+                  dense: true,
+                  title: Text(
+                    f.label,
+                    style: const TextStyle(fontSize: 13, color: Colors.white),
+                  ),
+                  onTap: () => Navigator.of(context).pop(f),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _useSubtitleFile(SubtitleFile file) async {
+    setState(() => _trackPanel = false);
+    _externalPath = file.path;
+    _externalAttached = false;
+    _attachExternalIfNeeded();
+    widget.onSubtitleFile?.call(file.path);
+    _showNotice('已加载字幕，下次播这一集会自动用它');
+  }
+
+  /// 把 [_externalPath] 交给 mpv。文件不在了就如实说，并请上层把记忆清掉。
+  void _attachExternalIfNeeded() {
+    final path = _externalPath;
+    if (path == null || _externalAttached) return;
+    _externalAttached = true;
+    if (!File(path).existsSync()) {
+      _externalPath = null;
+      setState(() => _externalLabel = null);
+      widget.onSubtitleFile?.call(null);
+      _showNotice('字幕文件已丢失，记得重新选一个');
+      return;
+    }
+    final name = path.split(Platform.pathSeparator).last;
+    _player.setSubtitleTrack(
+      SubtitleTrack.uri(
+        Uri.file(path).toString(),
+        title: name,
+        language: 'und',
+      ),
+    );
+    setState(() => _externalLabel = name);
+  }
+
+  /// 不再用外挂字幕：关掉字幕显示，并把这一集的记忆清掉（文件本身不动）。
+  void _clearSubtitleFile() {
+    setState(() {
+      _externalPath = null;
+      _externalLabel = null;
+      _externalAttached = true;
+      _trackPanel = false;
+    });
+    _player.setSubtitleTrack(SubtitleTrack.no());
+    widget.onSubtitleFile?.call(null);
+    _showNotice('已取消外挂字幕');
   }
 
   /// Remembers a pick for this work+line so the next episode opens the same
@@ -665,6 +865,12 @@ class _PlayerPageState extends State<PlayerPage> {
       _danmakuAsked = false;
       _danmakuNote = null;
       if (_danmakuOn) unawaited(_loadDanmaku());
+      // 换集就是换一集的外挂字幕与次字幕：上一集的轨号在这条流里没有意义。
+      _externalPath = widget.initialSubtitleFile;
+      _externalLabel = null;
+      _externalAttached = false;
+      _secondaryText = '';
+      _secondaryId = null;
     }
   }
 
@@ -679,6 +885,7 @@ class _PlayerPageState extends State<PlayerPage> {
     _rateSub?.cancel();
     _tracksSub?.cancel();
     _trackSub?.cancel();
+    _subtitleSub?.cancel();
     // Report the final position before tearing the player down; this is the
     // single reliable moment to capture where the user left off. Skip it when
     // the timeline moved under us — that position belongs to an ad segment or
@@ -729,6 +936,29 @@ class _PlayerPageState extends State<PlayerPage> {
               playing: _playing,
               blockTop: widget.danmakuBlockTop,
               blockBottom: widget.danmakuBlockBottom,
+            ),
+          // 次字幕：mpv 把它当成第二条轨，文字从 `secondary-sub-text` 报过来，
+          // 这里照主字幕的字号画在画面上方，和主字幕组成双语对照。
+          if (_secondaryText.isNotEmpty)
+            Positioned(
+              top: 84,
+              left: 24,
+              right: 24,
+              child: IgnorePointer(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1100),
+                    child: Text(
+                      _secondaryText,
+                      textAlign: TextAlign.center,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: LcbSubtitleStyle.secondaryOf(widget.subtitleSize),
+                    ),
+                  ),
+                ),
+              ),
             ),
           // A single full-surface tap layer toggles the controls; it sits under
           // the bars so the bars' own buttons still win the hit test.
@@ -799,6 +1029,11 @@ class _PlayerPageState extends State<PlayerPage> {
                 onVideo: (t) => _setVideo(t.id),
                 onAudio: (t) => _setAudio(t.id),
                 onSubtitle: (t) => _setSubtitle(t.id),
+                externalSubtitleLabel: _externalLabel,
+                onPickSubtitleFile: _pickSubtitleFile,
+                onClearSubtitleFile: _externalLabel == null
+                    ? null
+                    : _clearSubtitleFile,
               ),
             ),
           if (_skipPanel)

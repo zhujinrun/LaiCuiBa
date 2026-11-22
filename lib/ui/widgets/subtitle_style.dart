@@ -48,4 +48,27 @@ abstract final class LcbSubtitleStyle {
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 36),
     );
   }
+
+  /// 次字幕的样式：画面上方，比主字幕小一号。
+  ///
+  /// 用描边而不是半透明底——上方常常是天空、白墙，底块会很显眼；两条字幕
+  /// 都带底块也会把画面切得很碎。
+  static TextStyle secondaryOf(int size) {
+    final base = size < 16 ? 16 : (size > 96 ? 96 : size);
+    final px = (base * 0.8).clamp(14.0, 76.0);
+    return TextStyle(
+      height: 1.3,
+      fontSize: px,
+      letterSpacing: 0,
+      wordSpacing: 0,
+      color: const Color(0xffffffff),
+      fontWeight: FontWeight.w500,
+      shadows: const [
+        Shadow(color: Color(0xE6000000), blurRadius: 3, offset: Offset(1, 1)),
+        Shadow(color: Color(0xE6000000), blurRadius: 3, offset: Offset(-1, 1)),
+        Shadow(color: Color(0xE6000000), blurRadius: 3, offset: Offset(1, -1)),
+        Shadow(color: Color(0xE6000000), blurRadius: 3, offset: Offset(-1, -1)),
+      ],
+    );
+  }
 }

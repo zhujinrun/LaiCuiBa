@@ -102,6 +102,45 @@ void main() {
     expect(pickedSub?.id, 'no');
   });
 
+  testWidgets('本地字幕入口在没有字幕轨时也开着', (tester) async {
+    // 一条内嵌字幕都没有的片子，正是最需要「选个本地字幕」的时候。
+    await tester.pumpWidget(
+      _wrap(
+        TrackPanel(
+          choices: const TrackChoices(),
+          onPickSubtitleFile: () {},
+        ),
+      ),
+    );
+
+    expect(find.text('这条流没有可切换的轨道'), findsNothing);
+    expect(find.text('字幕'), findsOneWidget);
+    expect(find.text('选择本地字幕文件…'), findsOneWidget);
+    // 没挂字幕时不该有「取消外挂字幕」这一行。
+    expect(find.text('不再使用外挂字幕'), findsNothing);
+  });
+
+  testWidgets('挂上字幕后面板显示它是哪一份，并给一个取消入口', (tester) async {
+    var cleared = 0;
+    await tester.pumpWidget(
+      _wrap(
+        TrackPanel(
+          choices: const TrackChoices(
+            subtitle: [TrackOption(id: '2', language: 'zh')],
+            subtitleId: '2',
+          ),
+          externalSubtitleLabel: '01.ass',
+          onPickSubtitleFile: () {},
+          onClearSubtitleFile: () => cleared++,
+        ),
+      ),
+    );
+
+    expect(find.text('外挂：01.ass'), findsOneWidget);
+    await tester.tap(find.text('不再使用外挂字幕'));
+    expect(cleared, 1);
+  });
+
   testWidgets('a single line is not offered as a choice', (tester) async {
     await tester.pumpWidget(
       _wrap(
