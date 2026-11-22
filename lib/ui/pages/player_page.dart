@@ -46,6 +46,7 @@ class PlayerPage extends StatefulWidget {
     required this.title,
     required this.url,
     this.subtitle,
+    this.quality,
     this.headers = const {},
     this.episodes = const [],
     this.episodeIndex,
@@ -94,6 +95,11 @@ class PlayerPage extends StatefulWidget {
 
   /// Secondary line under the title, e.g. the site or line name.
   final String? subtitle;
+
+  /// Quality label the source reports (the catvod `vod_remarks` field), e.g.
+  /// `1080P` / `高清`. Shown in the top-left subtitle line, next to the
+  /// episode and the decoded resolution.
+  final String? quality;
 
   /// Headers the request needs. A WebDAV share has no token in its URL, so the
   /// Basic credential has to ride along here; every other source passes none.
@@ -972,10 +978,20 @@ class _PlayerPageState extends State<PlayerPage> {
     return '';
   }
 
-  String get _titleLine {
-    final label = _currentLabel;
-    if (label.isEmpty) return widget.title;
-    return '${widget.title} · $label';
+  /// The top bar's main line is the bare title — the episode, resolution and
+  /// quality live on the subtitle line, exactly like the original.
+  String get _titleLine => widget.title;
+
+  /// The secondary line under the title: `第39集 · 1920×1080 · 1080P`. Each
+  /// segment is optional and only joins when it has a value; the resolution
+  /// appears once the video has decoded its first frame.
+  String get _subtitleLine {
+    final parts = <String>[
+      if (_currentLabel.isNotEmpty) _currentLabel,
+      if (_dw != null && _dh != null) '$_dw×$_dh',
+      if (widget.quality != null && widget.quality!.isNotEmpty) widget.quality!,
+    ];
+    return parts.join(' · ');
   }
 
   /// 常驻信息浮层：一行小字，每项「分辨率 1920×1080」，没拿到的值显示 `--`。
@@ -1145,11 +1161,14 @@ class _PlayerPageState extends State<PlayerPage> {
                 ),
               ),
             ),
-          _TopBar(
-            title: _titleLine,
-            subtitle: widget.subtitle,
-            onClose: widget.onClose,
-            visible: _controlsVisible,
+          Align(
+            alignment: Alignment.topLeft,
+            child: _TopBar(
+              title: _titleLine,
+              subtitle: _subtitleLine,
+              onClose: widget.onClose,
+              visible: _controlsVisible,
+            ),
           ),
           // 常驻信息浮层：选中的信息钉在画面右上角，不随操作菜单隐藏（原版
           // 「信息显示」）。控制条消失时它还在，所以放在 _TopBar 之后、不受
@@ -1293,7 +1312,10 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 }
 
-/// The dark top strip: close button, title, subtitle.
+/// The top-left header: a bare back arrow plus the title and an optional
+/// second line. The original keeps no dark gradient strip here — the text sits
+/// directly on the video with a soft shadow for legibility — so the video runs
+/// all the way up underneath it.
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.title,
@@ -1314,26 +1336,17 @@ class _TopBar extends StatelessWidget {
       duration: const Duration(milliseconds: 180),
       child: IgnorePointer(
         ignoring: !visible,
-        child: Container(
-          height: 64,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xB3000000), Color(0x00000000)],
-            ),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Padding(
+          padding: const EdgeInsets.only(left: 12, top: 8),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              _RoundButton(
-                icon: Icons.arrow_back,
-                onTap: onClose ?? () => Navigator.of(context).maybePop(),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
+              _BackArrow(onTap: onClose ?? () => Navigator.of(context).maybePop()),
+              const SizedBox(width: 8),
+              Flexible(
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
@@ -1344,6 +1357,9 @@ class _TopBar extends StatelessWidget {
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                         color: Colors.white,
+                        shadows: [
+                          Shadow(color: Color(0x99000000), blurRadius: 4),
+                        ],
                       ),
                     ),
                     if (subtitle != null && subtitle!.isNotEmpty)
@@ -1353,7 +1369,10 @@ class _TopBar extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 12,
-                          color: Color(0xFFB8B8BE),
+                          color: Color(0xFFE0E0E4),
+                          shadows: [
+                            Shadow(color: Color(0x99000000), blurRadius: 4),
+                          ],
                         ),
                       ),
                   ],
@@ -1361,6 +1380,38 @@ class _TopBar extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A bare, background-less back arrow that lights up on hover — the original
+/// has no round plate around it, unlike the bottom bar's round buttons.
+class _BackArrow extends StatefulWidget {
+  const _BackArrow({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_BackArrow> createState() => _BackArrowState();
+}
+
+class _BackArrowState extends State<_BackArrow> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Icon(
+          Icons.arrow_back,
+          size: 24,
+          color: _hover ? Colors.white : const Color(0xFFE8E8EC),
         ),
       ),
     );
@@ -1452,13 +1503,12 @@ class _BottomBar extends StatelessWidget {
         child: Align(
           alignment: Alignment.bottomCenter,
           child: Container(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: [Color(0xB3000000), Color(0x00000000)],
-              ),
+            margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
+            constraints: const BoxConstraints(minWidth: 480, maxWidth: 720),
+            decoration: BoxDecoration(
+              color: const Color(0xCC1A1A20),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,

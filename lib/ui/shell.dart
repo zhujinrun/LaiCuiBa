@@ -439,6 +439,7 @@ class _ShellState extends State<Shell> {
             key: ValueKey('player-${player.url}-${player.lineIndex}'),
             title: player.title,
             subtitle: player.subtitle,
+            quality: player.item.tag,
             url: player.url,
             headers: player.headers,
             episodes: player.episodes,
