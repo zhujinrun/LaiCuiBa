@@ -459,6 +459,10 @@ class _ShellState extends State<Shell> {
             onLine: (index, carry) => _switchLine(player, index, carry),
             initialVolume: _store.settings.playerVolume,
             initialRate: _store.settings.playerRate,
+            aspectFit: _store.aspectFit,
+            pictureAdjust: _store.pictureAdjust,
+            onAspectFit: _store.saveAspectFit,
+            onPictureAdjust: _store.savePictureAdjust,
             subtitlePref: SubtitlePref.parse(_store.settings.subtitlePref),
             subtitleSize: _store.settings.subtitleSize,
             secondarySubtitle: SecondarySubtitle.parse(

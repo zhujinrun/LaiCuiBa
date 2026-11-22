@@ -11,6 +11,7 @@ import '../../services/awake.dart';
 import '../../services/danmaku/danmaku_api.dart';
 import '../../services/danmaku/source_danmaku.dart';
 import '../../services/playback_clock.dart';
+import '../../services/picture.dart';
 import '../../services/player/subtitle_file.dart';
 import '../../services/skip_rule.dart';
 import '../../services/track_choice.dart';
@@ -18,6 +19,7 @@ import '../../services/track_map.dart';
 import '../widgets/skip_panel.dart';
 import '../widgets/subtitle_style.dart';
 import '../widgets/track_panel.dart';
+import '../widgets/picture_panel.dart';
 import '../widgets/danmaku_layer.dart';
 
 /// 播放页 — 全屏视频播放。
@@ -52,6 +54,10 @@ class PlayerPage extends StatefulWidget {
     this.onSkip,
     this.initialVolume = 100,
     this.initialRate = 1.0,
+    this.aspectFit = 'fit',
+    this.pictureAdjust = PictureAdjust.none,
+    this.onAspectFit,
+    this.onPictureAdjust,
     this.subtitlePref = SubtitlePref.auto,
     this.subtitleSize = LcbSubtitleStyle.standard,
     this.secondarySubtitle = SecondarySubtitle.off,
@@ -124,6 +130,16 @@ class PlayerPage extends StatefulWidget {
   /// left at, not a hardcoded 100 / 1.0×.
   final int initialVolume;
   final double initialRate;
+
+  /// 画面比例短码（`AspectMode.slug`）。映射成 `BoxFit` 交给 `Video`。
+  final String aspectFit;
+
+  /// 画面调节五个量的当前值（亮度/对比度/饱和度/色相/伽马），值域 -100..100。
+  final PictureAdjust pictureAdjust;
+
+  /// 改画面比例 / 调节时通知上层持久化。
+  final ValueChanged<String>? onAspectFit;
+  final ValueChanged<PictureAdjust>? onPictureAdjust;
 
   /// 设置页里的默认字幕：新开一集时先按它挑一条。这部作品已经记住过一条
   /// （包括「关闭」）时以记住的为准，偏好不插手。
@@ -263,6 +279,14 @@ class _PlayerPageState extends State<PlayerPage> {
   /// The 本剧片头片尾 panel. Shares the slot with [_trackPanel]: both are bottom
   /// right pop-ups and stacking them would bury the lower one.
   bool _skipPanel = false;
+
+  /// 画面面板（比例 + 调节）。和上面两个面板共用一个右下角槽位。
+  bool _picturePanel = false;
+
+  /// 画面比例与调节的当前值。比例从 widget 进来，调节滑一下改一下（同时下发
+  /// mpv 属性 + 通知上层持久化），不额外存一份会漂移的状态。
+  late String _aspectFit = widget.aspectFit;
+  late PictureAdjust _adjust = widget.pictureAdjust;
 
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
@@ -702,7 +726,10 @@ class _PlayerPageState extends State<PlayerPage> {
     setState(() {
       _controlsVisible = true;
       _trackPanel = !_trackPanel;
-      if (_trackPanel) _skipPanel = false;
+      if (_trackPanel) {
+        _skipPanel = false;
+        _picturePanel = false;
+      }
     });
   }
 
@@ -711,8 +738,51 @@ class _PlayerPageState extends State<PlayerPage> {
     setState(() {
       _controlsVisible = true;
       _skipPanel = !_skipPanel;
-      if (_skipPanel) _trackPanel = false;
+      if (_skipPanel) {
+        _trackPanel = false;
+        _picturePanel = false;
+      }
     });
+  }
+
+  void _togglePicturePanel() {
+    _hideTimer?.cancel();
+    setState(() {
+      _controlsVisible = true;
+      _picturePanel = !_picturePanel;
+      if (_picturePanel) {
+        _trackPanel = false;
+        _skipPanel = false;
+      }
+    });
+  }
+
+  /// 换画面比例：立即改 `BoxFit`，并通知上层记住。
+  void _pickAspect(AspectMode mode) {
+    setState(() => _aspectFit = mode.slug);
+    widget.onAspectFit?.call(mode.slug);
+  }
+
+  /// 画面调节变了：先下发 mpv 属性（亮度等），再通知上层持久化。
+  ///
+  /// 每个量都对应一个 mpv 属性（`brightness` / `contrast` / `saturation` /
+  /// `hue` / `gamma`），`no` 之外的数值直接 set。gamma 用 `gamma` 属性（mpv
+  /// 原生，0 为原始），不套 eq 滤镜字符串——这样恢复默认也简单。
+  void _applyAdjust(PictureAdjust next) {
+    setState(() => _adjust = next);
+    final platform = _player.platform;
+    if (platform is NativePlayer) {
+      for (final (prop, value) in next.mpvProperties) {
+        unawaited(
+          platform
+              .command(['set', prop, '$value'])
+              .catchError((Object e) {
+                debugPrint('LcbPlayer: set $prop failed: $e');
+              }),
+        );
+      }
+    }
+    widget.onPictureAdjust?.call(next);
   }
 
   /// A pick in the skip panel: hand it up to be stored, and adopt it here right
@@ -919,7 +989,7 @@ class _PlayerPageState extends State<PlayerPage> {
             child: Video(
               controller: _controller,
               controls: NoVideoControls,
-              fit: BoxFit.contain,
+              fit: AspectMode.parse(_aspectFit).boxFit,
               subtitleViewConfiguration: LcbSubtitleStyle.of(widget.subtitleSize),
             ),
           ),
@@ -1017,6 +1087,13 @@ class _PlayerPageState extends State<PlayerPage> {
                 onTap: () => setState(() => _skipPanel = false),
               ),
             ),
+          if (_picturePanel)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _picturePanel = false),
+              ),
+            ),
           if (_trackPanel)
             Positioned(
               right: 20,
@@ -1046,6 +1123,17 @@ class _PlayerPageState extends State<PlayerPage> {
                 effective: _clock.skip,
                 enabled: widget.skipEnabled,
                 onPicked: _pickSkip,
+              ),
+            ),
+          if (_picturePanel)
+            Positioned(
+              right: 20,
+              bottom: 132,
+              child: PicturePanel(
+                mode: AspectMode.parse(_aspectFit),
+                adjust: _adjust,
+                onMode: _pickAspect,
+                onAdjust: _applyAdjust,
               ),
             ),
           _BottomBar(
@@ -1087,6 +1175,8 @@ class _PlayerPageState extends State<PlayerPage> {
             skipLabel: _clock.skip.intro > Duration.zero
                 ? '片头 ${_clock.skip.intro.inSeconds}s'
                 : '片头 关',
+            onPicture: _togglePicturePanel,
+            pictureOpen: _picturePanel,
             onNext: _hasNext
                 ? () => widget.onEpisode!(widget.episodeIndex! + 1)
                 : null,
@@ -1201,6 +1291,8 @@ class _BottomBar extends StatelessWidget {
     required this.onSkip,
     required this.skipOpen,
     required this.skipLabel,
+    required this.onPicture,
+    required this.pictureOpen,
     this.onNext,
     this.onPrev,
   });
@@ -1235,6 +1327,10 @@ class _BottomBar extends StatelessWidget {
   final VoidCallback onSkip;
   final bool skipOpen;
   final String skipLabel;
+
+  /// Opens the 画面 panel (比例 + 调节).
+  final VoidCallback onPicture;
+  final bool pictureOpen;
   final VoidCallback? onNext;
   final VoidCallback? onPrev;
 
@@ -1353,6 +1449,13 @@ class _BottomBar extends StatelessWidget {
                       label: '轨道',
                       open: tracksOpen,
                       onTap: onTracks,
+                    ),
+                    const SizedBox(width: 8),
+                    _PanelButton(
+                      icon: Icons.aspect_ratio,
+                      label: '画面',
+                      open: pictureOpen,
+                      onTap: onPicture,
                     ),
                     const SizedBox(width: 12),
                     _RateButton(rate: rate, onRate: onRate),

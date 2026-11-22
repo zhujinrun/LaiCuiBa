@@ -14,6 +14,7 @@ import 'emby_client.dart';
 import 'source_catalogue.dart';
 import 'source_probe.dart';
 import 'media_mount.dart';
+import 'picture.dart';
 import 'play_target.dart';
 import 'skip_rule.dart';
 import 'script_runtime.dart';
@@ -534,6 +535,27 @@ class AppStore extends ChangeNotifier {
     await updateSettings(
       _settings.copyWith(playerVolume: volume, playerRate: rate),
     );
+  }
+
+  /// 画面比例短码，`AspectMode.slug`。认不出退回 `fit`（原始比例）。
+  String get aspectFit => _settings.aspectFit;
+
+  /// 记住画面比例，跨会话沿用（同一部剧、不同剧都用同一档）。
+  Future<void> saveAspectFit(String slug) async {
+    if (slug == _settings.aspectFit) return;
+    await updateSettings(_settings.copyWith(aspectFit: slug));
+  }
+
+  /// 画面调节五个量（亮度/对比度/饱和度/色相/伽马），值域 -100..100。
+  PictureAdjust get pictureAdjust =>
+      PictureAdjust.fromJson(_settings.pictureAdjust);
+
+  /// 记住画面调节。原版「各资源记住自己调过的亮度」目前只做到全局一档，
+  /// 不做按资源记忆——那是另一个维度，先对齐可见的画面调节本身。
+  Future<void> savePictureAdjust(PictureAdjust adjust) async {
+    final current = pictureAdjust;
+    if (current == adjust) return;
+    await updateSettings(_settings.copyWith(pictureAdjust: adjust.toJson()));
   }
 
   /// The tracks the viewer picked last time on the same work and line.

@@ -715,6 +715,8 @@ class AppSettings {
     this.tvKeyboard = false,
     this.playerVolume = 100,
     this.playerRate = 1.0,
+    this.aspectFit = 'fit',
+    this.pictureAdjust = const {},
     this.subtitlePref = 'auto',
     this.subtitleSize = 32,
     this.secondarySubtitle = 'off',
@@ -771,6 +773,15 @@ class AppSettings {
   /// again for the next one, not a reset to 100 / 1.0×.
   final int playerVolume;
   final double playerRate;
+
+  /// 画面比例短码（`fit` / `stretch` / `fill` / `fitWidth` / `fitHeight` /
+  /// `crop`）。语义在 `services/picture.dart` 的 `AspectMode`，模型层只存短码。
+  final String aspectFit;
+
+  /// 画面调节五个量（亮度/对比度/饱和度/色相/伽马），`{'brightness': -20}`，
+  /// 值域 -100..100，缺省 = 原始画面。语义在 `services/picture.dart` 的
+  /// `PictureAdjust`，模型层只存原始 JSON。
+  final Map<String, int> pictureAdjust;
 
   /// 默认字幕偏好：`auto` / `zh` / `zh-en` / `multi` / `en` / `ja` / `ko` /
   /// `off`。语义在 `services/track_choice.dart` 的 `SubtitlePref`，模型层只存
@@ -852,6 +863,8 @@ class AppSettings {
     bool? tvKeyboard,
     int? playerVolume,
     double? playerRate,
+    String? aspectFit,
+    Map<String, int>? pictureAdjust,
     String? subtitlePref,
     int? subtitleSize,
     String? secondarySubtitle,
@@ -891,6 +904,8 @@ class AppSettings {
       tvKeyboard: tvKeyboard ?? this.tvKeyboard,
       playerVolume: playerVolume ?? this.playerVolume,
       playerRate: playerRate ?? this.playerRate,
+      aspectFit: aspectFit ?? this.aspectFit,
+      pictureAdjust: pictureAdjust ?? this.pictureAdjust,
       subtitlePref: subtitlePref ?? this.subtitlePref,
       subtitleSize: subtitleSize ?? this.subtitleSize,
       secondarySubtitle: secondarySubtitle ?? this.secondarySubtitle,
@@ -934,6 +949,8 @@ class AppSettings {
     'tvKeyboard': tvKeyboard,
     'playerVolume': playerVolume,
     'playerRate': playerRate,
+    'aspectFit': aspectFit,
+    'pictureAdjust': pictureAdjust,
     'subtitlePref': subtitlePref,
     'subtitleSize': subtitleSize,
     'secondarySubtitle': secondarySubtitle,
@@ -987,6 +1004,8 @@ class AppSettings {
       tvKeyboard: pop('tvKeyboard', false),
       playerVolume: pop('playerVolume', 100),
       playerRate: pop('playerRate', 1.0),
+      aspectFit: pop('aspectFit', 'fit'),
+      pictureAdjust: _readIntMap(extra.remove('pictureAdjust')),
       subtitlePref: _readSubtitlePref(extra.remove('subtitlePref')),
       subtitleSize: _readSubtitleSize(extra.remove('subtitleSize')),
       secondarySubtitle: _readSecondarySubtitle(
@@ -1036,6 +1055,18 @@ Map<String, String> _readStringMap(Object? raw) {
     if (k is String && k.isNotEmpty && v is String && v.isNotEmpty) {
       out[k] = v;
     }
+  });
+  return out;
+}
+
+/// `{'brightness': -20}` → 强类型整数表。值钳到 -100..100（画面调节值域），
+/// 非数值的键整条丢弃。
+Map<String, int> _readIntMap(Object? raw) {
+  if (raw is! Map) return const {};
+  final out = <String, int>{};
+  raw.forEach((k, v) {
+    if (k is! String || k.isEmpty || v is! num) return;
+    out[k] = v.toInt().clamp(-100, 100);
   });
   return out;
 }

@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:lai_cui_ba/models/models.dart';
 import 'package:lai_cui_ba/services/danmaku/danmaku_api.dart';
 import 'package:lai_cui_ba/services/playback_clock.dart';
+import 'package:lai_cui_ba/services/picture.dart';
 import 'package:lai_cui_ba/services/skip_rule.dart';
 import 'package:lai_cui_ba/services/store.dart';
 import 'package:lai_cui_ba/services/track_choice.dart';
@@ -236,6 +237,30 @@ void main() {
       expect(s.tvClassicUi, isFalse);
       expect(s.shortDramaPreload, isFalse);
       expect(s.tvKeyboard, isFalse);
+    });
+
+    test('aspectFit and pictureAdjust round-trip', () {
+      final s = AppSettings.fromJson({
+        'aspectFit': 'fitWidth',
+        'pictureAdjust': {'brightness': -20, 'gamma': 30},
+      });
+      expect(s.aspectFit, 'fitWidth');
+      expect(s.pictureAdjust, {'brightness': -20, 'gamma': 30});
+
+      final back = AppSettings.fromJson(s.toJson());
+      expect(back.aspectFit, 'fitWidth');
+      expect(back.pictureAdjust, {'brightness': -20, 'gamma': 30});
+    });
+
+    test('aspectFit/pictureAdjust defaults and clamps', () {
+      final s = AppSettings.fromJson({});
+      expect(s.aspectFit, 'fit');
+      expect(s.pictureAdjust, isEmpty);
+
+      final clamped = AppSettings.fromJson({
+        'pictureAdjust': {'brightness': 500},
+      });
+      expect(clamped.pictureAdjust['brightness'], 100);
     });
   });
 
@@ -669,6 +694,23 @@ void main() {
       final reloaded = await AppStore.load();
       expect(reloaded.settings.playerVolume, 45);
       expect(reloaded.settings.playerRate, 1.25);
+    });
+
+    test('saveAspectFit and savePictureAdjust remember across a reload', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      expect(store.aspectFit, 'fit');
+      expect(store.pictureAdjust, PictureAdjust.none);
+
+      await store.saveAspectFit('fitWidth');
+      await store.savePictureAdjust(const PictureAdjust(brightness: -30));
+
+      expect(store.aspectFit, 'fitWidth');
+      expect(store.pictureAdjust.brightness, -30);
+
+      final reloaded = await AppStore.load();
+      expect(reloaded.aspectFit, 'fitWidth');
+      expect(reloaded.pictureAdjust.brightness, -30);
     });
 
     test('track picks are remembered per line and survive a reload', () async {
