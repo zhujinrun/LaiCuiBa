@@ -10,6 +10,7 @@ import '../models/models.dart';
 import '../services/awake.dart';
 import '../services/demo_data.dart';
 import '../services/store.dart';
+import '../services/track_choice.dart';
 import 'pages/common_pages.dart';
 import 'pages/detail_page.dart';
 import 'pages/home_page.dart';
@@ -375,6 +376,8 @@ class _ShellState extends State<Shell> {
             onLine: (index, carry) => _switchLine(player, index, carry),
             initialVolume: _store.settings.playerVolume,
             initialRate: _store.settings.playerRate,
+            subtitlePref: SubtitlePref.parse(_store.settings.subtitlePref),
+            subtitleSize: _store.settings.subtitleSize,
             onPrefs: (volume, rate) =>
                 _store.savePlaybackPrefs(volume: volume, rate: rate),
             onEpisode: (i) => _openPlayer(_detail!, i, player.lineIndex),

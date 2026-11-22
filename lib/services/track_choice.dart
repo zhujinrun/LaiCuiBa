@@ -134,6 +134,82 @@ class TrackChoices {
   }
 }
 
+/// 设置页里的「默认字幕」：新开一集、这部作品又没记住过选择时，先替观众挑
+/// 哪一条字幕。
+///
+/// 它只是默认值，不是强制：观众在轨道面板里点过任何一条（包括「关闭」）之后，
+/// 记住的是他点的那条（见 [TrackPrefs]），偏好不再插手。
+enum SubtitlePref {
+  /// 不动手，跟着播放器/容器的默认走。
+  auto('auto'),
+
+  /// 中文优先（含粤语）。
+  chinese('zh'),
+
+  english('en'),
+
+  /// 默认不要字幕——内嵌字幕经常是硬塞进来的，不想看的人每次都要关。
+  off('off');
+
+  const SubtitlePref(this.slug);
+
+  /// 存进设置里的值。用短码是因为它躺在 `shared_preferences` 的 JSON 里，
+  /// 出问题时能直接读出来。
+  final String slug;
+
+  /// 认不出的值一律退回 [auto]：一份写坏的字幕偏好不该让播放失败。
+  static SubtitlePref parse(Object? raw) {
+    if (raw is SubtitlePref) return raw;
+    if (raw is! String) return SubtitlePref.auto;
+    for (final p in SubtitlePref.values) {
+      if (p.slug == raw || p.name == raw) return p;
+    }
+    return SubtitlePref.auto;
+  }
+
+  /// 按偏好挑一条字幕，返回 mpv 的 track id；`null` 表示「没有意见」。
+  ///
+  /// `no` 在这里是一个合法的返回值——关掉字幕本身就是一种选择，播放页会把它
+  /// 交给 `SubtitleTrack.no()`。
+  String? pick(List<TrackOption> options) {
+    switch (this) {
+      case SubtitlePref.auto:
+        return null;
+      case SubtitlePref.off:
+        return 'no';
+      case SubtitlePref.chinese:
+        return _firstMatching(options, const {'中文', '粤语'}, _chineseHints);
+      case SubtitlePref.english:
+        return _firstMatching(options, const {'英语'}, _englishHints);
+    }
+  }
+}
+
+/// 中文（含粤语）的常见写法。容器里 `language` 是空的，标题栏才写了「简体」。
+const _chineseHints = ['中文', '简体', '繁体', '繁中', '简中', '粤语', 'chinese', 'chi', 'zho'];
+
+const _englishHints = ['英文', '英语', 'english', 'eng'];
+
+/// 先按 language 码认；码认出来了但语言不对就不再拿标题硬猜——那多半是
+/// 「中文音轨 + 英文标题」这类错配，猜下去只会选错。
+String? _firstMatching(
+  List<TrackOption> options,
+  Set<String> names,
+  List<String> hints,
+) {
+  for (final o in options) {
+    final lang = _languageName(o.language);
+    if (lang != null) {
+      if (names.contains(lang)) return o.id;
+      continue;
+    }
+    final title = (o.title ?? '').trim().toLowerCase();
+    if (title.isEmpty) continue;
+    if (hints.any(title.contains)) return o.id;
+  }
+  return null;
+}
+
 /// 一条线路记住的轨道选择。
 ///
 /// 存的是 mpv 的 track id。换一条线路、换一集之后 id 可能指向别的轨道，所以

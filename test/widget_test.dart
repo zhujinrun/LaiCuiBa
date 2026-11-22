@@ -16,6 +16,7 @@ import 'package:lai_cui_ba/services/skip_rule.dart';
 import 'package:lai_cui_ba/services/source_probe.dart';
 import 'package:lai_cui_ba/services/spider_session.dart';
 import 'package:lai_cui_ba/services/store.dart';
+import 'package:lai_cui_ba/services/track_choice.dart';
 import 'package:lai_cui_ba/ui/shell.dart';
 
 import 'support/fake_py_host.dart';
@@ -1014,5 +1015,142 @@ void main() {
 
     expect(store.sources.where((s) => s.type == 'emby'), isEmpty);
     expect(find.text('要填账号和密码才能登录，密码不会被保存'), findsOneWidget);
+  });
+
+  testWidgets('字幕 settings set the default pick and the size for real', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('设置').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('播放'));
+    await tester.pumpAndSettle();
+
+    // The row used to be a dead tap that opened nothing. It now summarises the
+    // two settings it leads to, read from the store.
+    expect(find.text('自动 · 标准'), findsOneWidget);
+
+    await tester.tap(find.text('字幕'));
+    await tester.pumpAndSettle();
+
+    // Auto is the default, so nothing is preselected away from mpv's own choice.
+    expect(find.text('新开一集时先选这一种；播放页点过的那条永远优先'), findsOneWidget);
+    expect(find.text('自动'), findsOneWidget);
+
+    // 那段说明不能跟着卡片拉满：ListView 给的是紧宽度，少一层 Align 就收不住。
+    final note = tester.getSize(
+      find.textContaining('「默认字幕」只在一条线路还没有你的选择时生效'),
+    );
+    expect(note.width, lessThanOrEqualTo(760), reason: '说明文字要换行，不能一行拉到底');
+    // 一行只有不到 20 高；两行以上才算真的收窄了。
+    expect(note.height, greaterThan(30));
+
+    await tester.tap(find.text('默认字幕'));
+    await tester.pumpAndSettle();
+    expect(find.text('有中文字幕就用中文（含粤语）'), findsOneWidget);
+    await tester.tap(find.text('中文优先'));
+    await tester.pumpAndSettle();
+
+    expect(store.settings.subtitlePref, 'zh');
+    expect(find.text('中文优先'), findsOneWidget);
+
+    await tester.tap(find.text('字号'));
+    await tester.pumpAndSettle();
+    expect(find.text('42 像素'), findsOneWidget);
+    await tester.tap(find.text('大'));
+    await tester.pumpAndSettle();
+
+    expect(store.settings.subtitleSize, 42);
+    expect(find.text('大 42'), findsOneWidget);
+
+    // 返回只回上一级（播放），不是一步跳回根列表。
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    expect(find.text('中文优先 · 大'), findsOneWidget);
+    expect(find.text('片头时长'), findsOneWidget);
+
+    // 再返回才回到根列表。
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    expect(find.text('账号与服务'), findsOneWidget);
+  });
+
+  testWidgets('字幕 page lists and clears the remembered track picks', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+    await store.saveTrackPrefs('101|线路一', const TrackPrefs(audio: '2'));
+    await store.saveTrackPrefs('102|线路二', const TrackPrefs(subtitle: 'no'));
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('设置').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('播放'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('字幕'));
+    await tester.pumpAndSettle();
+
+    // 条数是真实数据，不是摆设。
+    expect(find.text('2 条'), findsOneWidget);
+
+    await tester.tap(find.text('记住的轨道选择'));
+    await tester.pumpAndSettle();
+    expect(find.text('清除轨道选择？'), findsOneWidget);
+
+    await tester.tap(find.text('清除'));
+    await tester.pumpAndSettle();
+
+    expect(store.trackPrefCount, 0);
+    expect(find.text('无'), findsOneWidget);
+  });
+
+  testWidgets('弹幕 says it is not connected instead of faking a switch', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    await tester.tap(find.text('设置').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('播放'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('还没有可用的弹幕源'), findsOneWidget);
+    expect(find.text('未接入'), findsOneWidget);
+
+    await tester.tap(find.text('弹幕'));
+    await tester.pumpAndSettle();
+
+    // 只有状态，没有「显示弹幕」——那会是一个控制不了任何东西的开关。
+    expect(find.text('弹幕源'), findsOneWidget);
+    expect(find.text('显示弹幕'), findsNothing);
+    expect(find.textContaining('弹弹play'), findsOneWidget);
+    expect(find.textContaining('本地弹幕文件'), findsOneWidget);
   });
 }

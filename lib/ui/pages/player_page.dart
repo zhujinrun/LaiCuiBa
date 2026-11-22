@@ -12,6 +12,7 @@ import '../../services/skip_rule.dart';
 import '../../services/track_choice.dart';
 import '../../services/track_map.dart';
 import '../widgets/skip_panel.dart';
+import '../widgets/subtitle_style.dart';
 import '../widgets/track_panel.dart';
 
 /// 播放页 — 全屏视频播放。
@@ -46,6 +47,8 @@ class PlayerPage extends StatefulWidget {
     this.onSkip,
     this.initialVolume = 100,
     this.initialRate = 1.0,
+    this.subtitlePref = SubtitlePref.auto,
+    this.subtitleSize = LcbSubtitleStyle.standard,
     this.lines = const [],
     this.lineIndex = 0,
     this.trackKey,
@@ -108,6 +111,14 @@ class PlayerPage extends StatefulWidget {
   /// left at, not a hardcoded 100 / 1.0×.
   final int initialVolume;
   final double initialRate;
+
+  /// 设置页里的默认字幕：新开一集时先按它挑一条。这部作品已经记住过一条
+  /// （包括「关闭」）时以记住的为准，偏好不插手。
+  final SubtitlePref subtitlePref;
+
+  /// 字幕字号，见 [LcbSubtitleStyle]。media_kit 把字幕画成 Flutter 文本，
+  /// 所以这个值直接进 `Video` 的 `subtitleViewConfiguration`。
+  final int subtitleSize;
 
   /// The lines the source offers for this work, and which one is playing.
   ///
@@ -355,8 +366,11 @@ class _PlayerPageState extends State<PlayerPage> {
       _setAudio(audio, remember: false);
     }
     final subtitle = _prefs.subtitleFor(_choices.subtitle);
-    if (subtitle != null && subtitle != current.subtitle.id) {
-      _setSubtitle(subtitle, remember: false);
+    // 这部作品记住过的选择（含「关闭」）优先；没有记忆时才用设置页的默认
+    // 偏好。`null` 表示偏好也没有意见，交给播放器自己的默认。
+    final wanted = subtitle ?? widget.subtitlePref.pick(_choices.subtitle);
+    if (wanted != null && wanted != current.subtitle.id) {
+      _setSubtitle(wanted, remember: false);
     }
   }
 
@@ -601,6 +615,7 @@ class _PlayerPageState extends State<PlayerPage> {
               controller: _controller,
               controls: NoVideoControls,
               fit: BoxFit.contain,
+              subtitleViewConfiguration: LcbSubtitleStyle.of(widget.subtitleSize),
             ),
           ),
           if (_buffering)

@@ -166,6 +166,47 @@ Future<void> main(List<String> args) async {
   _check('an id that no longer exists is ignored, not applied', stale == null,
       '$stale');
 
+  // --- 4. the settings default really lands on mpv -------------------------
+  //
+  // 设置页的「默认字幕」只做一件事：`SubtitlePref.pick` 挑出一条，播放页把它
+  // 交给 mpv。这一段用真 libmpv 走完整条路，确认挑出来的 id 换到真的那条轨上。
+  final (fourth, mapped4) = await _open(uri);
+  _check('auto leaves the choice alone', SubtitlePref.auto.pick(mapped4.subtitle) == null);
+
+  final wantedEn = SubtitlePref.english.pick(mapped4.subtitle);
+  _check('英文优先 picks a track that exists', wantedEn != null, '$wantedEn');
+  if (wantedEn != null) {
+    await fourth.setSubtitleTrack(mapped4.subtitleTrack(wantedEn)!);
+    await _waitFor(() => fourth.state.track.subtitle.id == wantedEn);
+    final now = mapped4.subtitle.firstWhere((t) => t.id == wantedEn);
+    _check('英文优先 ends up on the English subtitle',
+        fourth.state.track.subtitle.id == wantedEn && now.label == '英语',
+        'now ${fourth.state.track.subtitle.id} (${now.label})');
+  }
+
+  final wantedZh = SubtitlePref.chinese.pick(mapped4.subtitle);
+  if (wantedZh != null) {
+    await fourth.setSubtitleTrack(mapped4.subtitleTrack(wantedZh)!);
+    await _waitFor(() => fourth.state.track.subtitle.id == wantedZh);
+    final now = mapped4.subtitle.firstWhere((t) => t.id == wantedZh);
+    _check('中文优先 ends up on the Chinese subtitle',
+        fourth.state.track.subtitle.id == wantedZh && now.label == '中文',
+        'now ${fourth.state.track.subtitle.id} (${now.label})');
+  } else {
+    _check('中文优先 finds the Chinese track', false);
+  }
+
+  final wantedOff = SubtitlePref.off.pick(mapped4.subtitle);
+  if (wantedOff != null) {
+    await fourth.setSubtitleTrack(mapped4.subtitleTrack(wantedOff)!);
+    await _waitFor(() => fourth.state.track.subtitle.id == 'no');
+    _check('「关闭」really turns subtitles off',
+        fourth.state.track.subtitle.id == 'no',
+        'now ${fourth.state.track.subtitle.id}');
+  }
+
+  await fourth.dispose();
+
   await second.dispose();
 
   stdout.writeln(_failures == 0 ? '\nall checks passed' : '\n$_failures failed');

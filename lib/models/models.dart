@@ -697,6 +697,8 @@ class AppSettings {
     this.tvKeyboard = false,
     this.playerVolume = 100,
     this.playerRate = 1.0,
+    this.subtitlePref = 'auto',
+    this.subtitleSize = 32,
     this.trackPrefs = const {},
     this.mediaBadgesEnabled = true,
     this.badgeSpot = 'leftTop',
@@ -746,6 +748,14 @@ class AppSettings {
   final int playerVolume;
   final double playerRate;
 
+  /// 默认字幕偏好：`auto` / `zh` / `en` / `off`。语义在
+  /// `services/track_choice.dart` 的 `SubtitlePref`，模型层只存这个短码。
+  final String subtitlePref;
+
+  /// 字幕文字大小（逻辑像素）。media_kit 在桌面上把字幕当 Flutter 文本画，
+  /// 所以这是一个真实的排版值，不是 mpv 的属性。
+  final int subtitleSize;
+
   /// 每条线路记住的轨道选择：`{'<作品id>|<线路名>': {'audio': '2'}}`。
   ///
   /// 存的是 mpv 的 track id，所以换集/换源之后由播放页核对一遍再用，见
@@ -794,6 +804,8 @@ class AppSettings {
     bool? tvKeyboard,
     int? playerVolume,
     double? playerRate,
+    String? subtitlePref,
+    int? subtitleSize,
     Map<String, Map<String, String>>? trackPrefs,
     bool? mediaBadgesEnabled,
     String? badgeSpot,
@@ -825,6 +837,8 @@ class AppSettings {
       tvKeyboard: tvKeyboard ?? this.tvKeyboard,
       playerVolume: playerVolume ?? this.playerVolume,
       playerRate: playerRate ?? this.playerRate,
+      subtitlePref: subtitlePref ?? this.subtitlePref,
+      subtitleSize: subtitleSize ?? this.subtitleSize,
       trackPrefs: trackPrefs ?? this.trackPrefs,
       mediaBadgesEnabled: mediaBadgesEnabled ?? this.mediaBadgesEnabled,
       badgeSpot: badgeSpot ?? this.badgeSpot,
@@ -860,6 +874,8 @@ class AppSettings {
     'tvKeyboard': tvKeyboard,
     'playerVolume': playerVolume,
     'playerRate': playerRate,
+    'subtitlePref': subtitlePref,
+    'subtitleSize': subtitleSize,
     'trackPrefs': trackPrefs,
     'mediaBadgesEnabled': mediaBadgesEnabled,
     'badgeSpot': badgeSpot,
@@ -905,6 +921,8 @@ class AppSettings {
       tvKeyboard: pop('tvKeyboard', false),
       playerVolume: pop('playerVolume', 100),
       playerRate: pop('playerRate', 1.0),
+      subtitlePref: _readSubtitlePref(extra.remove('subtitlePref')),
+      subtitleSize: _readSubtitleSize(extra.remove('subtitleSize')),
       trackPrefs: _readTrackPrefs(extra.remove('trackPrefs')),
       mediaBadgesEnabled: pop('mediaBadgesEnabled', true),
       badgeSpot: pop('badgeSpot', 'leftTop'),
@@ -913,6 +931,21 @@ class AppSettings {
       extra: extra,
     );
   }
+}
+
+/// 字幕偏好的合法短码。认不出的值退回 `auto`，写坏一个偏好不该拖垮设置。
+const _subtitlePrefSlugs = {'auto', 'zh', 'en', 'off'};
+
+String _readSubtitlePref(Object? raw) =>
+    raw is String && _subtitlePrefSlugs.contains(raw) ? raw : 'auto';
+
+/// 字号限制在 16–96 之间：更小的看不清，更大的会盖住半个画面。
+int _readSubtitleSize(Object? raw) {
+  if (raw is! num) return 32;
+  final v = raw.toInt();
+  if (v < 16) return 16;
+  if (v > 96) return 96;
+  return v;
 }
 
 /// `{'<key>': {'audio': '2'}}` → 强类型。任何一层不是字符串就整条丢掉，

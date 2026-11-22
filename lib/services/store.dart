@@ -517,6 +517,15 @@ class AppStore extends ChangeNotifier {
     await updateSettings(_settings.copyWith(trackPrefs: next));
   }
 
+  /// 有多少条线路记过轨道选择，设置页拿它显示条数。
+  int get trackPrefCount => _settings.trackPrefs.length;
+
+  /// 把所有记住的轨道选择清掉，全部回到各线路的默认轨道。
+  Future<void> clearTrackPrefs() async {
+    if (_settings.trackPrefs.isEmpty) return;
+    await updateSettings(_settings.copyWith(trackPrefs: const {}));
+  }
+
   static bool _sameTracks(
     Map<String, String>? a,
     Map<String, String>? b,

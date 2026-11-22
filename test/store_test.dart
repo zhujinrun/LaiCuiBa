@@ -706,6 +706,36 @@ void main() {
       expect(store.settings.trackPrefs, isEmpty);
     });
 
+    test('the count the settings page shows matches what is stored', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      expect(store.trackPrefCount, 0);
+
+      await store.saveTrackPrefs('a|线路', const TrackPrefs(audio: '2'));
+      await store.saveTrackPrefs('b|线路', const TrackPrefs(subtitle: 'no'));
+      expect(store.trackPrefCount, 2);
+
+      // Rewriting the same line is not a new entry.
+      await store.saveTrackPrefs('a|线路', const TrackPrefs(audio: '3'));
+      expect(store.trackPrefCount, 2);
+    });
+
+    test('clearing all track picks leaves every line on the player default', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      await store.saveTrackPrefs('a|线路', const TrackPrefs(audio: '2'));
+      await store.saveTrackPrefs('b|线路', const TrackPrefs(subtitle: 'no'));
+
+      await store.clearTrackPrefs();
+      expect(store.trackPrefCount, 0);
+      expect(store.trackPrefsFor('a|线路').isEmpty, isTrue);
+      expect(store.trackPrefsFor('b|线路').isEmpty, isTrue);
+
+      // The clear is persisted, not just an in-memory edit.
+      final reloaded = await AppStore.load();
+      expect(reloaded.trackPrefCount, 0);
+    });
+
     test('resume survives a reload with its total intact', () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();

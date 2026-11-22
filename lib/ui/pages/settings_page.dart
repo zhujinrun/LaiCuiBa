@@ -7,8 +7,10 @@ import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../services/badge_rule.dart';
 import '../../services/store.dart';
+import '../../services/track_choice.dart';
 import '../page_header.dart';
 import '../widgets/backup_dialog.dart';
+import '../widgets/subtitle_style.dart';
 
 /// Settings root + the sub-pages reachable from it.
 ///
@@ -31,15 +33,27 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Null on the root list; otherwise the id of the active sub-page.
   String? _sub;
 
+  /// 上一级 sub 页，最外层压着 null（根列表）。
+  ///
+  /// 原版的设置是逐级 push 的：播放 → 字幕 的返回该回到「播放」，而不是一步
+  /// 跳回根列表。只有一个 `_sub` 时做不到这一点。
+  final List<String?> _parents = [];
+
   void _open(String sub) {
+    _parents.add(_sub);
     setState(() => _sub = sub);
     LcbPageHeaderScope.of(context).push(sub, _back);
   }
 
   void _back() {
     if (!mounted) return;
-    setState(() => _sub = null);
-    LcbPageHeaderScope.of(context).reset(_title);
+    final parent = _parents.isEmpty ? null : _parents.removeLast();
+    setState(() => _sub = parent);
+    if (parent == null) {
+      LcbPageHeaderScope.of(context).reset(_title);
+    } else {
+      LcbPageHeaderScope.of(context).push(parent, _back);
+    }
   }
 
   @override
@@ -229,6 +243,10 @@ class _SettingsPageState extends State<SettingsPage> {
         return _searchInputRows(store);
       case '播放':
         return _playbackRows(store);
+      case '字幕':
+        return _subtitleRows(store);
+      case '弹幕':
+        return _danmakuRows();
       case '媒体徽章':
         return _badgeRows(store);
       case '数据与存储':
@@ -469,7 +487,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// Empties the watch history after a confirmation, so the row's count, the
   /// history page and the home rail all drop to zero together.
-  Future<void> _clearHistory(AppStore store) async {    final count = store.history.length;
+  Future<void> _clearHistory(AppStore store) async {
+    final count = store.history.length;
     if (count == 0) {
       _toast('观看历史已经是空的');
       return;
@@ -776,15 +795,20 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: CupertinoIcons.captions_bubble,
               color: LcbColors.sysPink,
               title: '字幕',
-              subtitle: '外挂字幕、默认语言',
-              onTap: () {},
+              subtitle: '新开一集默认选哪一条、字多大',
+              value:
+                  '${_subtitlePrefLabel(store.settings.subtitlePref)} · '
+                  '${LcbSubtitleStyle.labelOf(store.settings.subtitleSize)}',
+              onTap: () => _open('字幕'),
             ),
             _Row(
               icon: CupertinoIcons.chat_bubble_2,
               color: LcbColors.sysTeal,
               title: '弹幕',
-              subtitle: '弹幕源、显示开关',
-              onTap: () {},
+              subtitle: '还没有可用的弹幕源',
+              // 没有可放的东西就不摆开关：这一行只说状态，打开还有一节说明。
+              value: '未接入',
+              onTap: () => _open('弹幕'),
             ),
             _Row(
               icon: CupertinoIcons.film,
@@ -800,6 +824,221 @@ class _SettingsPageState extends State<SettingsPage> {
           ],
         ),
       ];
+
+  /// 字幕 — 新开一集时先选哪条、字多大，以及清掉记住的轨道选择。
+  ///
+  /// 这两项都真的作用在播放页上：偏好由 `SubtitlePref.pick` 在轨道到齐后
+  /// 执行，字号直接进 `Video` 的 `subtitleViewConfiguration`（media_kit 把字幕
+  /// 画成 Flutter 文本，所以改完不用重开文件）。
+  List<Widget> _subtitleRows(AppStore store) => [
+        const _GroupLabel('默认'),
+        _Group(
+          rows: [
+            _Row(
+              icon: CupertinoIcons.captions_bubble,
+              color: LcbColors.sysPink,
+              title: '默认字幕',
+              subtitle: '新开一集时先选这一种；播放页点过的那条永远优先',
+              value: _subtitlePrefLabel(store.settings.subtitlePref),
+              onTap: () => _pickSubtitlePref(store),
+            ),
+            _Row(
+              icon: CupertinoIcons.textformat_size,
+              color: LcbColors.sysIndigo,
+              title: '字号',
+              subtitle: '字幕文字大小，改完立刻生效',
+              value:
+                  '${LcbSubtitleStyle.labelOf(store.settings.subtitleSize)} '
+                  '${store.settings.subtitleSize}',
+              onTap: () => _pickSubtitleSize(store),
+            ),
+          ],
+        ),
+        const SizedBox(height: 23),
+        const _GroupLabel('每部剧的选择'),
+        _Group(
+          rows: [
+            _Row(
+              icon: CupertinoIcons.memories,
+              color: LcbColors.sysOrange,
+              title: '记住的轨道选择',
+              subtitle: store.trackPrefCount == 0
+                  ? '在播放页换过画质、音轨或字幕的线路会记在这里'
+                  : '这些线路下次打开还是你上次选的那几条',
+              value: store.trackPrefCount == 0 ? '无' : '${store.trackPrefCount} 条',
+              onTap: () => _clearTrackPrefs(store),
+            ),
+          ],
+        ),
+        const SizedBox(height: 23),
+        const _Note(
+          '「默认字幕」只在一条线路还没有你的选择时生效。在播放页右下角的轨道'
+          '面板里点过任何一条（包括「关闭」），那部剧就按你点的来，不会再被这里'
+          '的默认值改回去。',
+        ),
+      ];
+
+  /// 弹幕 — 真的没有可放的东西，所以这一页只有状态和一节说明，没有开关。
+  ///
+  /// 摆一个「显示弹幕」开关只会让人以为能开：打开之后画面上不会多出任何东西，
+  /// 因为既没有弹幕服务器可问，也没有本地弹幕文件可读。
+  List<Widget> _danmakuRows() => [
+        const _GroupLabel('状态'),
+        const _Group(
+          rows: [
+            _Row(
+              icon: CupertinoIcons.chat_bubble_2_fill,
+              color: LcbColors.sysTeal,
+              title: '弹幕源',
+              subtitle: '弹幕要到弹幕服务器或本地文件里取',
+              value: '未接入',
+            ),
+          ],
+        ),
+        const SizedBox(height: 23),
+        const _Note('弹幕有两条来路，现在都还没接通：'),
+        const _Note(
+          '· 弹幕服务器（弹弹play 之类）：要按文件哈希或片名去匹配，而源站给的'
+          '播放地址是直链，没有可匹配的哈希。',
+        ),
+        const _Note(
+          '· 本地弹幕文件（.xml / .json）：要在播放页选一个文件、记住它属于哪部'
+          '剧，再按播放进度把弹幕画到画面上——这一步也还没做。',
+        ),
+        const _Note('所以这里先不摆「显示弹幕」开关：开关只能控制一个还不存在的东西。'),
+      ];
+
+  String _subtitlePrefLabel(String raw) {
+    switch (SubtitlePref.parse(raw)) {
+      case SubtitlePref.auto:
+        return '自动';
+      case SubtitlePref.chinese:
+        return '中文优先';
+      case SubtitlePref.english:
+        return '英文优先';
+      case SubtitlePref.off:
+        return '关闭';
+    }
+  }
+
+  Future<void> _pickSubtitlePref(AppStore store) async {
+    final picked = await _choose<SubtitlePref>(
+      '默认字幕',
+      const [
+        (value: SubtitlePref.auto, label: '自动', hint: '不干预，跟着文件和播放器的默认走'),
+        (value: SubtitlePref.chinese, label: '中文优先', hint: '有中文字幕就用中文（含粤语）'),
+        (value: SubtitlePref.english, label: '英文优先', hint: '有英文字幕就用英文'),
+        (value: SubtitlePref.off, label: '关闭', hint: '打开时不要字幕，要看再在播放页打开'),
+      ],
+      isCurrent: (v) => v == SubtitlePref.parse(store.settings.subtitlePref),
+    );
+    if (picked == null) return;
+    await store.updateSettings(store.settings.copyWith(subtitlePref: picked.slug));
+    if (!mounted) return;
+    _toast('默认字幕：${_subtitlePrefLabel(picked.slug)}');
+  }
+
+  Future<void> _pickSubtitleSize(AppStore store) async {
+    final picked = await _choose<int>(
+      '字幕字号',
+      [
+        for (final e in LcbSubtitleStyle.presets.entries)
+          (value: e.key, label: e.value, hint: '${e.key} 像素'),
+      ],
+      isCurrent: (v) => v == store.settings.subtitleSize,
+    );
+    if (picked == null) return;
+    await store.updateSettings(store.settings.copyWith(subtitleSize: picked));
+    if (!mounted) return;
+    _toast('字幕字号：${LcbSubtitleStyle.labelOf(picked)}（$picked）');
+  }
+
+  /// 清掉所有「这条线路上次选了哪条轨」的记忆，各线路回到播放器默认。
+  /// 先确认：换过十条线路的人不该被一次误点清空。
+  Future<void> _clearTrackPrefs(AppStore store) async {
+    final count = store.trackPrefCount;
+    if (count == 0) {
+      _toast('还没有哪条线路记过轨道选择');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: const Color(0x78000000),
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          '清除轨道选择？',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          '共 $count 条线路。清除后下次打开这些线路，画质、音轨、字幕都回到'
+          '播放器自己的默认。',
+          style: const TextStyle(fontSize: 13.5, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('清除', style: TextStyle(color: LcbColors.sysRed)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await store.clearTrackPrefs();
+    if (!mounted) return;
+    _toast('已清除 $count 条线路的轨道选择');
+  }
+
+  /// 单选弹窗：一行主文字 + 一行说明，当前值打勾。
+  Future<T?> _choose<T>(
+    String title,
+    List<({T value, String label, String hint})> options, {
+    required bool Function(T value) isCurrent,
+  }) {
+    return showDialog<T>(
+      context: context,
+      barrierColor: const Color(0x78000000),
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          title,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final o in options)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: Text(o.label),
+                subtitle: Text(
+                  o.hint,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: LcbColors.settingsQuiet,
+                  ),
+                ),
+                trailing: isCurrent(o.value)
+                    ? const Icon(
+                        Icons.check,
+                        color: LcbColors.primary,
+                        size: 18,
+                      )
+                    : null,
+                onTap: () => Navigator.of(ctx).pop(o.value),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   /// 媒体徽章 — 4K / 杜比 / HDR specification badges, their position and
   /// which groups to show. Every value is a real setting read from the store.
@@ -1001,6 +1240,37 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
+/// 一节说明文字。设置页里凡是要讲清「为什么这里没有开关」的地方都用它。
+class _Note extends StatelessWidget {
+  const _Note(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+      // 说明文字不跟着卡片拉满一行：760 以内的行宽才读得动，再宽眼睛要来回扫。
+      // 外面必须包一层 Align —— ListView 给子节点的是「和视口一样宽」的紧约束，
+      // 直接放 ConstrainedBox 会被那对约束按回去，宽度根本收不窄。
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 12.5,
+              height: 1.55,
+              color: LcbColors.settingsQuiet,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _GroupLabel extends StatelessWidget {
   const _GroupLabel(this.text);
 
@@ -1197,7 +1467,8 @@ class _RowState extends State<_Row> {
                   padding: const EdgeInsets.only(left: 12),
                   child: _Switch(value: _isOn),
                 )
-              else
+              // 什么都不做的行就不画箭头：箭头是在说「点我还有下一页」。
+              else if (widget.onTap != null)
                 const Padding(
                   padding: EdgeInsets.only(left: 4),
                   child: Icon(
