@@ -378,6 +378,11 @@ class _ShellState extends State<Shell> {
             initialRate: _store.settings.playerRate,
             subtitlePref: SubtitlePref.parse(_store.settings.subtitlePref),
             subtitleSize: _store.settings.subtitleSize,
+            danmakuSources: _store.danmakuSources,
+            danmakuEnabled: _store.settings.danmakuEnabled,
+            danmakuBlockTop: _store.settings.danmakuBlockTop,
+            danmakuBlockBottom: _store.settings.danmakuBlockBottom,
+            danmakuService: _store.danmaku,
             onPrefs: (volume, rate) =>
                 _store.savePlaybackPrefs(volume: volume, rate: rate),
             onEpisode: (i) => _openPlayer(_detail!, i, player.lineIndex),

@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
 import 'catalog_sites.dart';
+import 'danmaku/danmaku_api.dart';
+import 'danmaku/source_danmaku.dart';
 import 'demo_data.dart' as demo;
 import 'emby_client.dart';
 import 'source_catalogue.dart';
@@ -536,6 +538,66 @@ class AppStore extends ChangeNotifier {
       if (b[e.key] != e.value) return false;
     }
     return true;
+  }
+
+  // -------------------------------------------------------------------------
+  // Danmaku
+  // -------------------------------------------------------------------------
+
+  /// 弹幕源与缓存。整个应用共用一个实例，同一部剧换集时能命中它的缓存。
+  final DanmakuService danmaku = DanmakuService();
+
+  /// 弹幕源表，内置源永远排第一。
+  ///
+  /// 用户给内置源填过 AppId/AppSecret 时用的就是他填的那份配置（同一个 id），
+  /// 没填过才是那个不带凭据的常量——否则设置里填的凭据永远不会生效。
+  List<DanmakuSource> get danmakuSources {
+    final parsed = <DanmakuSource>[];
+    for (final raw in _settings.danmakuSources) {
+      final s = DanmakuSource.fromJson(raw);
+      if (s != null) parsed.add(s);
+    }
+    final builtin = parsed.firstWhere(
+      (s) => s.isBuiltin,
+      orElse: () => DanmakuSource.builtin,
+    );
+    return [
+      builtin,
+      for (final s in parsed)
+        if (!s.isBuiltin) s,
+    ];
+  }
+
+  /// 用户自己加的源（不计内置的那一条）。
+  int get customDanmakuSourceCount =>
+      danmakuSources.where((s) => !s.isBuiltin).length;
+
+  /// 新增或按 id 覆盖一条源。内置源也能改（填凭据、停用），但删不掉。
+  Future<void> saveDanmakuSource(DanmakuSource source) async {
+    final next = <Map<String, Object?>>[];
+    var replaced = false;
+    for (final s in danmakuSources) {
+      if (s.id == source.id) {
+        next.add(source.toJson());
+        replaced = true;
+      } else {
+        next.add(s.toJson());
+      }
+    }
+    if (!replaced) next.add(source.toJson());
+    await updateSettings(_settings.copyWith(danmakuSources: next));
+    danmaku.clearCache();
+  }
+
+  /// 删掉一条用户源。内置源删不掉：删了以后播放页就没有任何可问的地址。
+  Future<void> removeDanmakuSource(String id) async {
+    if (id == DanmakuSource.builtin.id) return;
+    final next = [
+      for (final s in danmakuSources)
+        if (s.id != id) s.toJson(),
+    ];
+    await updateSettings(_settings.copyWith(danmakuSources: next));
+    danmaku.clearCache();
   }
 
   // -------------------------------------------------------------------------

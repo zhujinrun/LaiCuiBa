@@ -1122,9 +1122,8 @@ void main() {
     expect(find.text('无'), findsOneWidget);
   });
 
-  testWidgets('弹幕 says it is not connected instead of faking a switch', (
-    tester,
-  ) async {
+
+  testWidgets('弹幕 settings configure real sources', (tester) async {
     tester.view.physicalSize = const Size(1920, 1040);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -1140,17 +1139,54 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('播放'));
     await tester.pumpAndSettle();
-
-    expect(find.text('还没有可用的弹幕源'), findsOneWidget);
-    expect(find.text('未接入'), findsOneWidget);
-
     await tester.tap(find.text('弹幕'));
     await tester.pumpAndSettle();
 
-    // 只有状态，没有「显示弹幕」——那会是一个控制不了任何东西的开关。
-    expect(find.text('弹幕源'), findsOneWidget);
-    expect(find.text('显示弹幕'), findsNothing);
-    expect(find.textContaining('弹弹play'), findsOneWidget);
-    expect(find.textContaining('本地弹幕文件'), findsOneWidget);
+    // 三行都是真开关，and 显示弹幕 默认开着（原版的默认行为）。
+    expect(find.text('显示弹幕'), findsOneWidget);
+    expect(find.text('屏蔽顶部弹幕'), findsOneWidget);
+    expect(find.text('屏蔽底部弹幕'), findsOneWidget);
+    expect(store.settings.danmakuEnabled, isTrue);
+
+    await tester.tap(find.text('显示弹幕'));
+    await tester.pumpAndSettle();
+    expect(store.settings.danmakuEnabled, isFalse);
+
+    await tester.tap(find.text('屏蔽底部弹幕'));
+    await tester.pumpAndSettle();
+    expect(store.settings.danmakuBlockBottom, isTrue);
+
+    // 弹幕源页：内置那条一开始就在，且不需要凭据。
+    await tester.tap(find.text('弹幕源'));
+    await tester.pumpAndSettle();
+    expect(find.text('弹弹play'), findsOneWidget);
+    expect(find.text('无需凭据'), findsOneWidget);
+
+    // 加一个自己的源：先被空名字拦下，再被坏地址拦下，最后才存进去。
+    await tester.tap(find.text('添加弹幕源'));
+    await tester.pumpAndSettle();
+    expect(find.text('名称'), findsOneWidget);
+
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(find.text('给它起个名字'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).at(0), '自建弹幕');
+    await tester.enterText(find.byType(TextField).at(1), 'api.example.com');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(find.text('地址要以 http:// 或 https:// 开头'), findsOneWidget);
+
+    await tester.enterText(
+      find.byType(TextField).at(1),
+      'https://danmaku.example.com',
+    );
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(store.customDanmakuSourceCount, 1);
+    expect(store.danmakuSources.last.name, '自建弹幕');
+    expect(find.text('自建弹幕'), findsOneWidget);
+    expect(find.text('无需凭据'), findsNWidgets(2));
   });
 }

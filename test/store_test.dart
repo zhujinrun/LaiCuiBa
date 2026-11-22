@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:lai_cui_ba/models/models.dart';
+import 'package:lai_cui_ba/services/danmaku/danmaku_api.dart';
 import 'package:lai_cui_ba/services/playback_clock.dart';
 import 'package:lai_cui_ba/services/skip_rule.dart';
 import 'package:lai_cui_ba/services/store.dart';
@@ -1179,6 +1180,91 @@ void main() {
       await store.setSkipOverride(' 三体 ', const SkipOverride(introMs: 15000));
       expect(store.skipOverrideFor('三体').introMs, 15000);
       expect(store.skipOverrideCount, 1);
+    });
+  });
+
+  group('danmaku sources', () {
+    Future<AppStore> fresh() async {
+      SharedPreferences.setMockInitialValues({});
+      return AppStore.load();
+    }
+
+    test('the builtin is always first, even with nothing configured', () async {
+      final store = await fresh();
+      final sources = store.danmakuSources;
+      expect(sources, hasLength(1));
+      expect(sources.single.isBuiltin, isTrue);
+      expect(store.customDanmakuSourceCount, 0);
+      // 内置源没有凭据时是"无需签名"的状态，不是错误。
+      expect(sources.single.hasCredentials, isFalse);
+    });
+
+    test('a custom source is stored, listed after the builtin, and reread',
+        () async {
+      final store = await fresh();
+      const mine = DanmakuSource(
+        id: 'mine',
+        name: '自建',
+        baseUrl: 'https://danmaku.example.com',
+        appId: 'id',
+        appSecret: 'sec',
+      );
+      await store.saveDanmakuSource(mine);
+
+      expect(store.customDanmakuSourceCount, 1);
+      expect(store.danmakuSources.map((s) => s.id), ['dandanplay', 'mine']);
+      expect(store.danmakuSources.last.hasCredentials, isTrue);
+
+      // 重新加载：写进去的 JSON 能被读回来。
+      final reloaded = await AppStore.load();
+      expect(reloaded.danmakuSources.last.baseUrl, mine.baseUrl);
+      expect(reloaded.danmakuSources.last.appSecret, 'sec');
+    });
+
+    test('saving the same id twice replaces rather than duplicates', () async {
+      final store = await fresh();
+      const first = DanmakuSource(id: 'x', name: 'A', baseUrl: 'https://a');
+      await store.saveDanmakuSource(first);
+      await store.saveDanmakuSource(first.copyWith(name: 'B'));
+      expect(store.customDanmakuSourceCount, 1);
+      expect(store.danmakuSources.last.name, 'B');
+    });
+
+    test('editing the builtin keeps its id, so credentials apply', () async {
+      final store = await fresh();
+      await store.saveDanmakuSource(
+        DanmakuSource.builtin.copyWith(appId: 'a', appSecret: 'b'),
+      );
+      final builtin = store.danmakuSources.first;
+      expect(builtin.isBuiltin, isTrue);
+      expect(builtin.hasCredentials, isTrue);
+      expect(store.danmakuSources, hasLength(1));
+    });
+
+    test('the builtin cannot be deleted, a custom one can', () async {
+      final store = await fresh();
+      await store.saveDanmakuSource(
+        const DanmakuSource(id: 'x', name: 'A', baseUrl: 'https://a'),
+      );
+      await store.removeDanmakuSource(DanmakuSource.builtin.id);
+      expect(store.danmakuSources, hasLength(2));
+      await store.removeDanmakuSource('x');
+      expect(store.danmakuSources, hasLength(1));
+      expect(store.customDanmakuSourceCount, 0);
+    });
+
+    test('a broken entry in the JSON does not break the list', () async {
+      SharedPreferences.setMockInitialValues({
+        'flutter.settings': jsonEncode({
+          'danmakuSources': [
+            {'id': 'ok', 'name': 'ok', 'baseUrl': 'https://a'},
+            {'id': 'no-name'},
+            'nonsense',
+          ],
+        }),
+      });
+      final store = await AppStore.load();
+      expect(store.danmakuSources.map((s) => s.id), ['dandanplay', 'ok']);
     });
   });
 }

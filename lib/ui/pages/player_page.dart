@@ -7,6 +7,8 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../services/awake.dart';
+import '../../services/danmaku/danmaku_api.dart';
+import '../../services/danmaku/source_danmaku.dart';
 import '../../services/playback_clock.dart';
 import '../../services/skip_rule.dart';
 import '../../services/track_choice.dart';
@@ -14,6 +16,7 @@ import '../../services/track_map.dart';
 import '../widgets/skip_panel.dart';
 import '../widgets/subtitle_style.dart';
 import '../widgets/track_panel.dart';
+import '../widgets/danmaku_layer.dart';
 
 /// 播放页 — 全屏视频播放。
 ///
@@ -49,6 +52,11 @@ class PlayerPage extends StatefulWidget {
     this.initialRate = 1.0,
     this.subtitlePref = SubtitlePref.auto,
     this.subtitleSize = LcbSubtitleStyle.standard,
+    this.danmakuSources = const [],
+    this.danmakuEnabled = false,
+    this.danmakuBlockTop = false,
+    this.danmakuBlockBottom = false,
+    this.danmakuService,
     this.lines = const [],
     this.lineIndex = 0,
     this.trackKey,
@@ -119,6 +127,16 @@ class PlayerPage extends StatefulWidget {
   /// 字幕字号，见 [LcbSubtitleStyle]。media_kit 把字幕画成 Flutter 文本，
   /// 所以这个值直接进 `Video` 的 `subtitleViewConfiguration`。
   final int subtitleSize;
+
+  /// 弹幕源（内置源在前）与总开关。开关来自设置页，播放页底栏可以临时改；
+  /// 关掉时一个请求都不发。
+  final List<DanmakuSource> danmakuSources;
+  final bool danmakuEnabled;
+  final bool danmakuBlockTop;
+  final bool danmakuBlockBottom;
+
+  /// 取弹幕用。整个应用共用一个实例（store 持有），以便同一部剧换集时命中缓存。
+  final DanmakuService? danmakuService;
 
   /// The lines the source offers for this work, and which one is playing.
   ///
@@ -235,6 +253,16 @@ class _PlayerPageState extends State<PlayerPage> {
   String? _notice;
   Timer? _noticeTimer;
 
+  /// 这一集的弹幕、开关状态，以及上一次去要弹幕的结果。
+  ///
+  /// 开关来自设置页（`显示弹幕`），底栏的按钮只改这一次播放；[_danmakuNote]
+  /// 存「为什么没有」——没源、要凭据、没匹配到，都要能在画面上说出来。
+  List<DanmakuComment> _danmaku = const [];
+  bool _danmakuOn = false;
+  bool _danmakuLoading = false;
+  bool _danmakuAsked = false;
+  String? _danmakuNote;
+
   bool _controlsVisible = true;
   Timer? _hideTimer;
 
@@ -298,6 +326,71 @@ class _PlayerPageState extends State<PlayerPage> {
     // playing episode, not a locked screen.
     _awake.hold();
     _open();
+    if (widget.danmakuEnabled) {
+      _danmakuOn = true;
+      // 弹幕和视频是两条独立的路：视频先开，弹幕在后台去要，谁先到都不影响谁。
+      unawaited(_loadDanmaku());
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Danmaku (弹幕)
+  // ---------------------------------------------------------------------------
+
+  /// 这一集对应的剧集名：有集号就用集号那一条，电影退化成「1」。
+  String get _episodeLabel {
+    final index = widget.episodeIndex;
+    if (index == null || widget.episodes.isEmpty) return '1';
+    if (index < 0 || index >= widget.episodes.length) return '${index + 1}';
+    return widget.episodes[index];
+  }
+
+  /// 去弹幕源要这一集的弹幕。失败也要留一句话，不能只是"什么都没发生"。
+  Future<void> _loadDanmaku() async {
+    if (_danmakuLoading) return;
+    final service = widget.danmakuService;
+    if (service == null) {
+      setState(() => _danmakuNote = '弹幕服务没有初始化');
+      return;
+    }
+    setState(() {
+      _danmakuLoading = true;
+      _danmakuNote = null;
+    });
+    final outcome = await service.load(
+      title: widget.title,
+      episode: _episodeLabel,
+      sources: widget.danmakuSources,
+    );
+    if (!mounted) return;
+    setState(() {
+      _danmakuLoading = false;
+      _danmakuAsked = true;
+      _danmaku = outcome.episode?.comments ?? const [];
+      _danmakuNote = outcome.hasContent ? null : outcome.message;
+    });
+    if (outcome.hasContent) {
+      _showNotice('弹幕已开 · ${_danmaku.length} 条'
+          '（${outcome.episode!.match.label}）');
+    } else {
+      _showNotice(outcome.message);
+    }
+  }
+
+  void _toggleDanmaku() {
+    final next = !_danmakuOn;
+    setState(() => _danmakuOn = next);
+    if (!next) {
+      _showNotice('弹幕已关');
+      return;
+    }
+    if (_danmaku.isNotEmpty) {
+      _showNotice('弹幕已开 · ${_danmaku.length} 条');
+      return;
+    }
+    // 上次没要到（没源 / 没匹配到）时，重新打开就再试一次，别把失败记一辈子。
+    if (_danmakuAsked && _danmakuNote != null) _danmakuAsked = false;
+    unawaited(_loadDanmaku());
   }
 
   Future<void> _open() async {
@@ -567,6 +660,11 @@ class _PlayerPageState extends State<PlayerPage> {
       // over, so drop the panels rather than leaving stale choices on screen.
       _trackPanel = false;
       _skipPanel = false;
+      // 换集就是换一集弹幕：把上一集的留在这儿会让画面继续飘上一集的字。
+      _danmaku = const [];
+      _danmakuAsked = false;
+      _danmakuNote = null;
+      if (_danmakuOn) unawaited(_loadDanmaku());
     }
   }
 
@@ -621,6 +719,16 @@ class _PlayerPageState extends State<PlayerPage> {
           if (_buffering)
             const Center(
               child: CircularProgressIndicator(color: LcbColors.primary),
+            ),
+          // 弹幕压在画面上、控制条之下：开关关掉或者没要到时这一层根本不存在，
+          // 不留一个透明的空壳在上面对着手势层捣乱。
+          if (_danmakuOn && _danmaku.isNotEmpty)
+            DanmakuLayer(
+              comments: _danmaku,
+              position: _position,
+              playing: _playing,
+              blockTop: widget.danmakuBlockTop,
+              blockBottom: widget.danmakuBlockBottom,
             ),
           // A single full-surface tap layer toggles the controls; it sits under
           // the bars so the bars' own buttons still win the hit test.
@@ -732,6 +840,13 @@ class _PlayerPageState extends State<PlayerPage> {
             onRate: (r) => _player.setRate(r),
             onTracks: _toggleTrackPanel,
             tracksOpen: _trackPanel,
+            onDanmaku: _toggleDanmaku,
+            danmakuOn: _danmakuOn,
+            danmakuLabel: _danmakuLoading
+                ? '弹幕…'
+                : _danmakuOn
+                    ? '弹幕 ${_danmaku.length}'
+                    : '弹幕 关',
             onSkip: _toggleSkipPanel,
             skipOpen: _skipPanel,
             skipLabel: _clock.skip.intro > Duration.zero
@@ -845,6 +960,9 @@ class _BottomBar extends StatelessWidget {
     required this.onRate,
     required this.onTracks,
     required this.tracksOpen,
+    required this.onDanmaku,
+    required this.danmakuOn,
+    required this.danmakuLabel,
     required this.onSkip,
     required this.skipOpen,
     required this.skipLabel,
@@ -869,6 +987,12 @@ class _BottomBar extends StatelessWidget {
   final ValueChanged<double> onRate;
   final VoidCallback onTracks;
   final bool tracksOpen;
+
+  /// 弹幕开关与它现在的状态：`弹幕 12` 表示开着且有 12 条，`弹幕 关` 表示关着，
+  /// `弹幕…` 表示正在去源里要。标签直接说事实，不让人点开才知道有没有弹幕。
+  final VoidCallback onDanmaku;
+  final bool danmakuOn;
+  final String danmakuLabel;
 
   /// Opens the 本剧片头片尾 panel, and the label it wears — `片头 90s` when one
   /// is in force for this work, `片头 关` when nothing is being skipped, so the
@@ -980,6 +1104,13 @@ class _BottomBar extends StatelessWidget {
                       label: skipLabel,
                       open: skipOpen,
                       onTap: onSkip,
+                    ),
+                    const SizedBox(width: 8),
+                    _PanelButton(
+                      icon: Icons.forum_outlined,
+                      label: danmakuLabel,
+                      open: danmakuOn,
+                      onTap: onDanmaku,
                     ),
                     const SizedBox(width: 8),
                     _PanelButton(

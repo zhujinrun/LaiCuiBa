@@ -699,6 +699,10 @@ class AppSettings {
     this.playerRate = 1.0,
     this.subtitlePref = 'auto',
     this.subtitleSize = 32,
+    this.danmakuEnabled = true,
+    this.danmakuBlockTop = false,
+    this.danmakuBlockBottom = false,
+    this.danmakuSources = const [],
     this.trackPrefs = const {},
     this.mediaBadgesEnabled = true,
     this.badgeSpot = 'leftTop',
@@ -756,6 +760,19 @@ class AppSettings {
   /// 所以这是一个真实的排版值，不是 mpv 的属性。
   final int subtitleSize;
 
+  /// 弹幕总开关。关掉之后播放页不再向弹幕源发请求，画面上也不再叠一层。
+  final bool danmakuEnabled;
+
+  /// 屏蔽顶部 / 底部固定弹幕——护住画面下沿的字幕和控制条。滚动弹幕不受影响。
+  final bool danmakuBlockTop;
+  final bool danmakuBlockBottom;
+
+  /// 弹幕源表：`[{'id': 'mine', 'name': '自建', 'baseUrl': '…'}]`。
+  ///
+  /// 和 [trackPrefs] 一样保持原始 JSON：模型层不认识 `DanmakuSource`
+  /// （`services/danmaku/danmaku_api.dart`），解析与校验都在服务层。
+  final List<Map<String, Object?>> danmakuSources;
+
   /// 每条线路记住的轨道选择：`{'<作品id>|<线路名>': {'audio': '2'}}`。
   ///
   /// 存的是 mpv 的 track id，所以换集/换源之后由播放页核对一遍再用，见
@@ -806,6 +823,10 @@ class AppSettings {
     double? playerRate,
     String? subtitlePref,
     int? subtitleSize,
+    bool? danmakuEnabled,
+    bool? danmakuBlockTop,
+    bool? danmakuBlockBottom,
+    List<Map<String, Object?>>? danmakuSources,
     Map<String, Map<String, String>>? trackPrefs,
     bool? mediaBadgesEnabled,
     String? badgeSpot,
@@ -839,6 +860,10 @@ class AppSettings {
       playerRate: playerRate ?? this.playerRate,
       subtitlePref: subtitlePref ?? this.subtitlePref,
       subtitleSize: subtitleSize ?? this.subtitleSize,
+      danmakuEnabled: danmakuEnabled ?? this.danmakuEnabled,
+      danmakuBlockTop: danmakuBlockTop ?? this.danmakuBlockTop,
+      danmakuBlockBottom: danmakuBlockBottom ?? this.danmakuBlockBottom,
+      danmakuSources: danmakuSources ?? this.danmakuSources,
       trackPrefs: trackPrefs ?? this.trackPrefs,
       mediaBadgesEnabled: mediaBadgesEnabled ?? this.mediaBadgesEnabled,
       badgeSpot: badgeSpot ?? this.badgeSpot,
@@ -876,6 +901,10 @@ class AppSettings {
     'playerRate': playerRate,
     'subtitlePref': subtitlePref,
     'subtitleSize': subtitleSize,
+    'danmakuEnabled': danmakuEnabled,
+    'danmakuBlockTop': danmakuBlockTop,
+    'danmakuBlockBottom': danmakuBlockBottom,
+    'danmakuSources': danmakuSources,
     'trackPrefs': trackPrefs,
     'mediaBadgesEnabled': mediaBadgesEnabled,
     'badgeSpot': badgeSpot,
@@ -923,6 +952,10 @@ class AppSettings {
       playerRate: pop('playerRate', 1.0),
       subtitlePref: _readSubtitlePref(extra.remove('subtitlePref')),
       subtitleSize: _readSubtitleSize(extra.remove('subtitleSize')),
+      danmakuEnabled: pop('danmakuEnabled', true),
+      danmakuBlockTop: pop('danmakuBlockTop', false),
+      danmakuBlockBottom: pop('danmakuBlockBottom', false),
+      danmakuSources: _readDanmakuSources(extra.remove('danmakuSources')),
       trackPrefs: _readTrackPrefs(extra.remove('trackPrefs')),
       mediaBadgesEnabled: pop('mediaBadgesEnabled', true),
       badgeSpot: pop('badgeSpot', 'leftTop'),
@@ -966,6 +999,28 @@ Map<String, Map<String, String>> _readTrackPrefs(Object? raw) {
     });
     if (entry.isNotEmpty) out[key] = entry;
   });
+  return out;
+}
+
+/// 弹幕源表。只有带 `id` 和 `name` 的条目才算数；`baseUrl` 缺省补官方地址。
+/// 一条写坏的源只丢掉自己，不该让整份设置加载失败。
+List<Map<String, Object?>> _readDanmakuSources(Object? raw) {
+  if (raw is! List) return const [];
+  final out = <Map<String, Object?>>[];
+  for (final item in raw) {
+    if (item is! Map) continue;
+    final id = '${item['id'] ?? ''}'.trim();
+    final name = '${item['name'] ?? ''}'.trim();
+    if (id.isEmpty || name.isEmpty) continue;
+    out.add({
+      'id': id,
+      'name': name,
+      'baseUrl': '${item['baseUrl'] ?? ''}',
+      'appId': '${item['appId'] ?? ''}',
+      'appSecret': '${item['appSecret'] ?? ''}',
+      'enabled': item['enabled'] != false,
+    });
+  }
   return out;
 }
 

@@ -6,6 +6,7 @@ import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../services/badge_rule.dart';
+import '../../services/danmaku/danmaku_api.dart';
 import '../../services/store.dart';
 import '../../services/track_choice.dart';
 import '../page_header.dart';
@@ -162,7 +163,7 @@ class _SettingsPageState extends State<SettingsPage> {
               onTap: () {},
             ),
             _Row(
-              icon: CupertinoIcons.globe,
+              icon: Icons.public,
               color: LcbColors.primaryDim,
               title: '猫源配置与网盘登录',
               subtitle: '打开源的配置网页，扫码登录网盘',
@@ -246,7 +247,9 @@ class _SettingsPageState extends State<SettingsPage> {
       case '字幕':
         return _subtitleRows(store);
       case '弹幕':
-        return _danmakuRows();
+        return _danmakuRows(store);
+      case '弹幕源':
+        return _danmakuSourceRows(store);
       case '媒体徽章':
         return _badgeRows(store);
       case '数据与存储':
@@ -805,9 +808,10 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: CupertinoIcons.chat_bubble_2,
               color: LcbColors.sysTeal,
               title: '弹幕',
-              subtitle: '还没有可用的弹幕源',
-              // 没有可放的东西就不摆开关：这一行只说状态，打开还有一节说明。
-              value: '未接入',
+              subtitle: '按片名和集数自动匹配；关掉就不问源',
+              value: store.settings.danmakuEnabled
+                  ? '开 · ${store.danmakuSources.length} 个源'
+                  : '关',
               onTap: () => _open('弹幕'),
             ),
             _Row(
@@ -878,35 +882,151 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ];
 
-  /// 弹幕 — 真的没有可放的东西，所以这一页只有状态和一节说明，没有开关。
+  /// 弹幕 — 开关、屏蔽区，以及去管弹幕源。
   ///
-  /// 摆一个「显示弹幕」开关只会让人以为能开：打开之后画面上不会多出任何东西，
-  /// 因为既没有弹幕服务器可问，也没有本地弹幕文件可读。
-  List<Widget> _danmakuRows() => [
-        const _GroupLabel('状态'),
-        const _Group(
-          rows: [
-            _Row(
-              icon: CupertinoIcons.chat_bubble_2_fill,
-              color: LcbColors.sysTeal,
-              title: '弹幕源',
-              subtitle: '弹幕要到弹幕服务器或本地文件里取',
-              value: '未接入',
+  /// 匹配走「片名 + 集数」，所以播放页不需要文件哈希也能问到；`实际能拿到多少
+  /// 条` 由播放页底栏报（`弹幕 12`），这一页只负责配置。
+  List<Widget> _danmakuRows(AppStore store) {
+    final sources = store.danmakuSources;
+    final custom = store.customDanmakuSourceCount;
+    final enabledCount = sources.where((s) => s.enabled).length;
+    return [
+      const _GroupLabel('显示'),
+      _Group(
+        rows: [
+          _Row(
+            icon: CupertinoIcons.chat_bubble_2_fill,
+            color: LcbColors.sysTeal,
+            title: '显示弹幕',
+            subtitle: '关掉之后播放页不再向弹幕源发请求',
+            toggle: true,
+            toggleValue: store.settings.danmakuEnabled,
+            onToggle: (v) => store.updateSettings(
+              store.settings.copyWith(danmakuEnabled: v),
             ),
-          ],
-        ),
-        const SizedBox(height: 23),
-        const _Note('弹幕有两条来路，现在都还没接通：'),
-        const _Note(
-          '· 弹幕服务器（弹弹play 之类）：要按文件哈希或片名去匹配，而源站给的'
-          '播放地址是直链，没有可匹配的哈希。',
-        ),
-        const _Note(
-          '· 本地弹幕文件（.xml / .json）：要在播放页选一个文件、记住它属于哪部'
-          '剧，再按播放进度把弹幕画到画面上——这一步也还没做。',
-        ),
-        const _Note('所以这里先不摆「显示弹幕」开关：开关只能控制一个还不存在的东西。'),
-      ];
+          ),
+          _Row(
+            icon: Icons.vertical_align_top,
+            color: LcbColors.sysIndigo,
+            title: '屏蔽顶部弹幕',
+            subtitle: '顶部固定弹幕会挡住画面，滚动的不受影响',
+            toggle: true,
+            toggleValue: store.settings.danmakuBlockTop,
+            onToggle: (v) => store.updateSettings(
+              store.settings.copyWith(danmakuBlockTop: v),
+            ),
+          ),
+          _Row(
+            icon: Icons.vertical_align_bottom,
+            color: LcbColors.sysIndigo,
+            title: '屏蔽底部弹幕',
+            subtitle: '底部固定弹幕会和字幕、控制条打架',
+            toggle: true,
+            toggleValue: store.settings.danmakuBlockBottom,
+            onToggle: (v) => store.updateSettings(
+              store.settings.copyWith(danmakuBlockBottom: v),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 23),
+      const _GroupLabel('弹幕来源'),
+      _Group(
+        rows: [
+          _Row(
+            icon: Icons.dns,
+            color: LcbColors.sysBlue,
+            title: '弹幕源',
+            subtitle: custom == 0
+                ? '内置弹弹play；也可以加自己部署的地址'
+                : '内置 1 个 · 自己加的 $custom 个',
+            value: enabledCount == 0 ? '都没启用' : '${sources.length} 个',
+            onTap: () => _open('弹幕源'),
+          ),
+        ],
+      ),
+      const SizedBox(height: 23),
+      const _Note(
+        '播放时按「片名 + 集数」去问，问不到再拿拼出来的文件名匹配。'
+        '一个源给出结果就不再问下一个。',
+      ),
+      const _Note(
+        '弹弹play 官方接口要 AppId/AppSecret（到它的开发者后台申请后填进弹幕源）；'
+        '自建的同构服务器一般不用。没有凭据时官方源会回 401，播放页会把这句话原样告诉你。',
+      ),
+    ];
+  }
+
+  /// 弹幕源列表：内置那条排第一，能改（填凭据、停用）但删不掉。
+  List<Widget> _danmakuSourceRows(AppStore store) {
+    final sources = store.danmakuSources;
+    return [
+      const _GroupLabel('已配置'),
+      _Group(
+        rows: [
+          for (final s in sources)
+            _Row(
+              icon: s.isBuiltin
+                  ? Icons.bolt
+                  : Icons.public,
+              color: s.isBuiltin ? LcbColors.sysOrange : LcbColors.sysBlue,
+              title: s.name,
+              subtitle: s.baseUrl,
+              value: !s.enabled
+                  ? '停用'
+                  : s.hasCredentials
+                      ? '有凭据'
+                      : '无需凭据',
+              onTap: () => _editDanmakuSource(store, s),
+            ),
+        ],
+      ),
+      const SizedBox(height: 23),
+      _Group(
+        rows: [
+          _Row(
+            icon: CupertinoIcons.add,
+            color: LcbColors.sysGreen,
+            title: '添加弹幕源',
+            subtitle: '一个 dandanplay 兼容的服务地址',
+            onTap: () => _editDanmakuSource(store, null),
+          ),
+        ],
+      ),
+      const SizedBox(height: 23),
+      const _Note(
+        '接口只用三个：`/api/v2/search/episodes` 按片名集数找、`/api/v2/match` '
+        '按文件名找、`/api/v2/comment/{id}` 取弹幕。所以任何实现了这三个接口的'
+        '自建服务都能填进来。',
+      ),
+    ];
+  }
+
+  /// 新增（[source] 为 null）或编辑一条弹幕源。
+  ///
+  /// 内置源也能编辑——填凭据、临时停用——但对话框不给删除按钮：删掉之后
+  /// 播放页就一个可问的地址都没有了，不如让它只能被停用。
+  Future<void> _editDanmakuSource(
+    AppStore store,
+    DanmakuSource? source,
+  ) async {
+    final result = await showDialog<Object>(
+      context: context,
+      builder: (_) => _DanmakuSourceDialog(source: source),
+    );
+    if (!mounted || result == null) return;
+    if (result == 'delete') {
+      if (source == null) return;
+      await store.removeDanmakuSource(source.id);
+      if (!mounted) return;
+      _toast('已删除「${source.name}」');
+      return;
+    }
+    if (result is! DanmakuSource) return;
+    await store.saveDanmakuSource(result);
+    if (!mounted) return;
+    _toast(result.isBuiltin ? '已保存弹弹play 的设置' : '已保存「${result.name}」');
+  }
 
   String _subtitlePrefLabel(String raw) {
     switch (SubtitlePref.parse(raw)) {
@@ -1676,6 +1796,164 @@ class _SecondsDialogState extends State<_SecondsDialog> {
         ),
         TextButton(onPressed: _submit, child: const Text('保存')),
       ],
+    );
+  }
+}
+
+/// 弹幕源的编辑弹窗。
+///
+/// 只收三样：名字、地址、凭据。地址必须是 http(s) 开头——填一个 `api.xxx` 会被
+/// 当场拦下，而不是等播放时抛一个 `Uri` 解析错误。凭据留空就表示"这个源不要签名"。
+class _DanmakuSourceDialog extends StatefulWidget {
+  const _DanmakuSourceDialog({this.source});
+
+  /// Null means "create a new one".
+  final DanmakuSource? source;
+
+  @override
+  State<_DanmakuSourceDialog> createState() => _DanmakuSourceDialogState();
+}
+
+class _DanmakuSourceDialogState extends State<_DanmakuSourceDialog> {
+  late final TextEditingController _name =
+      TextEditingController(text: widget.source?.name ?? '');
+  late final TextEditingController _base = TextEditingController(
+    text: widget.source?.baseUrl ?? DanmakuSource.officialBase,
+  );
+  late final TextEditingController _appId =
+      TextEditingController(text: widget.source?.appId ?? '');
+  late final TextEditingController _secret =
+      TextEditingController(text: widget.source?.appSecret ?? '');
+  late bool _enabled = widget.source?.enabled ?? true;
+  String? _error;
+
+  bool get _isBuiltin => widget.source?.isBuiltin ?? false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _base.dispose();
+    _appId.dispose();
+    _secret.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final name = _name.text.trim();
+    final base = _base.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = '给它起个名字');
+      return;
+    }
+    if (base.isEmpty ||
+        !(base.startsWith('http://') || base.startsWith('https://'))) {
+      setState(() => _error = '地址要以 http:// 或 https:// 开头');
+      return;
+    }
+    final source = DanmakuSource(
+      id: widget.source?.id ??
+          's${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}',
+      name: name,
+      baseUrl: DanmakuSource.stripTrailingSlash(base),
+      appId: _appId.text.trim(),
+      appSecret: _secret.text.trim(),
+      enabled: _enabled,
+    );
+    Navigator.of(context).pop(source);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text(
+        widget.source == null ? '添加弹幕源' : '编辑弹幕源',
+        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+      ),
+      content: SizedBox(
+        width: 380,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _field(_name, '名称', hint: '例如「自建弹幕」'),
+              const SizedBox(height: 12),
+              _field(
+                _base,
+                '地址',
+                hint: DanmakuSource.officialBase,
+                readOnly: _isBuiltin,
+              ),
+              const SizedBox(height: 12),
+              _field(_appId, 'AppId', hint: '没有就留空'),
+              const SizedBox(height: 12),
+              _field(_secret, 'AppSecret', hint: '没有就留空', obscure: true),
+              const SizedBox(height: 8),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                value: _enabled,
+                onChanged: (v) => setState(() => _enabled = v),
+                title: const Text('启用', style: TextStyle(fontSize: 13.5)),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  _error!,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: LcbColors.sysRed,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 6),
+              const Text(
+                '凭据只存在本机，不会进备份。自建的同构服务一般不需要。',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF8A8A8F),
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        if (widget.source != null && !_isBuiltin)
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('delete'),
+            child: const Text('删除', style: TextStyle(color: LcbColors.sysRed)),
+          ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        TextButton(onPressed: _save, child: const Text('保存')),
+      ],
+    );
+  }
+
+  Widget _field(
+    TextEditingController controller,
+    String label, {
+    String? hint,
+    bool obscure = false,
+    bool readOnly = false,
+  }) {
+    return TextField(
+      controller: controller,
+      readOnly: readOnly,
+      obscureText: obscure,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        isDense: true,
+        border: const OutlineInputBorder(),
+      ),
     );
   }
 }
