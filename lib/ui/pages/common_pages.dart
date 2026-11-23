@@ -53,32 +53,58 @@ class ResourcesPage extends StatelessWidget {
             if (query.isEmpty || _matches(source, query)) source,
         ];
 
+        const padding = EdgeInsets.fromLTRB(
+          LcbMetrics.settingsPaddingLeft,
+          6,
+          LcbMetrics.settingsPaddingRight,
+          40,
+        );
+        final searchBar = state.filtering
+            ? _ResourceSearchBar(state: state, total: all.length)
+            : null;
+        final footer = state.selecting
+            ? _SelectFooter(
+                state: state,
+                visibleIds: [for (final source in visible) source.id],
+              )
+            : null;
+
+        // 平铺视图才让拖动改顺序：分组视图里卡片的邻居是别的组，拖过去没有
+        // 唯一含义；多选时整张卡片要点来勾选，拖动手势会和它抢。
+        if (!state.grouped && !state.selecting && visible.isNotEmpty) {
+          return ScrollConfiguration(
+            behavior: ScrollConfiguration.of(
+              context,
+            ).copyWith(scrollbars: false),
+            child: ReorderableListView(
+              padding: padding,
+              header: searchBar,
+              footer: footer,
+              // onReorderItem already accounts for the removed row, so the
+              // index pair needs no adjustment here.
+              onReorderItem: (oldIndex, newIndex) =>
+                  _reorder(context, all, visible, oldIndex, newIndex),
+              children: [
+                for (final source in visible) _card(context, source, current),
+              ],
+            ),
+          );
+        }
+
         final children = <Widget>[
-          if (state.filtering) _ResourceSearchBar(state: state, total: all.length),
+          if (searchBar != null) searchBar,
           if (visible.isEmpty)
             _NoMatchHint(query: state.query)
           else if (state.grouped)
             ..._grouped(context, visible, current)
           else
             for (final source in visible) _card(context, source, current),
-          if (state.selecting)
-            _SelectFooter(
-              state: state,
-              visibleIds: [for (final source in visible) source.id],
-            ),
+          if (footer != null) footer,
         ];
 
         return ScrollConfiguration(
           behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(
-              LcbMetrics.settingsPaddingLeft,
-              6,
-              LcbMetrics.settingsPaddingRight,
-              40,
-            ),
-            children: children,
-          ),
+          child: ListView(padding: padding, children: children),
         );
       },
     );
@@ -88,6 +114,7 @@ class ResourcesPage extends StatelessWidget {
   /// source normally, ticking a checkbox while 多选 is on.
   Widget _card(BuildContext context, SourceInfo source, String? current) =>
       _SourceCard(
+        key: ValueKey('resource-card-${source.id}'),
         source: source,
         selected: source.id == current,
         selecting: state.selecting,
@@ -97,6 +124,32 @@ class ResourcesPage extends StatelessWidget {
             : () => StoreScope.of(context).selectSource(source.id),
         onMenu: state.selecting ? null : () => showSourceMenu(context, source),
       );
+
+  /// Moves the dragged card to the dropped card's slot and writes the new order
+  /// back. Works off `all`, not the filter: dragging while a query is active
+  /// still leaves the hidden sources where they were.
+  ///
+  /// Dragging is only offered in the flat view. In the grouped view a card's
+  /// apparent neighbours belong to a different section, and "drop it here"
+  /// would have no single meaning.
+  void _reorder(
+    BuildContext context,
+    List<SourceInfo> all,
+    List<SourceInfo> visible,
+    int oldIndex,
+    int newIndex,
+  ) {
+    if (oldIndex == newIndex) return;
+    final ids = [for (final source in all) source.id];
+    final moved = visible[oldIndex].id;
+    final target = visible[newIndex].id;
+    final from = ids.indexOf(moved);
+    final to = ids.indexOf(target);
+    if (from < 0 || to < 0) return;
+    ids.removeAt(from);
+    ids.insert(to, moved);
+    StoreScope.of(context).reorderSources(ids);
+  }
 
   /// Groups the visible cards. A source the user put in their own group goes
   /// there; everything else falls back to its type, which is 原版
@@ -439,6 +492,7 @@ extension SourceTypeStyle on String {
 /// right. The selected card uses the light blue outline matching the original.
 class _SourceCard extends StatelessWidget {
   const _SourceCard({
+    super.key,
     required this.source,
     required this.selected,
     required this.onTap,

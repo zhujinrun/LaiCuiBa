@@ -1026,6 +1026,35 @@ void main() {
       );
     });
 
+    test('reorderSources 按给定顺序重排，没提到的保持原序排在后面', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      final seed = store.sources.first.id;
+      await store.addSource(
+        const SourceInfo(id: 'a', type: 'tvbox', name: 'A', url: ''),
+      );
+      await store.addSource(
+        const SourceInfo(id: 'b', type: 'tvbox', name: 'B', url: ''),
+      );
+
+      await store.reorderSources(['b', seed]);
+
+      // b 提到最前，seed 排第二，没提到的 a 落在最后而不是消失。
+      expect(store.sources.map((source) => source.id).toList(), [
+        'b',
+        seed,
+        'a',
+      ]);
+
+      // 持久化：重载后顺序还在。
+      final reloaded = await AppStore.load();
+      expect(reloaded.sources.map((source) => source.id).toList(), [
+        'b',
+        seed,
+        'a',
+      ]);
+    });
+
     test('换的图标写进源里，清空就回到类型图标', () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();

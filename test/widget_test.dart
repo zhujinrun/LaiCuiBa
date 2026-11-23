@@ -1,11 +1,12 @@
 import 'dart:io';
-import 'dart:ui' show Size;
+import 'dart:ui' show Offset, Size;
 
 import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoSwitch;
 import 'package:flutter/material.dart'
     show CircularProgressIndicator,
         Icons,
         MaterialApp,
+        ReorderableListView,
         Scaffold,
         SizedBox,
         TextField,
@@ -971,6 +972,54 @@ void main() {
 
     expect(store.sources, isEmpty);
     expect(find.text('还没有资源'), findsOneWidget);
+  });
+
+  testWidgets('资源页平铺视图能拖动改顺序，分组视图里不提供拖动', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+    await store.addSource(
+      const SourceInfo(
+        id: 'second',
+        type: 'webdav',
+        name: '第二个源',
+        url: 'https://dav.example.com',
+      ),
+    );
+    final firstId = store.sources.first.id;
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.tap(find.text('资源').last);
+    await tester.pumpAndSettle();
+
+    // 分组视图：卡片不套拖动层，拖不动（组内邻居是别的组，没有唯一含义）。
+    expect(find.byType(ReorderableListView), findsNothing);
+
+    await tester.tap(find.byIcon(CupertinoIcons.line_horizontal_3).first);
+    await tester.pumpAndSettle();
+    expect(find.byType(ReorderableListView), findsOneWidget);
+
+    // Android 上默认是「长按再拖」：先按住第一张卡，等长按触发后往下推过
+    // 第二张卡的中点，就会换位。
+    final card = find.byKey(ValueKey('resource-card-$firstId'));
+    final height = tester.getSize(card).height;
+    final gesture = await tester.startGesture(tester.getCenter(card));
+    await tester.pump(const Duration(milliseconds: 700));
+    // 分几步推：拖动层要先看到位移才真正接管，一口气 move 到底算不出来。
+    for (var i = 0; i < 6; i++) {
+      await gesture.moveBy(Offset(0, height / 6));
+      await tester.pump(const Duration(milliseconds: 30));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(store.sources.first.id, 'second');
+    expect(store.sources.last.id, firstId);
   });
 
   testWidgets('a mounted source owns 首页, and says when its library is empty', (
