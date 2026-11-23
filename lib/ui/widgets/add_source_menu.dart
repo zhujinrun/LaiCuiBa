@@ -148,18 +148,131 @@ Future<void> _importZip(BuildContext context) async {
 }
 
 /// Stores every source an import produced and reports what happened.
+///
+/// A batch lands in one flat list, which is exactly when a group helps, so a
+/// multi-source import asks for one first: 原版「可以把这批资源直接放进同一个分组，
+/// 留空则继续按资源类型自动分组」. A single source never asks -- grouping one
+/// card would only add a header around it.
 Future<void> _finishImport(BuildContext context, ImportOutcome outcome) async {
   final store = StoreScope.of(context);
+  var group = '';
+  if (outcome.sources.length > 1 && context.mounted) {
+    group = await showImportGroupForm(
+          context,
+          count: outcome.sources.length,
+          existing: store.customGroups,
+        ) ??
+        '';
+  }
   for (final source in outcome.sources) {
-    await store.addSource(source);
+    final id = await store.addSource(source);
+    if (group.isNotEmpty) await store.setSourceGroup(id, group);
   }
   if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
-      content: Text(outcome.summary),
+      content: Text(
+        group.isEmpty ? outcome.summary : '${outcome.summary}，已放进「$group」',
+      ),
       duration: Duration(seconds: outcome.skipped.isEmpty ? 3 : 5),
     ),
   );
+}
+
+/// Asks which group a batch import belongs in. Returns null when dismissed --
+/// the files were already picked, so a dismiss still means "import them, just
+/// not grouped".
+Future<String?> showImportGroupForm(
+  BuildContext context, {
+  required int count,
+  required List<String> existing,
+}) {
+  return showDialog<String>(
+    context: context,
+    barrierColor: const Color(0x78000000),
+    builder: (_) => _ImportGroupForm(count: count, existing: existing),
+  );
+}
+
+class _ImportGroupForm extends StatefulWidget {
+  const _ImportGroupForm({required this.count, required this.existing});
+
+  final int count;
+  final List<String> existing;
+
+  @override
+  State<_ImportGroupForm> createState() => _ImportGroupFormState();
+}
+
+class _ImportGroupFormState extends State<_ImportGroupForm> {
+  final _group = TextEditingController();
+
+  @override
+  void dispose() {
+    _group.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _sheet(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _TitleRow('放进同一个分组'),
+          const SizedBox(height: 12),
+          Text(
+            '这批 ${widget.count} 个资源可以放进同一个分组，留空则继续按资源类型'
+            '自动分组。',
+            style: _noteStyle.copyWith(fontSize: 13, height: 1.6),
+          ),
+          const SizedBox(height: 14),
+          _Field(
+            controller: _group,
+            hint: '分组名称（留空按类型自动分组）',
+            icon: CupertinoIcons.folder,
+            onChanged: (_) => setState(() {}),
+          ),
+          if (widget.existing.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final name in widget.existing)
+                  GestureDetector(
+                    onTap: () => setState(() => _group.text = name),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: LcbColors.card,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          color: LcbColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 14),
+          _PrimaryButton(
+            label: '导入 ${widget.count} 个资源',
+            onTap: () => Navigator.of(context).pop(_group.text.trim()),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

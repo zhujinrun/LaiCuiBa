@@ -4,11 +4,14 @@ import 'dart:ui' show Offset, Size;
 import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoSwitch;
 import 'package:flutter/material.dart'
     show CircularProgressIndicator,
+        Center,
+        GestureDetector,
         Icons,
         MaterialApp,
         ReorderableListView,
         Scaffold,
         SizedBox,
+        Text,
         TextField,
         ValueKey,
         Wrap;
@@ -26,8 +29,10 @@ import 'package:lai_cui_ba/services/spider_session.dart';
 import 'package:lai_cui_ba/services/store.dart';
 import 'package:lai_cui_ba/services/track_choice.dart';
 import 'package:lai_cui_ba/core/nav.dart';
+import 'package:lai_cui_ba/core/store_scope.dart';
 import 'package:lai_cui_ba/ui/pages/grid_page.dart';
 import 'package:lai_cui_ba/ui/shell.dart';
+import 'package:lai_cui_ba/ui/widgets/add_source_menu.dart';
 import 'package:lai_cui_ba/ui/widgets/hero_banner.dart';
 
 import 'support/fake_py_host.dart';
@@ -1070,6 +1075,60 @@ void main() {
     expect(store.sources.length, 1);
     expect(store.sources.first.groupName, '');
     expect(find.byKey(const ValueKey('resource-group-TVBox')), findsOneWidget);
+  });
+
+  testWidgets('批量导入前问一次分组，留空就按类型收', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+    await store.setSourceGroup(store.sources.first.id, '我的常用');
+
+    var answer = '未回答';
+    Future<void> open() async {
+      answer =
+          await showImportGroupForm(
+            tester.element(find.text('开')),
+            count: 3,
+            existing: store.customGroups,
+          ) ??
+          '取消了';
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StoreScope(
+          store: store,
+          child: Center(
+            child: GestureDetector(onTap: open, child: const Text('开')),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('开'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('这批 3 个资源可以放进同一个分组，留空则继续按资源类型自动分组。'),
+      findsOneWidget,
+    );
+
+    // 已有组名一键填：不用重新打一遍，也不会打错一个字分出两个组。
+    await tester.tap(find.text('我的常用'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('导入 3 个资源'));
+    await tester.pumpAndSettle();
+    expect(answer, '我的常用');
+
+    // 留空＝按类型分组。
+    await tester.tap(find.text('开'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('导入 3 个资源'));
+    await tester.pumpAndSettle();
+    expect(answer, '');
   });
 
   testWidgets('a mounted source owns 首页, and says when its library is empty', (
