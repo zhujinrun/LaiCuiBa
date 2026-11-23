@@ -23,6 +23,7 @@ import '../widgets/track_panel.dart';
 import '../widgets/picture_panel.dart';
 import '../widgets/danmaku_layer.dart';
 import '../widgets/player_info_overlay.dart';
+import '../widgets/playback_error_overlay.dart';
 
 /// 播放页 — 全屏视频播放。
 ///
@@ -266,6 +267,7 @@ class _PlayerPageState extends State<PlayerPage> {
   StreamSubscription<Tracks>? _tracksSub;
   StreamSubscription<Track>? _trackSub;
   StreamSubscription<List<String>>? _subtitleSub;
+  StreamSubscription<String>? _errorSub;
 
   /// media_kit's track objects, indexed by mpv's track id, plus the options the
   /// panel renders — one mapping serves both, see [MappedTracks].
@@ -318,6 +320,11 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _seeking = false;
   double _seekValue = 0;
 
+  /// 播放器报出来的、还没出画面时的那句话。非空时画面上盖一层「这一集打不开」，
+  /// 而不是让一片黑和加载中长得一模一样。
+  String? _openError;
+  bool _retrying = false;
+
   /// 常驻信息浮层的数据来源。分辨率从 `video-params` 来（首次解码出帧才有），
   /// 帧率/码率走 mpv 属性（`estimated-vf-fps` / `video-bitrate`），都是异步、
   /// 拿不到就空——浮层用 `--` 表示「还没有」。
@@ -365,10 +372,18 @@ class _PlayerPageState extends State<PlayerPage> {
     });
     _durationSub = _player.stream.duration.listen((d) {
       _clock.onDuration(d);
-      if (d > Duration.zero) _duration = d;
+      if (d > Duration.zero) {
+        _duration = d;
+        // 有时长说明这一集真的开了：之前那句失败信息（如果还在）已经过期。
+        _openError = null;
+        _retrying = false;
+      }
       _pumpClock();
       if (mounted) setState(() {});
     });
+    // 播放器 / mpv 的报错。以前只 debugPrint，打不开时画面一片黑，和加载中
+    // 分不出来；现在没出画面就把它摆出来，让「打不开」和「在加载」长得不一样。
+    _errorSub = _player.stream.error.listen(_onPlaybackError);
     _bufferSub = _player.stream.buffer.listen((d) {
       if (_buffer == d) return;
       _buffer = d;
@@ -507,6 +522,9 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   Future<void> _open() async {
+    _openError = null;
+    _retrying = true;
+    if (mounted) setState(() {});
     try {
       // Both are mpv properties, so they hold across the upcoming load.
       await _player.setVolume(widget.initialVolume.toDouble());
@@ -524,8 +542,42 @@ class _PlayerPageState extends State<PlayerPage> {
       );
     } catch (e) {
       debugPrint('LcbPlayer: open failed: $e');
+      _onPlaybackError('$e');
+    } finally {
+      if (mounted) setState(() => _retrying = false);
     }
     _scheduleHide();
+  }
+
+  /// 播放器报错：还没出画面才算「这一集打不开」。
+  ///
+  /// 收流正常之后 mpv 仍会零星报一些非致命错误（封面、章节、某条轨），那些
+  /// 不该盖住正在放的画面，所以有时长就把它们只记进日志。
+  ///
+  /// 每次打开只留**第一条**。实测（`tool/verify_playback_error_live.dart`）同一个
+  /// 失败会连着报两句：先是一句具体的（`tcp: Connection … failed` /
+  /// `Cannot open file …`），再补一句笼统的 `Failed to open <url>.`。留下第一句
+  /// 才说得清是网络、是文件还是地址。
+  void _onPlaybackError(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return;
+    if (_duration > Duration.zero) {
+      debugPrint('LcbPlayer: non-fatal player error: $text');
+      return;
+    }
+    if (_openError != null) {
+      debugPrint('LcbPlayer: follow-up error (kept the first): $text');
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _openError = text;
+      _retrying = false;
+    });
+  }
+
+  void _retryOpen() {
+    unawaited(_open());
   }
 
   // ---------------------------------------------------------------------------
@@ -1052,6 +1104,7 @@ class _PlayerPageState extends State<PlayerPage> {
     _tracksSub?.cancel();
     _trackSub?.cancel();
     _subtitleSub?.cancel();
+    _errorSub?.cancel();
     // Report the final position before tearing the player down; this is the
     // single reliable moment to capture where the user left off. Skip it when
     // the timeline moved under us — that position belongs to an ad segment or
@@ -1134,6 +1187,19 @@ class _PlayerPageState extends State<PlayerPage> {
               onTap: _toggleControls,
             ),
           ),
+          // 打不开的时候把原因和能做的动作摆在画面中间；控制条仍在上面一层，
+          // 所以「返回」和「下一集」都还能用。
+          if (_openError != null)
+            Positioned.fill(
+              child: PlaybackErrorOverlay(
+                raw: _openError!,
+                retrying: _retrying,
+                onRetry: _retryOpen,
+                onNext: _hasNext
+                    ? () => widget.onEpisode!(widget.episodeIndex! + 1)
+                    : null,
+              ),
+            ),
           if (_notice != null)
             Positioned(
               top: 76,
