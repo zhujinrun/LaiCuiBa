@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/detail_nav.dart';
 import '../../core/nav.dart';
+import '../../core/resources_state.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
@@ -18,42 +19,344 @@ import '../widgets/source_dialogs.dart';
 /// blue "当前使用 · N 部" status line, a red latency value on the right and a
 /// "···" overflow button. The list is read from the store's persisted source
 /// list and tapping a card switches the active source.
+///
+/// The header's three tool icons drive the view from here through [state]:
+/// 三横线 toggles grouping, 放大镜 opens the filter row, 对勾圆圈 turns the
+/// cards into checkboxes. None of them touch the stored sources — leaving the
+/// mode puts the list straight back.
 class ResourcesPage extends StatelessWidget {
-  const ResourcesPage({super.key});
+  const ResourcesPage({super.key, required this.state});
+
+  final LcbResources state;
 
   @override
   Widget build(BuildContext context) {
-    final store = StoreScope.of(context);
-    final sources = store.sources;
-    final current = store.currentSourceId;
+    return ListenableBuilder(
+      listenable: state,
+      builder: (context, _) {
+        final store = StoreScope.of(context);
+        final all = store.sources;
+        if (all.isEmpty) {
+          return const Center(
+            child: _EmptyHint(
+              icon: CupertinoIcons.tray_2,
+              title: '还没有资源',
+              subtitle: '点右上角的 + 添加一个源',
+            ),
+          );
+        }
 
-    if (sources.isEmpty) {
-      return const Center(
-        child: _EmptyHint(
-          icon: CupertinoIcons.tray_2,
-          title: '还没有资源',
-          subtitle: '点右上角的 + 添加一个源',
+        final current = store.currentSourceId;
+        final query = state.query.trim().toLowerCase();
+        final visible = <SourceInfo>[
+          for (final source in all)
+            if (query.isEmpty || _matches(source, query)) source,
+        ];
+
+        final children = <Widget>[
+          if (state.filtering) _ResourceSearchBar(state: state, total: all.length),
+          if (visible.isEmpty)
+            _NoMatchHint(query: state.query)
+          else if (state.grouped)
+            ..._grouped(context, visible, current)
+          else
+            for (final source in visible) _card(context, source, current),
+          if (state.selecting)
+            _SelectFooter(
+              state: state,
+              visibleIds: [for (final source in visible) source.id],
+            ),
+        ];
+
+        return ScrollConfiguration(
+          behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(
+              LcbMetrics.settingsPaddingLeft,
+              6,
+              LcbMetrics.settingsPaddingRight,
+              40,
+            ),
+            children: children,
+          ),
+        );
+      },
+    );
+  }
+
+  /// One card, wired to whichever mode the page is in: switching the active
+  /// source normally, ticking a checkbox while 多选 is on.
+  Widget _card(BuildContext context, SourceInfo source, String? current) =>
+      _SourceCard(
+        source: source,
+        selected: source.id == current,
+        selecting: state.selecting,
+        checked: state.selected.contains(source.id),
+        onTap: state.selecting
+            ? () => state.toggleSelected(source.id)
+            : () => StoreScope.of(context).selectSource(source.id),
+        onMenu: state.selecting ? null : () => showSourceMenu(context, source),
+      );
+
+  /// Groups the visible cards by source type, in the order the types first
+  /// appear. Only the first group starts expanded, matching 「默认打开第一个
+  /// 分组」; the rest start folded so a long list reads as a handful of rows.
+  List<Widget> _grouped(
+    BuildContext context,
+    List<SourceInfo> visible,
+    String? current,
+  ) {
+    final groups = <String, List<SourceInfo>>{};
+    for (final source in visible) {
+      groups.putIfAbsent(source.type.sourceTypeLabel, () => []).add(source);
+    }
+    final rows = <Widget>[];
+    var first = true;
+    groups.forEach((label, items) {
+      // Capture per-iteration: `first` keeps mutating, and an onTap closure
+      // reading the shared variable would see its *final* value (false) and
+      // flip the wrong way on the first group.
+      final opensFirst = first;
+      final collapsed = state.isCollapsed(label, defaultCollapsed: !opensFirst);
+      rows.add(
+        _GroupHeader(
+          key: ValueKey('resource-group-$label'),
+          label: label,
+          count: items.length,
+          collapsed: collapsed,
+          onTap: () =>
+              state.toggleCollapsed(label, defaultCollapsed: !opensFirst),
         ),
       );
-    }
+      if (!collapsed) {
+        for (final source in items) {
+          rows.add(_card(context, source, current));
+        }
+      }
+      first = false;
+    });
+    return rows;
+  }
 
-    return ScrollConfiguration(
-      behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          LcbMetrics.settingsPaddingLeft,
-          6,
-          LcbMetrics.settingsPaddingRight,
-          40,
+  /// Name, address, type label and the sites it declared — the four things a
+  /// person would search by when looking for "that one source".
+  static bool _matches(SourceInfo source, String query) {
+    if (source.name.toLowerCase().contains(query)) return true;
+    if (source.url.toLowerCase().contains(query)) return true;
+    if (source.type.sourceTypeLabel.toLowerCase().contains(query)) return true;
+    for (final site in source.sites) {
+      if (site.name.toLowerCase().contains(query)) return true;
+    }
+    return false;
+  }
+}
+
+/// The inline filter row that 放大镜 opens above the list.
+class _ResourceSearchBar extends StatelessWidget {
+  const _ResourceSearchBar({required this.state, required this.total});
+
+  final LcbResources state;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: LcbColors.searchFill,
+          borderRadius: BorderRadius.circular(10),
         ),
-        children: [
-          for (final s in sources)
-            _SourceCard(
-              source: s,
-              selected: s.id == current,
-              onTap: () => store.selectSource(s.id),
-              onMenu: () => showSourceMenu(context, s),
+        child: Row(
+          children: [
+            const Icon(
+              CupertinoIcons.search,
+              size: 15,
+              color: LcbColors.textTertiary,
             ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                autofocus: true,
+                cursorColor: LcbColors.primary,
+                onChanged: state.setQuery,
+                style: const TextStyle(fontSize: 13.5, color: LcbColors.text),
+                decoration: InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  hintText: '在 $total 个资源里查找',
+                  hintStyle: const TextStyle(
+                    fontSize: 13.5,
+                    color: LcbColors.textTertiary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A folded group row: label, how many sources it holds, and a chevron.
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader({
+    super.key,
+    required this.label,
+    required this.count,
+    required this.collapsed,
+    required this.onTap,
+  });
+
+  final String label;
+  final int count;
+  final bool collapsed;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(4, 6, 4, 10),
+          child: Row(
+            children: [
+              AnimatedRotation(
+                turns: collapsed ? 0 : 0.25,
+                duration: const Duration(milliseconds: 140),
+                child: const Icon(
+                  CupertinoIcons.chevron_right,
+                  size: 13,
+                  color: LcbColors.textTertiary,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: LcbColors.textSecondary,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '$count',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: LcbColors.textTertiary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The bar under the list while 多选 is on: 全选 / 已选 N / 删除.
+class _SelectFooter extends StatelessWidget {
+  const _SelectFooter({required this.state, required this.visibleIds});
+
+  final LcbResources state;
+  final List<String> visibleIds;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = state.selectedCount;
+    final allPicked =
+        visibleIds.isNotEmpty && count >= visibleIds.length;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          TextButton(
+            onPressed: () => allPicked
+                ? state.clearSelected()
+                : state.selectAll(visibleIds),
+            style: TextButton.styleFrom(
+              padding: EdgeInsets.zero,
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              allPicked ? '取消全选' : '全选',
+              style: const TextStyle(fontSize: 13.5, color: LcbColors.primary),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Text(
+            '已选 $count 个',
+            style: const TextStyle(
+              fontSize: 13,
+              color: LcbColors.textSecondary,
+            ),
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: count == 0 ? null : () => _confirmDelete(context),
+            style: TextButton.styleFrom(
+              padding: EdgeInsets.zero,
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              '删除',
+              style: TextStyle(
+                fontSize: 13.5,
+                color: count == 0 ? LcbColors.textTertiary : LcbColors.sysRed,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final store = StoreScope.of(context);
+    final ids = state.selected.toList();
+    final ok = await showDeleteSourcesConfirm(context, ids);
+    if (ok != true) return;
+    await store.removeSources(ids);
+    state.clearSelected();
+    state.toggleSelecting();
+  }
+}
+
+/// 搜索没有命中时说的话，而不是留一片空白。
+class _NoMatchHint extends StatelessWidget {
+  const _NoMatchHint({required this.query});
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 40),
+      child: Column(
+        children: [
+          const Icon(
+            CupertinoIcons.search,
+            size: 28,
+            color: LcbColors.textTertiary,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '没有名字、地址或站点含「$query」的资源',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 13,
+              color: LcbColors.textSecondary,
+            ),
+          ),
         ],
       ),
     );
@@ -135,12 +438,20 @@ class _SourceCard extends StatelessWidget {
     required this.selected,
     required this.onTap,
     required this.onMenu,
+    this.selecting = false,
+    this.checked = false,
   });
 
   final SourceInfo source;
   final bool selected;
   final VoidCallback onTap;
-  final VoidCallback onMenu;
+
+  /// Null while 多选 is on: the ⋯ menu would fight the checkbox for the tap.
+  final VoidCallback? onMenu;
+
+  /// 多选态：卡片左侧换成勾选框，整张卡片的点击用来勾选而不是切源。
+  final bool selecting;
+  final bool checked;
 
   /// What the card says under the name.
   ///
@@ -252,6 +563,30 @@ class _SourceCard extends StatelessWidget {
             ),
             child: Row(
               children: [
+                if (selecting) ...[
+                  Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: checked ? LcbColors.primary : Colors.transparent,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: checked
+                            ? LcbColors.primary
+                            : const Color(0xFFC7C7CC),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: checked
+                        ? const Icon(
+                            CupertinoIcons.checkmark_alt,
+                            size: 12,
+                            color: Colors.white,
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 12),
+                ],
                 Container(
                   width: 40,
                   height: 40,
@@ -309,21 +644,27 @@ class _SourceCard extends StatelessWidget {
                     color: LcbColors.sysRed,
                   ),
                 ),
-                const SizedBox(width: 8),
                 // Its own hit target, otherwise the card's onTap swallows the
-                // tap and the menu never opens.
-                GestureDetector(
-                  onTap: onMenu,
-                  behavior: HitTestBehavior.opaque,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                    child: Icon(
-                      CupertinoIcons.ellipsis,
-                      size: 18,
-                      color: LcbColors.textTertiary,
+                // tap and the menu never opens. Hidden in 多选 -- a menu and a
+                // checkbox on the same row would be ambiguous to click.
+                if (onMenu != null) ...[
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: onMenu,
+                    behavior: HitTestBehavior.opaque,
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 6,
+                      ),
+                      child: Icon(
+                        CupertinoIcons.ellipsis,
+                        size: 18,
+                        color: LcbColors.textTertiary,
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
           ),

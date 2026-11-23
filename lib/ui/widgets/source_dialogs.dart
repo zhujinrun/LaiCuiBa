@@ -55,170 +55,155 @@ Future<void> showSourceMenu(BuildContext context, SourceInfo source) async {
   }
 }
 
-/// Pulls the source's config address and writes what it found back onto the
-/// source. Pasted sources have no address, so they say so instead of guessing.
+/// Checks [source] and writes the outcome back, with no UI of its own.
 ///
-/// A source that runs in the cat host is checked by *running* it -- the config
-/// document alone says nothing about whether the site answers today, and a
-/// subscription address is a `.md5` file that no config parser can read. Every
-/// other source is checked by pulling its document.
+/// The four branches are the same ones a single-source 检测 walks: a mount asks
+/// its server, a 猫源 or script source is *run*, and a plain config document is
+/// fetched. Nothing here throws -- a dead source is a result, not an exception --
+/// so both 检测 (one card) and 检测全部 (the whole list) can share it.
+Future<({String line, bool ok})> probeSourceQuietly(
+  AppStore store,
+  SourceInfo source,
+) async {
+  if (AppStore.isMountSource(source)) {
+    if (store.mountClientOf(source) == null) {
+      return (line: '${source.name}：还没登录，编辑它重填一次账号', ok: false);
+    }
+    final report = await store.probeSource(source, '');
+    return (line: '${source.name}：${_probeSummary(report, mount: true)}', ok: report.ok);
+  }
+
+  final address = store.spiderAddressOf(source);
+  if (address != null) {
+    if (store.spider == null) {
+      return (line: '${source.name}：没有可用的源运行时', ok: false);
+    }
+    final report = await store.probeSource(source, address);
+    return (line: '${source.name}：${_probeSummary(report)}', ok: report.ok);
+  }
+
+  if (store.scriptSitesOf(source).isNotEmpty) {
+    if (store.scripts == null) {
+      return (line: '${source.name}：没有脚本运行时', ok: false);
+    }
+    final report = await store.probeSource(source, '');
+    return (line: '${source.name}：${_probeSummary(report)}', ok: report.ok);
+  }
+
+  if (source.url.trim().isEmpty) {
+    return (line: '${source.name}：没有配置地址', ok: false);
+  }
+  if (_isLocalSpider(source)) {
+    return (line: '${source.name}：本地 spider 文件不能直接跑', ok: false);
+  }
+
+  final result = await fetchConfig(source.url);
+  if (!result.ok) {
+    await store.updateSource(source.copyWith(latencyMs: result.latencyMs));
+    return (
+      line: '${source.name}：${result.error ?? result.note ?? '没有拉到站点'}',
+      ok: false,
+    );
+  }
+  final home = source.homeSite.isNotEmpty
+      ? source.homeSite
+      : (result.sites.isEmpty ? '' : result.sites.first.key);
+  await store.updateSource(
+    source.copyWith(
+      sites: result.sites,
+      homeSite: home,
+      latencyMs: result.latencyMs,
+      checkedAt: DateTime.now().millisecondsSinceEpoch,
+    ),
+  );
+  return (
+    line: '${source.name}：${result.sites.length} 个站点，${result.latencyMs} ms',
+    ok: true,
+  );
+}
+
+/// What to say while [source] is being checked -- the wait differs enough by
+/// kind (a server handshake, a worker boot, an HTTP round trip) that one
+/// 「正在检测…」 would hide what is actually happening.
+String _stageLine(AppStore store, SourceInfo source) {
+  if (AppStore.isMountSource(source)) return '正在连接服务器并读取影片库…';
+  if (store.spiderAddressOf(source) != null) return '正在启动源并读取首页…';
+  if (store.scriptSitesOf(source).isNotEmpty) return '正在启动 Python 源并读取首页…';
+  return '正在拉取配置…';
+}
+
 Future<void> _recheckSource(
   BuildContext context,
   AppStore store,
   SourceInfo source,
 ) async {
   final messenger = ScaffoldMessenger.of(context);
-
-  // A mount is checked against the server that actually holds the library.
-  // Doing it first matters: an Emby address is neither a spider subscription
-  // nor a config document, so handing it to either of the paths below would
-  // report a failure that says nothing about the server.
-  if (AppStore.isMountSource(source)) {
-    if (store.mountClientOf(source) == null) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('这个挂载还没有登录，编辑它重新填一次账号密码'),
-          duration: Duration(seconds: 4),
-        ),
-      );
-      return;
-    }
-    messenger.showSnackBar(
-      const SnackBar(
-        content: Text('正在连接服务器并读取影片库…'),
-        duration: Duration(seconds: 20),
-      ),
-    );
-    final report = await store.probeSource(source, '');
-    if (!context.mounted) return;
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(_probeSummary(report, mount: true)),
-        duration: const Duration(seconds: 4),
-      ),
-    );
-    return;
-  }
-
-  final address = store.spiderAddressOf(source);
-  if (address != null) {
-    if (store.spider == null) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('这个源要由宿主执行，当前没有可用的运行时'),
-          duration: Duration(seconds: 3),
-        ),
-      );
-      return;
-    }
-    messenger.showSnackBar(
-      const SnackBar(
-        content: Text('正在启动源并读取首页…'),
-        duration: Duration(seconds: 30),
-      ),
-    );
-    final report = await store.probeSource(source, address);
-    if (!context.mounted) return;
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(_probeSummary(report)),
-        duration: const Duration(seconds: 4),
-      ),
-    );
-    return;
-  }
-
-  // A TVBox source is checked by *running* it, exactly like a 猫源: the
-  // config document says which sites exist, not whether any of them answers.
-  if (store.scriptSitesOf(source).isNotEmpty) {
-    if (store.scripts == null) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('这个源要由脚本宿主执行，当前没有可用的运行时'),
-          duration: Duration(seconds: 3),
-        ),
-      );
-      return;
-    }
-    messenger.showSnackBar(
-      const SnackBar(
-        content: Text('正在启动 Python 源并读取首页…'),
-        duration: Duration(seconds: 30),
-      ),
-    );
-    final report = await store.probeSource(source, '');
-    if (!context.mounted) return;
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(_probeSummary(report)),
-        duration: const Duration(seconds: 4),
-      ),
-    );
-    return;
-  }
-
-  if (source.url.trim().isEmpty) {
-    messenger.showSnackBar(
-      const SnackBar(
-        content: Text('这个源没有配置地址，拉不了；可以粘贴配置或改地址'),
-        duration: Duration(seconds: 3),
-      ),
-    );
-    return;
-  }
-  if (_isLocalSpider(source)) {
-    messenger.showSnackBar(
-      const SnackBar(
-        content: Text('本地 spider 文件还不能直接执行，检测需要一个订阅地址'),
-        duration: Duration(seconds: 4),
-      ),
-    );
-    return;
-  }
-
   messenger.showSnackBar(
-    const SnackBar(
-      content: Text('正在拉取配置…'),
-      duration: Duration(seconds: 1),
+    SnackBar(
+      content: Text(_stageLine(store, source)),
+      duration: const Duration(minutes: 2),
     ),
   );
-  final result = await fetchConfig(source.url);
+  final result = await probeSourceQuietly(store, source);
   if (!context.mounted) return;
+  messenger.hideCurrentSnackBar();
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(result.line),
+      duration: const Duration(seconds: 4),
+    ),
+  );
+}
 
-  if (result.ok) {
-    await store.updateSource(
-      source.copyWith(
-        sites: result.sites,
-        homeSite: source.homeSite.isEmpty
-            ? result.sites.first.key
-            : source.homeSite,
-        latencyMs: result.latencyMs,
-        checkedAt: DateTime.now().millisecondsSinceEpoch,
-      ),
-    );
-    if (!context.mounted) return;
-    final extra = result.note == null ? '' : '（${result.note}）';
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          '拉到 ${result.sites.length} 个站点，用时 ${result.latencyMs} ms$extra',
-        ),
-        duration: const Duration(seconds: 3),
-      ),
-    );
+/// 检测全部资源：check every source, write each outcome back, then sort the
+/// list by the latency just measured -- the original's「测速完成，已按速度排序」.
+///
+/// Runs one source at a time on purpose. These checks boot runtimes and hold
+/// them in memory; firing ten at once would multiply that peak for no gain the
+/// user can see, and the order of results would no longer follow the list.
+Future<void> checkAllSources(BuildContext context) async {
+  final store = StoreScope.of(context);
+  final messenger = ScaffoldMessenger.of(context);
+  final sources = List<SourceInfo>.from(store.sources);
+  if (sources.isEmpty) {
+    messenger.showSnackBar(const SnackBar(content: Text('还没有资源可检测')));
     return;
   }
 
-  final reason = result.error ?? result.note ?? '没有拉到站点';
-  await store.updateSource(
-    source.copyWith(latencyMs: result.latencyMs),
-  );
-  if (!context.mounted) return;
   messenger.showSnackBar(
-    SnackBar(content: Text(reason), duration: const Duration(seconds: 4)),
+    SnackBar(
+      content: Text('共检测 ${sources.length} 个资源…'),
+      duration: const Duration(minutes: 10),
+    ),
+  );
+
+  var ok = 0;
+  for (final source in sources) {
+    final result = await probeSourceQuietly(store, source);
+    if (result.ok) ok++;
+    if (!context.mounted) return;
+  }
+
+  // Latency 0 means the check never got a number (dead, or nothing to time).
+  // Those sink below the ones that answered, keeping their own relative order.
+  final ordered = List<SourceInfo>.from(store.sources);
+  ordered.sort((a, b) {
+    final la = a.latencyMs > 0 ? a.latencyMs : 1 << 30;
+    final lb = b.latencyMs > 0 ? b.latencyMs : 1 << 30;
+    return la.compareTo(lb);
+  });
+  await store.reorderSources([for (final source in ordered) source.id]);
+  if (!context.mounted) return;
+
+  final failed = sources.length - ok;
+  messenger.hideCurrentSnackBar();
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(
+        '测速完成，已按速度排序（$ok 个正常${failed > 0 ? '，$failed 个异常' : ''}）',
+      ),
+      duration: const Duration(seconds: 4),
+    ),
   );
 }
 
@@ -270,6 +255,19 @@ Future<void> showDeleteSourceDialog(BuildContext context, SourceInfo source) {
     context: context,
     barrierColor: const Color(0x78000000),
     builder: (_) => _DeleteSourceDialog(source: source),
+  );
+}
+
+/// Confirms deleting the ticked sources. True means go ahead; the caller does
+/// the actual removal so it can clear the selection and leave 多选 in one step.
+Future<bool?> showDeleteSourcesConfirm(
+  BuildContext context,
+  List<String> ids,
+) {
+  return showDialog<bool>(
+    context: context,
+    barrierColor: const Color(0x78000000),
+    builder: (_) => _DeleteSourcesDialog(ids: ids),
   );
 }
 
@@ -913,6 +911,62 @@ class _DeleteSourceDialog extends StatelessWidget {
               child: const Text(
                 '删除',
                 style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 批量删除确认：说清删几个、连带多少站点，再让人按那个红按钮。
+class _DeleteSourcesDialog extends StatelessWidget {
+  const _DeleteSourcesDialog({required this.ids});
+
+  final List<String> ids;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = StoreScope.of(context);
+    final picked = <SourceInfo>[
+      for (final source in store.sources)
+        if (ids.contains(source.id)) source,
+    ];
+    final sites = picked.fold<int>(0, (sum, s) => sum + s.sites.length);
+    return _sheet(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _TitleRow(title: '删除 ${picked.length} 个资源'),
+          const SizedBox(height: 16),
+          Text(
+            '删除后，这 ${picked.length} 个资源下的 $sites 个站点会一起从搜索里'
+            '消失。收藏和历史不受影响。',
+            style: const TextStyle(
+              fontSize: 13,
+              height: 1.6,
+              color: LcbColors.settingsQuiet,
+            ),
+          ),
+          const SizedBox(height: 18),
+          GestureDetector(
+            onTap: () => Navigator.of(context).pop(true),
+            child: Container(
+              height: 42,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: LcbColors.sysRed,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '删除 ${picked.length} 个',
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,

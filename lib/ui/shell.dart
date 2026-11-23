@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../core/detail_nav.dart';
 import '../core/nav.dart';
+import '../core/resources_state.dart';
 import '../core/search_state.dart';
 import '../core/store_scope.dart';
 import '../core/theme.dart';
@@ -26,6 +27,7 @@ import 'widgets/browse_dialog.dart';
 import 'widgets/shell_header.dart';
 import 'widgets/add_source_menu.dart';
 import 'widgets/site_picker_dialog.dart';
+import 'widgets/source_dialogs.dart';
 
 class Shell extends StatefulWidget {
   const Shell({super.key});
@@ -51,6 +53,10 @@ class _ShellState extends State<Shell> {
         _store.searchRealStream(keyword, strict: strict),
     canReachSource: () => _store.canSearchReal,
   );
+
+  /// Owns the 资源 page's view mode: grouped / filter row / 多选. The header's
+  /// three tool icons drive it and the card list reads it.
+  final LcbResources _resources = LcbResources();
 
   /// Non-null while the detail page is open in the content column.
   MediaItem? _detail;
@@ -87,10 +93,15 @@ class _ShellState extends State<Shell> {
   void dispose() {
     _header.dispose();
     _search.dispose();
+    _resources.dispose();
     super.dispose();
   }
 
   void _select(LcbPage page) {
+    // 离开资源页时收起它的临时视图（搜索词、多选）：那些只对那一屏有意义。
+    if (_page == LcbPage.resources && page != LcbPage.resources) {
+      _resources.resetView();
+    }
     setState(() {
       _page = page;
       _detail = null;
@@ -418,7 +429,7 @@ class _ShellState extends State<Shell> {
       case LcbPage.home:
         return const HomePage();
       case LcbPage.resources:
-        return const ResourcesPage();
+        return ResourcesPage(state: _resources);
       case LcbPage.favorites:
         return const FavoritesPage();
       case LcbPage.history:
@@ -536,6 +547,7 @@ class _ShellState extends State<Shell> {
                               onSelectPage: _select,
                               onOpenBrowse: _openBrowse,
                               grid: _grid != null,
+                              resources: _resources,
                             ),
                           ),
                           Expanded(
@@ -764,9 +776,14 @@ class _HeaderContent extends StatelessWidget {
     required this.onSelectPage,
     required this.onOpenBrowse,
     this.grid = false,
+    required this.resources,
   });
 
   final LcbPage page;
+
+  /// Owns the 资源 page's view mode. The header's three tool icons drive it, so
+  /// the stateless header needs the object rather than reading it from a scope.
+  final LcbResources resources;
 
   /// True while the detail page is pushed: the bar collapses to a back arrow
   /// plus the title and drops the page controls and the search field.
@@ -948,30 +965,48 @@ class _HeaderContent extends StatelessWidget {
           ],
         );
       case LcbPage.resources:
-        return Row(
-          children: [
-            Text(
-              header.title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: LcbColors.text,
+        return ListenableBuilder(
+          listenable: resources,
+          builder: (context, _) => Row(
+            children: [
+              Text(
+                header.title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: LcbColors.text,
+                ),
               ),
-            ),
-            const SizedBox(width: 35),
-            const _HeaderToolIcon(icon: CupertinoIcons.line_horizontal_3),
-            const SizedBox(width: 11),
-            const _HeaderToolIcon(icon: CupertinoIcons.search),
-            const SizedBox(width: 11),
-            _HeaderToolIcon(
-              icon: CupertinoIcons.plus,
-              onTap: () => showAddSourceMenu(context),
-            ),
-            const SizedBox(width: 11),
-            const _HeaderToolIcon(icon: CupertinoIcons.checkmark_circle),
-            const SizedBox(width: 11),
-            const _HeaderToolIcon(icon: CupertinoIcons.waveform_path_ecg),
-          ],
+              const SizedBox(width: 35),
+              _HeaderToolIcon(
+                icon: CupertinoIcons.line_horizontal_3,
+                active: resources.grouped,
+                onTap: resources.toggleGrouped,
+              ),
+              const SizedBox(width: 11),
+              _HeaderToolIcon(
+                icon: CupertinoIcons.search,
+                active: resources.filtering,
+                onTap: resources.toggleFilter,
+              ),
+              const SizedBox(width: 11),
+              _HeaderToolIcon(
+                icon: CupertinoIcons.plus,
+                onTap: () => showAddSourceMenu(context),
+              ),
+              const SizedBox(width: 11),
+              _HeaderToolIcon(
+                icon: CupertinoIcons.checkmark_circle,
+                active: resources.selecting,
+                onTap: resources.toggleSelecting,
+              ),
+              const SizedBox(width: 11),
+              _HeaderToolIcon(
+                icon: CupertinoIcons.waveform_path_ecg,
+                onTap: () => checkAllSources(context),
+              ),
+            ],
+          ),
         );
       case LcbPage.settings:
         return Row(
@@ -1341,13 +1376,21 @@ class _HeaderIconButtonState extends State<_HeaderIconButton> {
 /// A square tool button used on the resources page header: a #F6F6F8 rounded
 /// tile holding a dark glyph.
 class _HeaderToolIcon extends StatelessWidget {
-  const _HeaderToolIcon({required this.icon, this.onTap});
+  const _HeaderToolIcon({
+    required this.icon,
+    this.onTap,
+    this.active = false,
+  });
 
   final IconData icon;
 
-  /// Null keeps the glyph decorative. The resource page wires `+` to the add
-  /// dialog; the rest still have no behaviour behind them.
+  /// Null keeps the glyph decorative. Every entry is wired now, so this stays
+  /// for the pages that still draw a tool row without behaviour.
   final VoidCallback? onTap;
+
+  /// Tinted while the mode it toggles is on (分组 / 搜索 / 多选), so the tile
+  /// says "this is showing because of me" and clicking it again turns it off.
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
@@ -1355,10 +1398,14 @@ class _HeaderToolIcon extends StatelessWidget {
       width: 32,
       height: 32,
       decoration: BoxDecoration(
-        color: LcbColors.card,
+        color: active ? LcbColors.primaryContainer : LcbColors.card,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Icon(icon, size: 17, color: LcbColors.text),
+      child: Icon(
+        icon,
+        size: 17,
+        color: active ? LcbColors.primary : LcbColors.text,
+      ),
     );
     if (onTap == null) return box;
     return MouseRegion(

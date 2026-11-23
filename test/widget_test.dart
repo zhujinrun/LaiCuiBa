@@ -861,6 +861,96 @@ void main() {
     expect(find.text('0.7s'), findsOneWidget);
   });
 
+  testWidgets('资源页默认按类型分组，第一组展开、点组标题能折叠', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.tap(find.text('资源').last);
+    await tester.pumpAndSettle();
+
+    // 种子源是 TVBox：组标题在，第一组默认展开，卡片可见。
+    expect(find.text('TVBox'), findsWidgets);
+    expect(find.text('当前使用 · 58 部'), findsOneWidget);
+
+    // 点组标题折叠：卡片收起，组标题还在。
+    await tester.tap(find.byKey(const ValueKey('resource-group-TVBox')));
+    await tester.pumpAndSettle();
+    expect(find.text('当前使用 · 58 部'), findsNothing);
+    expect(find.text('TVBox'), findsWidgets);
+  });
+
+  testWidgets('资源页搜索按名字过滤，没命中时说明没找到', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.tap(find.text('资源').last);
+    await tester.pumpAndSettle();
+
+    // 顶栏放大镜展开搜索条。
+    await tester.tap(find.byIcon(CupertinoIcons.search).first);
+    await tester.pumpAndSettle();
+    expect(find.text('在 1 个资源里查找'), findsOneWidget);
+
+    // 没命中的词：明说没有，而不是留白。
+    await tester.enterText(find.byType(TextField).last, '不存在的名字');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('没有名字、地址或站点含'), findsOneWidget);
+
+    // 命中种子源名字里的字，卡片回来了。
+    await tester.enterText(find.byType(TextField).last, store.sources.first.name);
+    await tester.pumpAndSettle();
+    expect(find.text('当前使用 · 58 部'), findsOneWidget);
+  });
+
+  testWidgets('资源页多选：勾选后批量删除，删完回到空态', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.tap(find.text('资源').last);
+    await tester.pumpAndSettle();
+
+    // 对勾圆圈进入多选。
+    await tester.tap(find.byIcon(CupertinoIcons.checkmark_circle).first);
+    await tester.pumpAndSettle();
+    expect(find.text('已选 0 个'), findsOneWidget);
+
+    // 点卡片勾选一个。
+    await tester.tap(find.text('当前使用 · 58 部'));
+    await tester.pumpAndSettle();
+    expect(find.text('已选 1 个'), findsOneWidget);
+
+    // 删除 → 确认对话框 → 真删。
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    expect(find.text('删除 1 个资源'), findsOneWidget);
+    await tester.tap(find.text('删除 1 个'));
+    await tester.pumpAndSettle();
+
+    expect(store.sources, isEmpty);
+    expect(find.text('还没有资源'), findsOneWidget);
+  });
+
   testWidgets('a mounted source owns 首页, and says when its library is empty', (
     tester,
   ) async {

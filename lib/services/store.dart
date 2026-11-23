@@ -1844,6 +1844,50 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Removes several sources in one step, the way 勾选要删除的资源 does.
+  ///
+  /// One persist and one notify: removing them one by one would rebuild the
+  /// list once per card and flash the page while the checkboxes are still up.
+  Future<void> removeSources(Iterable<String> ids) async {
+    final gone = ids.toSet();
+    if (gone.isEmpty) return;
+    _sources.removeWhere((source) => gone.contains(source.id));
+    if (_current == null || gone.contains(_current)) {
+      _current = _sources.isNotEmpty ? _sources.first.id : null;
+      await _prefs.setString(_kCurrent, jsonEncode(_current));
+    }
+    await _persistSources();
+    notifyListeners();
+  }
+
+  /// Puts the sources in [orderedIds] order; ids the list does not name keep
+  /// their previous relative order at the end.
+  ///
+  /// 检测全部 uses this to sort by the latency it just measured, which is what
+  /// the original means by「已按速度排序」. An id that no longer exists (it was
+  /// deleted mid-check) simply drops out -- nothing is invented to fill a gap.
+  Future<void> reorderSources(List<String> orderedIds) async {
+    if (orderedIds.isEmpty) return;
+    final rank = <String, int>{
+      for (var i = 0; i < orderedIds.length; i++) orderedIds[i]: i,
+    };
+    final previous = <String, int>{
+      for (var i = 0; i < _sources.length; i++) _sources[i].id: i,
+    };
+    final next = List<SourceInfo>.from(_sources);
+    next.sort((a, b) {
+      final ra = rank[a.id] ?? orderedIds.length;
+      final rb = rank[b.id] ?? orderedIds.length;
+      if (ra != rb) return ra.compareTo(rb);
+      return (previous[a.id] ?? 0).compareTo(previous[b.id] ?? 0);
+    });
+    _sources
+      ..clear()
+      ..addAll(next);
+    await _persistSources();
+    notifyListeners();
+  }
+
   // -------------------------------------------------------------------------
   // Backup
   // -------------------------------------------------------------------------
