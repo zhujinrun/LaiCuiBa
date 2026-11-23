@@ -1087,6 +1087,54 @@ void main() {
       expect(reloaded.sources.first.groupName, '');
     });
 
+    test('renameGroup 改名带着整组走，改成空名就回到按类型分组', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      final first = store.sources.first.id;
+      final second = await store.addSource(
+        const SourceInfo(
+          id: 'g2',
+          type: 'live',
+          name: '直播源',
+          url: 'https://example.com/live.m3u',
+        ),
+      );
+      await store.setSourceGroup(first, '我的常用');
+      await store.setSourceGroup(second, '我的常用');
+      await store.setSourceGroup(
+        await store.addSource(
+          const SourceInfo(
+            id: 'g3',
+            type: 'tvbox',
+            name: '别处的源',
+            url: 'https://example.com/other.json',
+          ),
+        ),
+        '别的组',
+      );
+      expect(store.customGroups, ['别的组', '我的常用']);
+
+      // 改名：组里两个都跟过去，别的组不动。
+      final moved = await store.renameGroup('我的常用', '影音');
+      expect(moved, 2);
+      expect(
+        store.sources.where((s) => s.groupName == '影音').map((s) => s.id),
+        unorderedEquals([first, second]),
+      );
+      expect(store.customGroups, ['别的组', '影音']);
+
+      // 改成空名 = 解散：资源还在，只是名字没了（分组界面就会按类型重新收）。
+      final cleared = await store.renameGroup('影音', '  ');
+      expect(cleared, 2);
+      expect(store.sources.length, 3);
+      expect(store.sources.any((s) => s.groupName == '影音'), isFalse);
+      expect(store.customGroups, ['别的组']);
+
+      // 持久化：重新加载还是解散后的样子。
+      final reloaded = await AppStore.load();
+      expect(reloaded.customGroups, ['别的组']);
+    });
+
     test('单文件脚本源的站点也是有名有姓的首页站点', () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();

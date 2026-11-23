@@ -184,6 +184,15 @@ class ResourcesPage extends StatelessWidget {
           collapsed: collapsed,
           onTap: () =>
               state.toggleCollapsed(label, defaultCollapsed: !opensFirst),
+          // 只有用户自己起的组名才有得管理：类型组的名字是从资源类型推出来
+          // 的，改名或删除都没有意义。
+          onManage: items.first.groupName.isEmpty
+              ? null
+              : () => showGroupManager(
+                  context,
+                  label: label,
+                  count: items.length,
+                ),
         ),
       );
       if (!collapsed) {
@@ -267,12 +276,16 @@ class _GroupHeader extends StatelessWidget {
     required this.count,
     required this.collapsed,
     required this.onTap,
+    this.onManage,
   });
 
   final String label;
   final int count;
   final bool collapsed;
   final VoidCallback onTap;
+
+  /// Opens 重命名 / 删除. Null for a type group.
+  final VoidCallback? onManage;
 
   @override
   Widget build(BuildContext context) {
@@ -311,6 +324,22 @@ class _GroupHeader extends StatelessWidget {
                   color: LcbColors.textTertiary,
                 ),
               ),
+              if (onManage != null) ...[
+                const Spacer(),
+                GestureDetector(
+                  key: ValueKey('resource-group-menu-$label'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onManage,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    child: Icon(
+                      CupertinoIcons.ellipsis,
+                      size: 14,
+                      color: LcbColors.textTertiary,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

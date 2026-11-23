@@ -1022,6 +1022,56 @@ void main() {
     expect(store.sources.last.id, firstId);
   });
 
+  testWidgets('资源页：组标题的 ⋯ 能改名，也能删组让资源回到类型分组', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+    final id = store.sources.first.id;
+    await store.setSourceGroup(id, '我的常用');
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.tap(find.text('资源').last);
+    await tester.pumpAndSettle();
+
+    // 类型组没有 ⋯：名字是从类型推出来的，没得改。
+    expect(
+      find.byKey(const ValueKey('resource-group-menu-TVBox')),
+      findsNothing,
+    );
+
+    // 改名。
+    await tester.tap(find.byKey(const ValueKey('resource-group-menu-我的常用')));
+    await tester.pumpAndSettle();
+    expect(find.text('分组「我的常用」'), findsOneWidget);
+    await tester.tap(find.text('重命名分组'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '影音');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(store.sources.first.groupName, '影音');
+    expect(find.byKey(const ValueKey('resource-group-影音')), findsOneWidget);
+
+    // 删组：资源还在，只是回到按类型分组。
+    await tester.tap(find.byKey(const ValueKey('resource-group-menu-影音')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除分组'));
+    await tester.pumpAndSettle();
+    expect(find.text('这 1 个资源不会删除，会回到按类型的分组。'), findsOneWidget);
+    await tester.tap(find.text('删除分组').last);
+    await tester.pumpAndSettle();
+
+    expect(store.sources.length, 1);
+    expect(store.sources.first.groupName, '');
+    expect(find.byKey(const ValueKey('resource-group-TVBox')), findsOneWidget);
+  });
+
   testWidgets('a mounted source owns 首页, and says when its library is empty', (
     tester,
   ) async {

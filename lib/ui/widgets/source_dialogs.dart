@@ -1119,3 +1119,316 @@ class _SourceGroupDialogState extends State<_SourceGroupDialog> {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// 分组
+// ---------------------------------------------------------------------------
+
+enum GroupAction { rename, dissolve }
+
+/// The ⋯ on a user group's header: the two things 管理分组 can do to one group.
+///
+/// A type group has no ⋯ at all -- its name is derived from the source type, so
+/// there is nothing to rename, and "deleting" it would only mean moving the
+/// sources to another type.
+Future<void> showGroupManager(
+  BuildContext context, {
+  required String label,
+  required int count,
+}) async {
+  final action = await showDialog<GroupAction>(
+    context: context,
+    barrierColor: const Color(0x78000000),
+    builder: (_) => _GroupMenu(label: label, count: count),
+  );
+  if (action == null || !context.mounted) return;
+  switch (action) {
+    case GroupAction.rename:
+      await _showGroupRename(context, label);
+    case GroupAction.dissolve:
+      await _showGroupDissolve(context, label, count);
+  }
+}
+
+class _GroupMenu extends StatelessWidget {
+  const _GroupMenu({required this.label, required this.count});
+
+  final String label;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return _sheet(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _TitleRow(title: '分组「$label」'),
+          const SizedBox(height: 6),
+          Text('$count 个资源', style: _hintStyle),
+          const SizedBox(height: 14),
+          _MenuTile(
+            icon: CupertinoIcons.pencil,
+            label: '重命名分组',
+            onTap: () => Navigator.of(context).pop(GroupAction.rename),
+          ),
+          const SizedBox(height: 8),
+          _MenuTile(
+            icon: CupertinoIcons.trash,
+            label: '删除分组',
+            danger: true,
+            onTap: () => Navigator.of(context).pop(GroupAction.dissolve),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A flat, full-width row inside a sheet. Deliberately not a ListTile: the rest
+/// of the app's sheets are hand-built, and this keeps the same 42px rhythm as
+/// [_PrimaryButton].
+class _MenuTile extends StatefulWidget {
+  const _MenuTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool danger;
+
+  @override
+  State<_MenuTile> createState() => _MenuTileState();
+}
+
+class _MenuTileState extends State<_MenuTile> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tint = widget.danger ? LcbColors.sysRed : LcbColors.text;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: _hover ? LcbColors.card : LcbColors.searchFill,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Icon(widget.icon, size: 15, color: tint),
+              const SizedBox(width: 10),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: tint,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _showGroupRename(BuildContext context, String label) {
+  return showDialog<void>(
+    context: context,
+    barrierColor: const Color(0x78000000),
+    builder: (_) => _GroupRenameDialog(label: label),
+  );
+}
+
+/// Renames a group, or empties the name and thereby dissolves it -- 原版
+/// 「分组名称（留空移出分组）」.
+class _GroupRenameDialog extends StatefulWidget {
+  const _GroupRenameDialog({required this.label});
+
+  final String label;
+
+  @override
+  State<_GroupRenameDialog> createState() => _GroupRenameDialogState();
+}
+
+class _GroupRenameDialogState extends State<_GroupRenameDialog> {
+  late final TextEditingController _group = TextEditingController(
+    text: widget.label,
+  );
+
+  @override
+  void dispose() {
+    _group.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final store = StoreScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final name = _group.text.trim();
+    final moved = await store.renameGroup(widget.label, name);
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          name.isEmpty
+              ? '已移出分组，$moved 个资源回到按类型分组'
+              : moved == 0
+              ? '没有资源在这个分组里'
+              : '已改名为「$name」，$moved 个资源跟过来',
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final others = [
+      for (final name in StoreScope.of(context).customGroups)
+        if (name != widget.label) name,
+    ];
+    return _sheet(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _TitleRow(title: '重命名分组'),
+          const SizedBox(height: 16),
+          _Field(
+            controller: _group,
+            hint: '分组名称（留空就移出分组）',
+            icon: CupertinoIcons.folder,
+            autofocus: true,
+            onChanged: (_) => setState(() {}),
+          ),
+          if (others.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final name in others)
+                  GestureDetector(
+                    onTap: () => setState(() => _group.text = name),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: LcbColors.card,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          color: LcbColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 10),
+          const Text(
+            '改名后组里的资源一起跟过去；写成另一个已有的组名，两组会合成一组。',
+            style: _hintStyle,
+          ),
+          const SizedBox(height: 12),
+          _PrimaryButton(label: '保存', onTap: _save),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _showGroupDissolve(
+  BuildContext context,
+  String label,
+  int count,
+) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    barrierColor: const Color(0x78000000),
+    builder: (_) => _DissolveGroupDialog(label: label, count: count),
+  );
+  if (ok != true || !context.mounted) return;
+  final store = StoreScope.of(context);
+  final messenger = ScaffoldMessenger.of(context);
+  final moved = await store.renameGroup(label, '');
+  if (!context.mounted) return;
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(
+        moved == 0 ? '这个分组已经是空的' : '已按类型重新分组，$moved 个资源移回原类型',
+      ),
+      duration: const Duration(seconds: 2),
+    ),
+  );
+}
+
+class _DissolveGroupDialog extends StatelessWidget {
+  const _DissolveGroupDialog({required this.label, required this.count});
+
+  final String label;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return _sheet(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _TitleRow(title: '删除分组「$label」'),
+          const SizedBox(height: 16),
+          Text(
+            '这 $count 个资源不会删除，会回到按类型的分组。',
+            style: const TextStyle(
+              fontSize: 13,
+              height: 1.6,
+              color: LcbColors.settingsQuiet,
+            ),
+          ),
+          const SizedBox(height: 18),
+          GestureDetector(
+            onTap: () => Navigator.of(context).pop(true),
+            child: Container(
+              height: 42,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: LcbColors.sysRed,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                '删除分组',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

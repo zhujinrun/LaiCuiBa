@@ -1939,6 +1939,34 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Renames a user group, or dissolves it when [to] is blank.
+  ///
+  /// Returns how many sources moved. Nothing is deleted: 原版 「个资源不会删除,
+  /// 会回到按类型的分组」 -- a dissolved group's sources simply have no name any
+  /// more, so the type grouping picks them up again.
+  Future<int> renameGroup(String from, String to) async {
+    final name = to.trim();
+    if (from.trim().isEmpty || from == name) return 0;
+    var moved = 0;
+    for (var i = 0; i < _sources.length; i++) {
+      if (_sources[i].groupName != from) continue;
+      _sources[i] = _sources[i].copyWith(groupName: name);
+      moved++;
+    }
+    if (moved == 0) return 0;
+    await _persistSources();
+    notifyListeners();
+    return moved;
+  }
+
+  /// Every user-made group name, sorted. The 分组 sheet offers these so a
+  /// rename can pick an existing name instead of splitting a group in two.
+  List<String> get customGroups =>
+      <String>{
+        for (final source in _sources)
+          if (source.groupName.isNotEmpty) source.groupName,
+      }.toList()..sort();
+
   /// Gives one source an icon from the bundled pack. An empty id clears it,
   /// which puts the source back on the glyph for its type.
   Future<void> setSourceIcon(String sourceId, String iconId) async {
