@@ -625,7 +625,10 @@ void main() {
     expect(find.text('1.50x'), findsOneWidget);
     // And the per-work shelf says how many works carry their own numbers.
     expect(find.text('1 部'), findsOneWidget);
-    expect(find.text('这些剧不再跟随上面的全局时长'), findsOneWidget);
+    expect(
+      find.text('这些剧不再跟随上面的全局时长；播放时右键进度条可改'),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('本剧单独设置'));
     await tester.pumpAndSettle();

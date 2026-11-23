@@ -779,8 +779,8 @@ class _SettingsPageState extends State<SettingsPage> {
               color: LcbColors.sysOrange,
               title: '本剧单独设置',
               subtitle: store.skipOverrideCount == 0
-                  ? '播放时点底栏「片头」可给单部剧另设一组'
-                  : '这些剧不再跟随上面的全局时长',
+                  ? '播放时右键进度条，可以给单部剧另设一组'
+                  : '这些剧不再跟随上面的全局时长；播放时右键进度条可改',
               value: store.skipOverrideCount == 0
                   ? '无'
                   : '${store.skipOverrideCount} 部',

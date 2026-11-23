@@ -5,27 +5,31 @@ import 'package:lai_cui_ba/services/track_choice.dart';
 import 'package:lai_cui_ba/ui/widgets/track_panel.dart';
 
 Widget _wrap(Widget child) => MaterialApp(
-  home: Scaffold(backgroundColor: Colors.black, body: Center(child: child)),
+  home: Scaffold(
+    backgroundColor: Colors.black,
+    body: Center(child: child),
+  ),
 );
 
 void main() {
-  testWidgets('a stream with nothing to switch says so instead of faking options', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      _wrap(
-        const TrackPanel(
-          choices: TrackChoices(
-            audio: [TrackOption(id: '1', language: 'zh')],
+  testWidgets(
+    'a stream with nothing to switch says so instead of faking options',
+    (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          const TrackPanel(
+            choices: TrackChoices(
+              audio: [TrackOption(id: '1', language: 'zh')],
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    expect(find.text('这条流没有可切换的轨道'), findsOneWidget);
-    expect(find.text('画质'), findsNothing);
-    expect(find.text('字幕'), findsNothing);
-  });
+      expect(find.text('这条流没有可切换的线路或音轨'), findsOneWidget);
+      expect(find.text('画质'), findsNothing);
+      expect(find.text('字幕'), findsNothing);
+    },
+  );
 
   testWidgets('groups appear only when there is a real choice', (tester) async {
     await tester.pumpWidget(
@@ -40,17 +44,14 @@ void main() {
               TrackOption(id: '3', title: '国语'),
               TrackOption(id: '4', title: '粤语'),
             ],
-            subtitle: [TrackOption(id: '5', language: 'zh')],
             videoId: '1',
             audioId: '4',
-            subtitleId: '5',
           ),
           lines: const ['线路一', '线路二'],
           lineIndex: 1,
           onLine: (_) {},
           onVideo: (_) {},
           onAudio: (_) {},
-          onSubtitle: (_) {},
         ),
       ),
     );
@@ -58,17 +59,18 @@ void main() {
     expect(find.text('线路'), findsOneWidget);
     expect(find.text('画质'), findsOneWidget);
     expect(find.text('声音'), findsOneWidget);
-    expect(find.text('字幕'), findsOneWidget);
     expect(find.text('线路二'), findsOneWidget);
     expect(find.text('国语'), findsOneWidget);
     expect(find.text('粤语'), findsOneWidget);
-    // 字幕组永远带一个「关闭」，因为它是一个有效的选择。
-    expect(find.text('关闭'), findsOneWidget);
+    // 字幕已经拆到自己的按钮下面，这里不再出现。
+    expect(find.text('字幕'), findsNothing);
+    expect(find.text('关闭'), findsNothing);
   });
 
-  testWidgets('tapping a row reports the picked track, not the label', (tester) async {
+  testWidgets('tapping a row reports the picked track, not the label', (
+    tester,
+  ) async {
     TrackOption? pickedAudio;
-    TrackOption? pickedSub;
     int? pickedLine;
 
     await tester.pumpWidget(
@@ -79,15 +81,12 @@ void main() {
               TrackOption(id: '3', title: '国语'),
               TrackOption(id: '4', title: '粤语'),
             ],
-            subtitle: [TrackOption(id: '5', language: 'zh')],
             audioId: '3',
-            subtitleId: '5',
           ),
           lines: const ['线路一', '线路二'],
           lineIndex: 0,
           onLine: (i) => pickedLine = i,
           onAudio: (t) => pickedAudio = t,
-          onSubtitle: (t) => pickedSub = t,
         ),
       ),
     );
@@ -97,48 +96,6 @@ void main() {
 
     await tester.tap(find.text('线路二'));
     expect(pickedLine, 1);
-
-    await tester.tap(find.text('关闭'));
-    expect(pickedSub?.id, 'no');
-  });
-
-  testWidgets('本地字幕入口在没有字幕轨时也开着', (tester) async {
-    // 一条内嵌字幕都没有的片子，正是最需要「选个本地字幕」的时候。
-    await tester.pumpWidget(
-      _wrap(
-        TrackPanel(
-          choices: const TrackChoices(),
-          onPickSubtitleFile: () {},
-        ),
-      ),
-    );
-
-    expect(find.text('这条流没有可切换的轨道'), findsNothing);
-    expect(find.text('字幕'), findsOneWidget);
-    expect(find.text('选择本地字幕文件…'), findsOneWidget);
-    // 没挂字幕时不该有「取消外挂字幕」这一行。
-    expect(find.text('不再使用外挂字幕'), findsNothing);
-  });
-
-  testWidgets('挂上字幕后面板显示它是哪一份，并给一个取消入口', (tester) async {
-    var cleared = 0;
-    await tester.pumpWidget(
-      _wrap(
-        TrackPanel(
-          choices: const TrackChoices(
-            subtitle: [TrackOption(id: '2', language: 'zh')],
-            subtitleId: '2',
-          ),
-          externalSubtitleLabel: '01.ass',
-          onPickSubtitleFile: () {},
-          onClearSubtitleFile: () => cleared++,
-        ),
-      ),
-    );
-
-    expect(find.text('外挂：01.ass'), findsOneWidget);
-    await tester.tap(find.text('不再使用外挂字幕'));
-    expect(cleared, 1);
   });
 
   testWidgets('a single line is not offered as a choice', (tester) async {
@@ -161,5 +118,65 @@ void main() {
     expect(find.text('线路'), findsNothing);
     expect(find.text('唯一线路'), findsNothing);
     expect(find.text('声音'), findsOneWidget);
+  });
+
+  group('底栏要不要摆「轨道」按钮', () {
+    test('一条流一条音轨、一条线路时不摆——底栏就和原版一样', () {
+      expect(
+        TrackPanel.worthShowing(
+          choices: const TrackChoices(
+            audio: [TrackOption(id: '1', language: 'zh')],
+            video: [TrackOption(id: '2', width: 1920, height: 1080)],
+            subtitle: [TrackOption(id: '3', language: 'zh')],
+          ),
+          lines: const ['唯一线路'],
+          onLine: (_) {},
+        ),
+        isFalse,
+      );
+    });
+
+    test('多条线路 / 多条画质 / 多条音轨，任意一条就摆', () {
+      expect(
+        TrackPanel.worthShowing(
+          choices: const TrackChoices(),
+          lines: const ['线路一', '线路二'],
+          onLine: (_) {},
+        ),
+        isTrue,
+      );
+      expect(
+        TrackPanel.worthShowing(
+          choices: const TrackChoices(
+            video: [
+              TrackOption(id: '1', width: 3840, height: 2160),
+              TrackOption(id: '2', width: 1280, height: 720),
+            ],
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        TrackPanel.worthShowing(
+          choices: const TrackChoices(
+            audio: [
+              TrackOption(id: '1', title: '国语'),
+              TrackOption(id: '2', title: '粤语'),
+            ],
+          ),
+        ),
+        isTrue,
+      );
+    });
+
+    test('有多条线路但没人接切换时也不摆（点了什么都不会发生）', () {
+      expect(
+        TrackPanel.worthShowing(
+          choices: const TrackChoices(),
+          lines: const ['线路一', '线路二'],
+        ),
+        isFalse,
+      );
+    });
   });
 }
