@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
@@ -23,6 +24,7 @@ import '../widgets/track_panel.dart';
 import '../widgets/picture_panel.dart';
 import '../widgets/danmaku_layer.dart';
 import '../widgets/player_info_overlay.dart';
+import '../widgets/episode_panel.dart';
 import '../widgets/playback_error_overlay.dart';
 
 /// 播放页 — 全屏视频播放。
@@ -235,6 +237,9 @@ class PlayerPage extends StatefulWidget {
   State<PlayerPage> createState() => _PlayerPageState();
 }
 
+/// 播放页右下角那几个互斥面板：轨道 / 片头片尾 / 画面 / 选集。
+enum _PlayerPanel { tracks, skip, picture, episodes }
+
 class _PlayerPageState extends State<PlayerPage> {
   late final Player _player = Player();
   late final VideoController _controller = VideoController(_player);
@@ -304,6 +309,12 @@ class _PlayerPageState extends State<PlayerPage> {
 
   /// 画面面板（比例 + 调节）。和上面两个面板共用一个右下角槽位。
   bool _picturePanel = false;
+
+  /// 选集面板。四个面板共用同一个槽位，同时只会开一个。
+  bool _episodePanel = false;
+
+  /// 常驻信息浮层的开关。字段由设置页决定；这里只管这一场看不看。
+  late bool _infoVisible = widget.infoFields.isNotEmpty;
 
   /// 画面比例与调节的当前值。比例从 widget 进来，调节滑一下改一下（同时下发
   /// mpv 属性 + 通知上层持久化），不额外存一份会漂移的状态。
@@ -817,40 +828,70 @@ class _PlayerPageState extends State<PlayerPage> {
     widget.onTrackPrefs?.call(key, next);
   }
 
-  void _toggleTrackPanel() {
+  void _toggleTrackPanel() => _togglePanel(_PlayerPanel.tracks);
+
+  void _toggleSkipPanel() => _togglePanel(_PlayerPanel.skip);
+
+  void _togglePicturePanel() => _togglePanel(_PlayerPanel.picture);
+
+  void _toggleEpisodePanel() => _togglePanel(_PlayerPanel.episodes);
+
+  /// 四个面板共用一个右下角槽位：同时只会开一个，再点同一个就收起来。
+  ///
+  /// 原来三段几乎一样的 setState 各自把别人关掉，加第四个面板时就是三处都要
+  /// 改——现在槽位这件事只在这里说一次。
+  void _togglePanel(_PlayerPanel panel) {
     _hideTimer?.cancel();
+    final open = !_isPanelOpen(panel);
     setState(() {
       _controlsVisible = true;
-      _trackPanel = !_trackPanel;
-      if (_trackPanel) {
-        _skipPanel = false;
-        _picturePanel = false;
-      }
+      _trackPanel = open && panel == _PlayerPanel.tracks;
+      _skipPanel = open && panel == _PlayerPanel.skip;
+      _picturePanel = open && panel == _PlayerPanel.picture;
+      _episodePanel = open && panel == _PlayerPanel.episodes;
     });
   }
 
-  void _toggleSkipPanel() {
-    _hideTimer?.cancel();
+  bool _isPanelOpen(_PlayerPanel panel) => switch (panel) {
+    _PlayerPanel.tracks => _trackPanel,
+    _PlayerPanel.skip => _skipPanel,
+    _PlayerPanel.picture => _picturePanel,
+    _PlayerPanel.episodes => _episodePanel,
+  };
+
+  void _closePanels() {
     setState(() {
-      _controlsVisible = true;
-      _skipPanel = !_skipPanel;
-      if (_skipPanel) {
-        _trackPanel = false;
-        _picturePanel = false;
-      }
+      _trackPanel = false;
+      _skipPanel = false;
+      _picturePanel = false;
+      _episodePanel = false;
     });
   }
 
-  void _togglePicturePanel() {
+  void _toggleInfo() {
     _hideTimer?.cancel();
     setState(() {
       _controlsVisible = true;
-      _picturePanel = !_picturePanel;
-      if (_picturePanel) {
-        _trackPanel = false;
-        _skipPanel = false;
-      }
+      _infoVisible = !_infoVisible;
     });
+  }
+
+  /// ±10 秒。时长还没报上来时不给落点，所以按钮本身就是灰的（调用方传 null）。
+  void _nudge(Duration delta) {
+    if (_duration <= Duration.zero) return;
+    final target = _position + delta;
+    final landed = target < Duration.zero
+        ? Duration.zero
+        : (target > _duration ? _duration : target);
+    _seekTo(landed);
+    _showNotice(delta.isNegative ? '倒退 10 秒' : '前进 10 秒');
+  }
+
+  /// 选集面板点了某一集：交给上层重新解析并开播，和详情页选集的出口一致。
+  void _pickEpisode(int index) {
+    setState(() => _episodePanel = false);
+    if (index == widget.episodeIndex) return;
+    widget.onEpisode?.call(index);
   }
 
   /// 换画面比例：立即改 `BoxFit`，并通知上层记住。
@@ -1239,7 +1280,7 @@ class _PlayerPageState extends State<PlayerPage> {
           // 常驻信息浮层：选中的信息钉在画面右上角，不随操作菜单隐藏（原版
           // 「信息显示」）。控制条消失时它还在，所以放在 _TopBar 之后、不受
           // visible 约束。
-          if (widget.infoFields.isNotEmpty)
+          if (_infoVisible && widget.infoFields.isNotEmpty)
             Positioned(
               top: 76,
               right: 24,
@@ -1260,26 +1301,13 @@ class _PlayerPageState extends State<PlayerPage> {
               ),
             ),
           // Tapping anywhere outside the panel closes it; it sits under the
-          // panel but over the video, so the bar below keeps working.
-          if (_trackPanel)
+          // panel but over the video, so the bar below keeps working. One layer
+          // for all four: whichever is up, a click outside puts it away.
+          if (_trackPanel || _skipPanel || _picturePanel || _episodePanel)
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() => _trackPanel = false),
-              ),
-            ),
-          if (_skipPanel)
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() => _skipPanel = false),
-              ),
-            ),
-          if (_picturePanel)
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() => _picturePanel = false),
+                onTap: _closePanels,
               ),
             ),
           if (_trackPanel)
@@ -1324,6 +1352,16 @@ class _PlayerPageState extends State<PlayerPage> {
                 onAdjust: _applyAdjust,
               ),
             ),
+          if (_episodePanel)
+            Positioned(
+              right: 20,
+              bottom: 132,
+              child: EpisodePanel(
+                episodes: widget.episodes,
+                currentIndex: widget.episodeIndex ?? -1,
+                onPick: _pickEpisode,
+              ),
+            ),
           _BottomBar(
             playing: _playing,
             buffering: _buffering,
@@ -1332,9 +1370,6 @@ class _PlayerPageState extends State<PlayerPage> {
             volume: _volume,
             rate: _rate,
             visible: _controlsVisible,
-            hasNext: _hasNext,
-            hasPrev:
-                widget.episodeIndex != null && widget.episodeIndex! > 0,
             onTogglePlay: _togglePlay,
             onSeekStart: () => setState(() => _seeking = true),
             onSeekEnd: () {
@@ -1365,6 +1400,17 @@ class _PlayerPageState extends State<PlayerPage> {
                 : '片头 关',
             onPicture: _togglePicturePanel,
             pictureOpen: _picturePanel,
+            onInfo: _toggleInfo,
+            infoOpen: _infoVisible,
+            onEpisodes: _toggleEpisodePanel,
+            episodesOpen: _episodePanel,
+            episodeCount: widget.episodes.length,
+            onBack10: _duration > Duration.zero
+                ? () => _nudge(const Duration(seconds: -10))
+                : null,
+            onForward10: _duration > Duration.zero
+                ? () => _nudge(const Duration(seconds: 10))
+                : null,
             onNext: _hasNext
                 ? () => widget.onEpisode!(widget.episodeIndex! + 1)
                 : null,
@@ -1495,8 +1541,6 @@ class _BottomBar extends StatelessWidget {
     required this.volume,
     required this.rate,
     required this.visible,
-    required this.hasNext,
-    required this.hasPrev,
     required this.onTogglePlay,
     required this.onSeekStart,
     required this.onSeekEnd,
@@ -1513,8 +1557,15 @@ class _BottomBar extends StatelessWidget {
     required this.skipLabel,
     required this.onPicture,
     required this.pictureOpen,
+    required this.onInfo,
+    required this.infoOpen,
+    required this.onEpisodes,
+    required this.episodesOpen,
+    required this.episodeCount,
     this.onNext,
     this.onPrev,
+    this.onBack10,
+    this.onForward10,
   });
 
   final bool playing;
@@ -1524,8 +1575,6 @@ class _BottomBar extends StatelessWidget {
   final double volume;
   final double rate;
   final bool visible;
-  final bool hasNext;
-  final bool hasPrev;
   final VoidCallback onTogglePlay;
   final VoidCallback onSeekStart;
   final VoidCallback onSeekEnd;
@@ -1551,6 +1600,20 @@ class _BottomBar extends StatelessWidget {
   /// Opens the 画面 panel (比例 + 调节).
   final VoidCallback onPicture;
   final bool pictureOpen;
+
+  /// 常驻信息浮层的开关与它现在的状态。
+  final VoidCallback onInfo;
+  final bool infoOpen;
+
+  /// 选集面板。只有一个 (或没有) 集数时根本不显示这个按钮。
+  final VoidCallback onEpisodes;
+  final bool episodesOpen;
+  final int episodeCount;
+
+  /// ±10 秒。时长未知时是 null —— 那时候前后跳没有落点。
+  final VoidCallback? onBack10;
+  final VoidCallback? onForward10;
+
   final VoidCallback? onNext;
   final VoidCallback? onPrev;
 
@@ -1571,7 +1634,13 @@ class _BottomBar extends StatelessWidget {
           child: Container(
             margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
-            constraints: const BoxConstraints(minWidth: 480, maxWidth: 720),
+            // 宽度照原版量出来的比例：1360 的窗口里那条悬浮条是 1088 宽
+            // （80%），而不是一个固定值。按钮多起来之后 720 这类定宽会把
+            // 最后一组挤到条外面去。
+            constraints: BoxConstraints(
+              minWidth: 480,
+              maxWidth: math.min(MediaQuery.sizeOf(context).width * 0.8, 1180),
+            ),
             decoration: BoxDecoration(
               color: const Color(0xCC1A1A20),
               borderRadius: BorderRadius.circular(14),
@@ -1618,68 +1687,132 @@ class _BottomBar extends StatelessWidget {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    if (onPrev != null) ...[
-                      _RoundButton(
-                        icon: Icons.skip_previous,
-                        onTap: onPrev,
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    _RoundButton(
-                      icon: playing
-                          ? Icons.pause
-                          : Icons.play_arrow,
-                      onTap: onTogglePlay,
-                    ),
-                    if (onNext != null) ...[
-                      const SizedBox(width: 8),
-                      _RoundButton(
-                        icon: Icons.skip_next,
-                        onTap: onNext,
-                      ),
-                    ],
-                    const SizedBox(width: 16),
-                    if (buffering)
-                      const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white70,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // 左侧这一组的顺序照原版：快退 / 播放暂停 / 快进 /
+                        // 上一集 / 下一集。±10 秒是看剧最常用的两个动作，
+                        // 放在最前面，不用先去拖进度条。
+                        _RoundButton(
+                          key: const ValueKey('player-back-10'),
+                          icon: Icons.replay_10,
+                          onTap: onBack10,
                         ),
-                      ),
-                    const Spacer(),
-                    _PanelButton(
-                      icon: Icons.content_cut,
-                      label: skipLabel,
-                      open: skipOpen,
-                      onTap: onSkip,
-                    ),
-                    const SizedBox(width: 8),
-                    _PanelButton(
-                      icon: Icons.forum_outlined,
-                      label: danmakuLabel,
-                      open: danmakuOn,
-                      onTap: onDanmaku,
-                    ),
-                    const SizedBox(width: 8),
-                    _PanelButton(
-                      icon: Icons.tune,
-                      label: '轨道',
-                      open: tracksOpen,
-                      onTap: onTracks,
-                    ),
-                    const SizedBox(width: 8),
-                    _PanelButton(
-                      icon: Icons.aspect_ratio,
-                      label: '画面',
-                      open: pictureOpen,
-                      onTap: onPicture,
+                        const SizedBox(width: 4),
+                        _RoundButton(
+                          key: const ValueKey('player-play-pause'),
+                          icon: playing ? Icons.pause : Icons.play_arrow,
+                          onTap: onTogglePlay,
+                        ),
+                        const SizedBox(width: 4),
+                        _RoundButton(
+                          key: const ValueKey('player-forward-10'),
+                          icon: Icons.forward_10,
+                          onTap: onForward10,
+                        ),
+                        const SizedBox(width: 12),
+                        if (onPrev != null) ...[
+                          _RoundButton(
+                            key: const ValueKey('player-prev'),
+                            icon: Icons.skip_previous,
+                            onTap: onPrev,
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        if (onNext != null)
+                          _RoundButton(
+                            key: const ValueKey('player-next'),
+                            icon: Icons.skip_next,
+                            onTap: onNext,
+                          ),
+                        if (buffering) ...[
+                          const SizedBox(width: 12),
+                          const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(width: 12),
-                    _RateButton(rate: rate, onRate: onRate),
-                    const SizedBox(width: 16),
-                    VolumeControl(volume: volume, onVolume: onVolume),
+                    // 右半边贴右对齐，并且能横向滚：窗口最窄（1040）时这一
+                    // 排按钮确实差几十像素，宁可让它滚，也不能把「选集」挤到
+                    // 悬浮条外面去。`reverse` 让内容从右边开始排。
+                    Expanded(
+                      child: ScrollConfiguration(
+                        behavior: ScrollConfiguration.of(
+                          context,
+                        ).copyWith(scrollbars: false),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          reverse: true,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _PanelButton(
+                                icon: Icons.content_cut,
+                                label: skipLabel,
+                                open: skipOpen,
+                                onTap: onSkip,
+                              ),
+                              const SizedBox(width: 8),
+                              _PanelButton(
+                                icon: Icons.forum_outlined,
+                                label: danmakuLabel,
+                                open: danmakuOn,
+                                onTap: onDanmaku,
+                              ),
+                              const SizedBox(width: 8),
+                              _PanelButton(
+                                icon: Icons.tune,
+                                label: '轨道',
+                                open: tracksOpen,
+                                onTap: onTracks,
+                              ),
+                              const SizedBox(width: 8),
+                              _PanelButton(
+                                icon: Icons.aspect_ratio,
+                                label: '画面',
+                                open: pictureOpen,
+                                onTap: onPicture,
+                              ),
+                              const SizedBox(width: 8),
+                              // 信息浮层随时开关：字段在设置里选，看不看是
+                              // 当场的事。
+                              _PanelButton(
+                                key: const ValueKey('player-info'),
+                                icon: Icons.info_outline_rounded,
+                                label: '信息',
+                                open: infoOpen,
+                                onTap: onInfo,
+                              ),
+                              // 选集：40 集的剧靠两个箭头点过去不现实。
+                              if (episodeCount > 1) ...[
+                                const SizedBox(width: 8),
+                                _PanelButton(
+                                  key: const ValueKey('player-episodes'),
+                                  icon: Icons.grid_view_rounded,
+                                  label: '选集',
+                                  open: episodesOpen,
+                                  onTap: onEpisodes,
+                                ),
+                              ],
+                              const SizedBox(width: 12),
+                              _RateButton(rate: rate, onRate: onRate),
+                              const SizedBox(width: 16),
+                              VolumeControl(
+                                volume: volume,
+                                onVolume: onVolume,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -1702,7 +1835,7 @@ String _fmt(Duration d) {
 }
 
 class _RoundButton extends StatefulWidget {
-  const _RoundButton({required this.icon, this.onTap});
+  const _RoundButton({super.key, required this.icon, this.onTap});
 
   final IconData icon;
   final VoidCallback? onTap;
@@ -1740,6 +1873,7 @@ class _RoundButtonState extends State<_RoundButton> {
 /// label, filled purple while its panel is open. Used for 片头 and 轨道.
 class _PanelButton extends StatelessWidget {
   const _PanelButton({
+    super.key,
     required this.icon,
     required this.label,
     required this.open,
