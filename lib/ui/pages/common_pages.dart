@@ -602,11 +602,26 @@ class _SourceCard extends StatelessWidget {
                     color: const Color(0xFFEFEFF2),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(
-                    source.type.sourceIcon,
-                    size: 20,
-                    color: const Color(0xFF1D1D1F),
-                  ),
+                  // A picked icon from the bundled pack wins; otherwise the card
+                  // falls back to the glyph for the source's type.
+                  child: source.iconId.isEmpty
+                      ? Icon(
+                          source.type.sourceIcon,
+                          size: 20,
+                          color: const Color(0xFF1D1D1F),
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.all(5),
+                          child: Image.asset(
+                            'assets/app_icons/${source.iconId}.webp',
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, _, _) => Icon(
+                              source.type.sourceIcon,
+                              size: 20,
+                              color: const Color(0xFF1D1D1F),
+                            ),
+                          ),
+                        ),
                 ),
                 const SizedBox(width: 14),
                 Expanded(

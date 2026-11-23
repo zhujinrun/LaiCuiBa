@@ -1026,6 +1026,21 @@ void main() {
       );
     });
 
+    test('换的图标写进源里，清空就回到类型图标', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      final id = store.sources.first.id;
+
+      await store.setSourceIcon(id, 'line_cat');
+      expect(store.sources.first.iconId, 'line_cat');
+
+      final reloaded = await AppStore.load();
+      expect(reloaded.sources.first.iconId, 'line_cat');
+
+      await reloaded.setSourceIcon(id, '');
+      expect(reloaded.sources.first.iconId, '');
+    });
+
     test('分组名写进源里，留空就退回按类型分组', () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();

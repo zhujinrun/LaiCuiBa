@@ -1939,6 +1939,17 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Gives one source an icon from the bundled pack. An empty id clears it,
+  /// which puts the source back on the glyph for its type.
+  Future<void> setSourceIcon(String sourceId, String iconId) async {
+    final index = _sources.indexWhere((source) => source.id == sourceId);
+    if (index < 0) return;
+    if (_sources[index].iconId == iconId) return;
+    _sources[index] = _sources[index].copyWith(iconId: iconId);
+    await _persistSources();
+    notifyListeners();
+  }
+
   /// Total sites across every source -- what 数据与存储 reports and what the
   /// resource card counts.
   int get siteCount =>

@@ -9,6 +9,7 @@ import '../../services/script_runtime.dart';
 import '../../services/site_parser.dart';
 import '../../services/source_probe.dart';
 import '../../services/store.dart';
+import 'source_icon_picker.dart';
 
 /// Source management dialogs.
 ///
@@ -52,6 +53,9 @@ Future<void> showSourceMenu(BuildContext context, SourceInfo source) async {
     case _SourceAction.group:
       if (!context.mounted) return;
       await showSourceGroupDialog(context, source);
+    case _SourceAction.icon:
+      if (!context.mounted) return;
+      await showSourceIconPicker(context, source);
     case _SourceAction.delete:
       if (!context.mounted) return;
       await showDeleteSourceDialog(context, source);
@@ -300,7 +304,7 @@ Future<bool?> showDeleteSourcesConfirm(
   );
 }
 
-enum _SourceAction { select, recheck, edit, group, delete }
+enum _SourceAction { select, recheck, edit, group, icon, delete }
 
 // ---------------------------------------------------------------------------
 // Shared chrome
@@ -848,6 +852,10 @@ class _SourceMenuDialog extends StatelessWidget {
           _MenuRow(
             label: '编辑',
             onTap: () => Navigator.of(context).pop(_SourceAction.edit),
+          ),
+          _MenuRow(
+            label: '更换图标',
+            onTap: () => Navigator.of(context).pop(_SourceAction.icon),
           ),
           _MenuRow(
             label: '放进分组',
