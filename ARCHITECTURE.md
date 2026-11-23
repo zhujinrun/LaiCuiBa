@@ -50,7 +50,7 @@ lib/
   services/
     store.dart           AppStore：源与站点的唯一真相源 + sitesForSelection()
     site_parser.dart     TVBox / catvod 配置 -> SiteInfo（纯本地 JSON）
-    demo_data.dart       演示片单 + detailDemo 详情夹具
+    demo_data.dart       演示片单 + detailDemo（夹具开关已全关，仅测试 seam 使用）
     search.dart          搜索结果模型 + searchCatalogue()（按站点 fan-out）
     # 三个运行时，三条路，互不混用：
     spider_session.dart  猫源：node + cat_host.js + 订阅 bundle（start(config)）
@@ -58,14 +58,30 @@ lib/
     script_runtime.dart  脚本源运行时：按 api 后缀分流、懒启动、远端下载缓存
     tvbox_source.dart    脚本源响应体 -> MediaItem / SpiderList（两套生态共用）
     local_proxy.dart     /proxy 与 /cache，只绑 127.0.0.1
+    # 播放链路（详见第四节 Phase 3）
+    playback_clock.dart  播放页唯一 seek 出口（续播 / 片头片尾 / 漂移）
+    skip_rule.dart       片头片尾护栏（单不超四成、合计不超一半）
+    picture.dart         画面比例六档 + 调节五量
+    track_map.dart       Tracks 事件 -> 面板选项 + 原始轨道
+    track_choice.dart    字幕 8 档偏好 / 次字幕 / 记住的轨道
+    player_info.dart     分辨率 / 帧率 / 码率格式化
+    player/subtitle_file.dart  本地外挂字幕（srt/ass/vtt、zip、7z/RAR 提示）
+    # 内容增强
+    badge_rule.dart      从片名/备注识别规格徽章
+    danmaku/             弹弹play API / 纯逻辑排版 / 源匹配
   ui/
     shell.dart           侧栏 + 顶栏 + 页面切换（含详情页 / 搜索态顶栏）
     pages/detail_page.dart 详情页（hero / 选集 / 演员阵容 / 分类）
     pages/search_page.dart 搜索页（空态 / 联想 / 结果）
+    pages/player_page.dart 播放页（时钟 / 轨道 / 画面 / 字幕 / 弹幕 / 浮层）
+    pages/grid_page.dart   分类网格页（9 列 / 分页 / 查看全部）
     pages/common_pages.dart 资源 / 收藏 / 历史页
     widgets/search_sources_dialog.dart 「搜索哪些资源」源选择弹窗
     widgets/source_dialogs.dart 添加 / 编辑 / 删除源
-    widgets/             hero_banner / media_card / poster_art / manage_folders_sheet
+    widgets/             hero_banner / media_card / poster_art / rail / browse_dialog /
+                         track_panel / picture_panel / skip_panel /
+                         player_info_overlay / subtitle_style / danmaku_layer /
+                         media_badges / manage_folders_sheet
 ```
 
 `PosterArt` 是占位海报（渐变 + 纹理 + 片名），接口上预留了换成真实封面的位置。
@@ -76,8 +92,8 @@ lib/
 本地存储（收藏/历史/设置）、`MediaItem` 从源适配器返回、详情页、搜索结果页、
 收藏与历史页接真实数据。这一阶段结束时不联网也能把界面点通。
 
-**已完成**：数据层闭环、设置持久化、收藏夹 CRUD、详情页（见下节）。
-**未做**：搜索结果页；详情页的换平台/下载/追更/评论与选集筛选需要源数据。
+**已完成**：数据层闭环、设置持久化、收藏夹 CRUD、详情页、搜索结果页、媒体徽章（见下节）。
+**未做**：详情页的换平台/下载/追更/评论需要 Phase 4 能力。
 
 #### 详情页（tvbox_detail_page 的等价物）
 
@@ -258,12 +274,13 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
 - `services/source_catalogue.dart`：`home` 取分类 → 每个分类（最多 5 个）翻第一页 →
   变成 `HomeSection`；分类请求**并发**（顺序由 `Future.wait` 保持），串行会把首屏拖成
   `分区数 × 单次延迟`。
-- 站点轮换：`homeSite` 优先，失败再试后面两个。猫源包里几十个站点，被指定的那个死掉是常态。
+- 站点：`0110720` 起**只问用户选中的 `homeSite`**（删掉了「并发探测最多 8 个站 +
+  进程级记住上次好站」的临时做法，它会让顶栏站名与内容来源不一致）。
 - hero 跨分区取片：去重（按 vod_id）、**有海报的优先**（hero 是全幅背景，留灰块最难看）、
   上限 5 张。
-- 首页策略：**先照旧显示 demo，真片单到了再替换**；取不到（订阅下载失败/源没起来）就
-  **静默留 demo**，不让一次网络抖动把首屏变成错误页；只有源**明确回答空**才显示
-  「××的首页没有取到片单」。挂载源仍走「占位 → 库内容」——那是用户显式添加的，demo 一定不对。
+- 首页策略（**2026-11-21 夹具全关后**）：请求中出占位 spinner；成功出片单；源明确回答空 →
+  「×× 的首页没有取到片单」；没源 → 引导去资源页；请求失败 → 「×× 没有答上来 + 原因 + 重试」。
+  两种失败语义分开：没答上来 ≠ 答了分类但分类下没片单。
 - 判定用严格的 `spiderAddressOf`（http + `.md5`/`index.js`）：答应接管首页是个承诺，
   配置类 TVBox 地址跑不起来，答应下来只会得到一屏空白。
 
@@ -457,13 +474,102 @@ shell 决定切下一集还是退出——最后一条不会在演职员表前�
 因为切集时新播放页的 `initState` 早于旧页面的 `dispose`，一个 bool 会走成
 `enable → disable` 并把刚点亮的锁关掉；shell 持有一个实例传给它创建的每个播放页。
 
-#### 还没做的
-- 画质/音轨/字幕轨选择（原版 `player` 设置里的整组开关）。
-- 片头/片尾目前是**全局**一组数值，还没有「按剧集单独记」（原版也是全局，但可以做得更好）。
+#### 画质 / 音轨 / 字幕轨（2026-11-21，`d292cb2`）
 
-### Phase 4 — 外设模块
-弹幕（dandanplay）、刮削（TMDB/Bangumi/豆瓣）、下载、字幕、投屏 DLNA、
-备份同步（WebDAV）。
+- `services/track_map.dart` 的 `MappedTracks` 是「一次 `Tracks` 事件 → 面板选项 + 原始轨道对象」
+  的**唯一映射**。`TrackOption.id` 同时是显示键和切换键，播放页与
+  `tool/verify_tracks_live.dart` 共用这一份——否则会出现「面板写粤语、点下去切英文」。
+- `ui/widgets/track_panel.dart` 四组「线路 / 画质 / 声音 / 字幕」；「线路」是 `lineIndex`
+  （`playLines`），其余三组是 mpv 轨道。mpv 的 `auto` / `no` 控制词在映射层丢掉，
+  `no` 单独映射回 `SubtitleTrack.no()`。
+- 记住选择：`TrackPrefs` 只存三个 id（`AppSettings.trackPrefs`）。开播后按
+  「id 还存在才应用」，失效 id 直接忽略，不硬切。
+
+#### 画面比例与画面调节（2026-11-22，`c84d9ad`）
+
+原版能力面（app.so 明文）：`画面比例` 六档（保持原始比例完整显示 / 拉伸到屏幕边缘不保留比例 /
+保持原始比例铺满边缘可能裁掉 / 宽度铺满高度等比放大超出裁掉 / 高度铺满宽度等比放大超出裁掉 /
+裁剪铺满）；`画面调节` 亮度/对比度/饱和度/色相/伽马，文案「0% 是原始画面；这里的亮度和
+屏幕亮度分开」。
+
+- `services/picture.dart`：`AspectMode`（短码 → `BoxFit`，`parse` 认不出退回 fit）与
+  `PictureAdjust`（五量 -100..100，`mpvProperties` 映射到 mpv 属性名）。
+- 播放页底栏「画面」pill → `ui/widgets/picture_panel.dart`（六档 + 五滑块 + 非中性时
+  「恢复原始画面」）。三个面板（轨道 / 片头 / 画面）共用右下角槽位、互斥。
+- `Video(fit:)` 按档映射；调节走 `NativePlayer.command('set <prop> <value>')`。
+  `tool/verify_picture_live.dart` 真起 libmpv，`set` 后 `getProperty` 回读一致
+  （mpv 返回 `20.000000` 浮点串，要比 `double.tryParse`）。
+
+#### 信息浮层与迷你进度条（2026-11-22，`aabedbe`）
+
+原版文案：「选中的信息常驻在画面角落，不随操作菜单隐藏。帧率需要 MPV 或 MDK 内核，
+ExoPlayer 下显示 --」；迷你进度条「画面最底下一条线：蓝色已播放、浅蓝已缓冲」。
+
+- `services/player_info.dart`：`PlayerInfoField`（分辨率 / 帧率 / 码率）+ 三个格式化函数
+  （`dw×dh`、`23.976 fps`、`2543 kbps`，空/零 → `--`）。
+- 分辨率来自 `videoParams`（首次解码出帧才有）；帧率/码率在参数到达后走
+  `NativePlayer.getProperty`（`estimated-vf-fps` / `video-bitrate`）异步读一次。
+- `ui/widgets/player_info_overlay.dart` 的 `PlayerInfoOverlay` / `MiniProgressBar` 独立可测；
+  设置里是 `playerInfoFields`（逗号分隔短码）+ `miniProgress`。
+- 远程桌面无 GPU 时 libmpv 不解码视频轨，三个属性读不到是环境限制；
+  `tool/verify_player_info_live.dart` 据此降级退出 0 并注明。
+
+#### 字幕：8 档偏好 / 次字幕 / 外挂（2026-11-22，`95e6b37` + `c3696e8`）
+
+- **默认字幕 8 档**（`SubtitlePref`，`services/track_choice.dart`）：`auto` 不自动切换、
+  `zh` 任意中文（简体优先，无简体回退其它中文）、`zh-en` 中英、`multi` 多语、`en` / `ja` / `ko`、
+  `off` 关闭。`label` 逐字用 app.so 原文；语言码认出来但不对时**不再拿标题硬猜**，
+  避免「中文标题 + eng 码」错配。
+- **次字幕**（`SecondarySubtitle{off,zh,en,ja,ko}`）：mpv `secondary-sid` 选第二条轨
+  （media_kit 没 API，走 `NativePlayer.command`），文字取 media_kit 已暴露的
+  `stream.subtitle[1]`（即 `secondary-sub-text`），用 `LcbSubtitleStyle.secondaryOf`
+  在画面上方自绘（0.8 倍字号 + 描边）。主字幕换了会重挑，绝不和主字幕同轨。
+- **外挂字幕**（`services/player/subtitle_file.dart`，原版同名模块）：srt/ass/ssa/vtt/sub
+  直接交 mpv（`SubtitleTrack.uri`）；压缩包按魔数认，zip 解到
+  `<appData>/subtitles/<包名>/`（条目只留 basename，防路径穿越），7z/RAR 如实报
+  「这台设备上解不开」；按 `'<作品id>|ep<集>'` 记忆，文件被删就当作没记过并清记忆。
+- **字号不是 mpv 属性**：Windows 上 `PlayerConfiguration.libass` 默认 false，media_kit 把字幕
+  当 Flutter 文本画（`sub-text`），所以字号走 `Video.subtitleViewConfiguration`
+  （`ui/widgets/subtitle_style.dart` 的 `LcbSubtitleStyle.of(px)`）。别去设 `sub-font-size`，
+  那条路在本配置下没有效果。
+
+#### 弹幕：弹弹play 一系（2026-11-22，`729bcbd`）
+
+- `services/danmaku/danmaku_api.dart`：`https://api.dandanplay.net` + `/api/v2/match`
+  （`fileName` / `withRelated`）+ `/api/v2/comment/{episodeId}`；签名
+  `base64(sha256(appId + timestamp + path + appSecret))`（path 不含查询串），头
+  `X-AppId` / `X-Signature` / `X-Timestamp`。`parseDanmaku` 同时吃 JSON 与 XML；
+  `401` 明确说「要 AppId/AppSecret」，非弹幕格式给带预览的报错。
+- `danmaku_layout.dart`：纯逻辑排版——滚动轨按「尾巴进画」释放、固定轨 4s、
+  轨满就丢这条、`blockTop` / `blockBottom` 直接不排。
+- `source_danmaku.dart`：先按片名 + 集数搜，搜不到才用拼出来的文件名走 `/match`；
+  一个源通了就停；按 `片名|集数|源` 缓存；失败带一句人话。
+- 播放页 `DanmakuLayer` 自己用 Ticker 从真实进度插值（进度流 200ms 一次，不插值会一卡一卡），
+  排版只在尺寸/表长变化时重算，每帧只 `activeAt` + 画字（描边 2.4 + 填充）；换集清空并重取。
+- 设置页：显示弹幕 / 屏蔽顶部 / 屏蔽底部三个真开关 + 弹幕源列表（内置可改凭据、不可删）
+  + 添加 / 编辑 / 删除弹窗。
+
+#### 还没做的
+- 内核切换（mpv / ijk / exo / mdk + 硬解软解）：`services/player/` 原版 13 个模块里
+  我们只落了 `subtitle_file`。
+- 上下滑动调亮度/音量、长按倍速。
+- 投屏 / 全屏 / 小窗 / 锁屏 / 截图（平台相关）。
+- 播放失败自动换线路换源、短剧预载、播放列表/选集浮层。
+- 字幕网站（SubHD / 射手网 assrt / OpenSubtitles）+ 在线搜索面板、字体导入与样式覆盖、
+  PGS/VobSub 提示、AI 翻译。
+- 弹幕 LogVar 插件、视频自带弹幕、本地 `.xml/.json`、字号/透明度/速度/屏蔽词。
+- 片头/片尾是**全局一组 + 按作品覆盖**，还没有按单集记（原版也是全局，但可以做得更好）。
+
+### Phase 4 — 外设模块（部分）
+
+| 模块 | 状态 |
+| --- | --- |
+| 弹幕 | 🔶 弹弹play 一系已通（match/comment、排版、渲染、设置页源管理）；缺 LogVar 插件、视频自带弹幕、本地 `.xml/.json`、字号/透明度/速度/屏蔽词 |
+| 字幕 | 🔶 本地半已通（8 档偏好、次字幕、外挂字幕、每集记忆）；缺字幕网站（SubHD / 射手网 assrt / OpenSubtitles）+ 在线搜索面板、字体与样式覆盖、PGS/VobSub 提示、AI 翻译 |
+| 刮削 | ⬜ TMDB / Bangumi / 豆瓣 |
+| 下载 | ⬜ 下载管理 / 下载设置 |
+| 投屏 | ⬜ DLNA |
+| 备份同步 | ⬜ 本地 JSON 已有；WebDAV 同步未做 |
 
 ### Phase 5 — 多端
 TV 端焦点导航（原版 `ui/tv/*` 共 9 个文件）、Android 适配、AI 辅助（集名清洗、
@@ -520,11 +626,15 @@ Phase 2 做猫源宿主时把 `node/` 整体内嵌；Phase 3 让 `media_kit` 指
 cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
-flutter test                    # 冒烟测试
+flutter test                    # 当前 538 个全绿
 ./assets/runtime/node/node.exe tool/verify_host.js  # 猫源宿主端到端自检
 
-# 播放时钟 / 片头片尾 真机自检（真起 libmpv，取 build 产物里的 DLL；先 build 再跑）
+# 真 libmpv 自检（取 build 产物里的 DLL；先 flutter build windows --debug）
 dart run tool/verify_clock_live.dart /path/to/clip.mp4
+dart run tool/verify_tracks_live.dart      # 轨道映射 / 切换 / 恢复
+dart run tool/verify_subtitle_live.dart    # 主/次字幕 + 外挂
+dart run tool/verify_picture_live.dart     # 五量 set 后回读
+dart run tool/verify_player_info_live.dart # 无 GPU 时降级退出 0
 ```
 
 环境约束（**已锁定，勿随意升级**）：
@@ -680,28 +790,26 @@ hero 单看宽度比例（0.368 / 0.332）或高度比例（0.478 / 0.539）都�
 所以不要在首页/侧栏上叠加玻璃，等实现底栏与悬浮按钮时再接入
 `liquid_glass_widgets 1.18.0`。
 
-### G. measure.py 的坐标偏移（务必记住）
+### G. 截图脚本的坐标偏移（务必记住）
 
-`.probe/measure.py` 把窗口摆到 `(-8, -8, w+16, h+16)`。Windows 无边框窗口的
-不可见边框是 **左/右/下各 8、上 0**，所以：
+`.probe/measure.py` 已不在仓库；现在用 `.probe/shot_win.py <title> <out>`
+（PrintWindow + `PW_RENDERFULLCONTENT`，不依赖前台，被遮挡也能截）或
+`.probe/shot_client.py`。窗口仍被摆到 `(-8, -8, w+16, h+16)` 附近，Windows 无边框窗口的
+不可见边框是 **左/右/下各 8、上 0**，所以坐标口径与旧 `measure.py` 相同：
 
 - 客户区实际顶部落在**屏幕 y = -8**，横向落在 x = 0。
 - 截图裁掉四周 8 后，图上的 y 比 Flutter 逻辑 y **小 8**，x 与逻辑坐标一致。
-- `measure.py click` 用的是屏幕坐标，因此 **screen y = 逻辑 y − 8**。
+- 真实鼠标点击用屏幕坐标，因此 **screen y = 逻辑 y − 8**。
 
 也就是说：截图上量到分隔线在 52，对应逻辑 60（顶栏 60 高）；要点逻辑 y=318 的
-侧栏项，就点屏幕 310。表 E/F 与本文件里的实测值都是**截图坐标**，可直接和
-`measure.py shot` 的新图对齐。
+侧栏项，就点屏幕 310。表 E/F 与本文件里的实测值都是**截图坐标**，可直接和新图对齐。
 
-**点击不可靠时改用 `.probe/click_client.py`**：复刻版从后台 shell 启动时，
-`SetForegroundWindow` 会被 Windows 拒绝，`measure.py click` 的真实鼠标事件会被
-别的窗口截走（表现为"点了没反应"）。`click_client.py` 先把窗口摆到同一位置，
-再把 `WM_LBUTTONDOWN/UP` 直接 PostMessage 给 embedder 的 `FLUTTERVIEW` 子窗口，
-不依赖前台，坐标口径与 `measure.py` 完全一致。
-
+点击用 `.probe/click_at.py <title> <x> <y>`：先 HWND_TOPMOST 置顶再真实鼠标点击。
+**复刻版从后台 shell 启动时真实鼠标点击仍可能不生效**（前台抢占被拒，表现为"点了没反应"），
+交互回归以 widget/e2e 测试为准；真机截图只用于「页面渲染了真实数据」这种静态证据。
 同理，**文字输入**不能用 `SendKeys`（CJK 会丢），也别往顶层 HWND 发 `WM_CHAR`；
 要么 `SendInput + KEYEVENTF_UNICODE`（需前台），要么向 `FLUTTERVIEW` 子窗口
-PostMessage `WM_CHAR(ord(ch))`（不需要前台，`.probe/type.py` 有实现）。
+PostMessage `WM_CHAR(ord(ch))`（不需要前台）。
 
 ### H. 三个反复踩到的布局坑
 

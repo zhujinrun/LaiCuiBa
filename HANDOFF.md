@@ -1,7 +1,12 @@
 # LaiCuiBa 交接文档
 
 > 用途：新会话快速接续当前进度。新会话开始后，先让 AI 读本文件 + 工程内
-> `ARCHITECTURE.md`，再读 `.workbuddy/memory/2026-11-20.md` 和 `topics/rebuild.md`。
+> `ARCHITECTURE.md`，再读 `.workbuddy/memory/2026-11-22.md`、`topics/parity.md`
+> 和 `topics/rebuild.md`。
+>
+> **最后更新：2026-11-23（文档追平到代码提交 `378248f`；538 测试绿）。** 2026-11-22 一整天的工作
+> 在本文件「二、当前进度总览」的 11-22 段与 `ARCHITECTURE.md` Phase 3/4 节，
+> 更细的日志在 `.workbuddy/memory/2026-11-22.md`。
 
 ---
 
@@ -29,9 +34,9 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
 | --- | --- |
 | Phase 0 — 界面骨架 | ✅ 完成 |
 | Phase 1 — 数据层与页面闭环 | ✅ 完成（详情页 + 搜索页都已落地） |
-| Phase 2 — 源接入（灵魂） | 🔶 大部分（源→站点→联网拉取→猫源宿主→搜索/详情/播放/首页片单已通；Emby/Jellyfin 与 WebDAV/AList 挂载已通；**Python(TVBox) 宿主、客户端与 store 接入全通**） |
-| Phase 3 — 播放链路 | 🔶 核心（播放时钟 + 续播校验 + 位置可信度已落地；跳片头等数据、休眠锁未接） |
-| Phase 4 — 外设模块 | ⬜ 未开始 |
+| Phase 2 — 源接入（灵魂） | 🔶 大部分（源→站点→联网拉取→猫源宿主→搜索/详情/播放/首页片单已通；Emby/Jellyfin 与 WebDAV/AList 挂载已通；Python(TVBox) 宿主、客户端与 store 接入全通；缺 js 少量全局与挂载重登） |
+| Phase 3 — 播放链路 | 🔶 大部分（播放时钟 + 续播校验 + 片头片尾（全局/按作品）+ 防休眠 + 轨道选择 + 画面比例/调节 + 信息浮层 + 字幕/弹幕；缺内核切换、手势、投屏/全屏等平台项） |
+| Phase 4 — 外设模块 | 🔶 已开两个口（弹幕走弹弹play、字幕本地半 + 外挂已通；刮削/下载/投屏/同步未开始） |
 | Phase 5 — 多端 | ⬜ 未开始 |
 
 ### Phase 0 已完成
@@ -121,6 +126,43 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
   不可拖动，续播位置带 `totalMs` 由播放器用真实时长复核（跨时间轴拒绝、漂移不落盘）；
   新增 `tool/verify_clock_live.dart` 真起 libmpv 自检 9 项；音量/倍速也随关闭持久化。
   **223 个测试全绿**、`flutter analyze` 零问题
+- **画质 / 音轨 / 字幕轨选择 + 记住选择（`d292cb2`）**：`services/track_map.dart` 的 `MappedTracks`
+  是「Tracks 事件 → 面板选项 + 原始轨道对象」的唯一映射（面板与 `tool/verify_tracks_live.dart`
+  共用，避免「面板写粤语、点下去切英文」）；`ui/widgets/track_panel.dart` 四组「线路/画质/声音/
+  字幕」，当前项打勾 + 灰字 detail；`TrackPrefs` 只存三个 id（`AppSettings.trackPrefs`），
+  失效 id 恢复时忽略、不硬切。**337 测试绿**。
+- **设置页「媒体徽章」真值（`d331403`）**：`services/badge_rule.dart` 从 `vod_name`/`vod_remarks`
+  正则识别 4K/HDR10+/杜比视界/DTS/Atmos/IMAX/BluRay 等（中文片名没后缀就不画，不回落 demo）；
+  `ui/widgets/media_badges.dart` 叠到海报角落、按组配色；总开关/位置/带文字/四组规格全真值。
+  Phase 1 至此无死控件。**353 测试绿**。
+- **片头片尾按作品单独记（`cec14e1`）**：全局值只是默认，每部作品可带 `SkipOverride` **逐字段**
+  覆盖（`null`=跟随全局、`0`=明确没有片头）；入口在播放页底栏 pill → `ui/widgets/skip_panel.dart`；
+  `PlaybackClock.updateSkip` 播放中改规则只在人还在片头里时补一次 seek，**绝不重放续播点**。
+  **376 测试绿**。
+- **字幕：原版 8 档 + 次字幕 + 外挂（`95e6b37` + `c3696e8`）**：`SubtitlePref` 八档（不自动切换/
+  简体优先中文/中英/多语/英/日/韩/关闭），简体优先没有简体时退到任意中文；`SecondarySubtitle`
+  用 mpv `secondary-sid` + media_kit 的 `secondary-sub-text` 在画面上方自绘；外挂走
+  `services/player/subtitle_file.dart`（srt/ass/vtt、zip 解包、7z/RAR 如实报错），按
+  `'<作品id>|ep<集>'` 记忆。字号走 `Video.subtitleViewConfiguration`（Windows 上 libass 关闭，
+  mpv 的 `sub-font-size` 无效）。**474 测试绿**。
+- **弹幕按原版契约接入（`729bcbd`）**：`services/danmaku/{danmaku_api,danmaku_layout,source_danmaku}.dart`
+  —— 弹弹play `/api/v2/match` + `/api/v2/comment/{episodeId}`，签名
+  `base64(sha256(appId+timestamp+path+appSecret))`；先按片名+集数搜、搜不到才走文件名 match；
+  播放页 `DanmakuLayer` 用 Ticker 从真实进度插值（滚动/顶部/底部轨，轨满丢弃）；设置页弹幕源
+  可增删改（内置不可删）。**447 测试绿**。
+- **首页四轮对齐（`0110720` → `abf181f`）**：首页只问选中的 `homeSite`（删掉「并发探测 8 站 +
+  进程级记住上次好站」，那会让顶栏站名与内容来源不一致）；`/category` 发 `{id,page}`
+  （TVBox 的 `{tid,pg}` 会让猫源静默回空列表，这是「分类下没片单」的真因）；`filters` 驱动
+  顶栏 ⊞「浏览内容」面板；rail 悬浮翻页箭头（直径 38、距边 32、垂直居中于封面）；分类页
+  9 列/175/gap 11（列数必须 `round`，`floor` 会差 1px 掉一整列）；无图卡片改 `#EFEFF2` + 胶片图标。
+  **501 测试绿**。
+- **接着看三条路径对齐历史那一集（`c84155b`）**：继续观看卡 / 历史圆钮 / hero 播放都回历史那一集
+  （`store.startEpisodeFor`，集号跨访问重排时 clamp 到末集）；顺手修「从首页播放 TVBox 源按了
+  没反应」（`_detail` 为 null 被误判成已离开，改用 `_navigatedAway`）。**507 测试绿**。
+- **播放页画面对齐（`c84d9ad` + `aabedbe` + `378248f`）**：`services/picture.dart` 六档画面比例 +
+  亮度/对比度/饱和度/色相/伽马（走 mpv 属性）；`services/player_info.dart` 分辨率/帧率/码率
+  常驻浮层 + 迷你进度条；返回按钮回左上角裸箭头、主标题纯片名、副标题
+  「第N集 · dw×dh · 画质」、底部居中圆角悬浮控制条。**538 个测试全绿**、`flutter analyze` 零问题
 
 ---
 
@@ -130,8 +172,8 @@ Dart 包名 `lai_cui_ba`，可执行文件 `LaiCuiBa.exe`。
   本文件不写死数字，避免每次提交都要改）。
 - remote 已配置：`origin = https://github.com/zhujinrun/LaiCuiBa.git`，但**从未 fetch/push**，
   本地 master 还没有 upstream tracking。
-- 最近 3 个 commit 是本次详情页工作（`45756cb` 模型字段 → `9084e8d` 详情页 → 本 docs 提交），
-  工作区干净。
+- 最近 16 个 commit 是 2026-11-22 的播放页/字幕/弹幕/首页对齐（顶 `378248f`
+  「align the player page layout with the original」），工作区干净。
 
 **推送由用户自己执行**（项目硬规则，见 `.workbuddy/memory/MEMORY.md`），AI 不主动 push/tag。
 如需推送，命令参考：
@@ -188,7 +230,9 @@ lib/
     store_scope.dart        InheritedWidget 提供 AppStore
     app_info.dart
     detail_nav.dart         详情页跳转通道（LcbDetailScope + openOf）
+    nav.dart                页面跳转（LcbNavScope）
     search_state.dart       搜索模式状态（LcbSearch + LcbSearchScope）
+    stable_hash.dart        稳定哈希（站点分摊 / 无图卡片）
   models/models.dart        MediaItem/Episode/ContinueWatching/HomeSection/
                             HistoryEntry/FavoriteEntry/FavoriteFolder/AppSettings
   services/
@@ -198,28 +242,68 @@ lib/
     config_fetcher.dart     联网拉源配置 -> FetchResult(ok,sites,latencyMs,error,note)
     source_import.dart      本地导入：JSON/txt/m3u/py/php/js/ZIP -> 源
     backup.dart             备份导出/恢复/删除（backups/lcb-<stamp>.json）
-    demo_data.dart          演示片单（截图里的真实内容）+ detailDemo
+    demo_data.dart          演示片单（夹具开关已全关）
     search.dart             搜索结果模型 + searchCatalogue()（按传入的站点 fan-out）
+    # 三个运行时，三条路，互不混用：
+    spider_session.dart     猫源：node + cat_host.js + 订阅 bundle
+    source_host.dart        脚本源协议层（行-JSON）；py_host / js_host 只指名二进制
+    script_runtime.dart     脚本源运行时：按 api 后缀分流、懒启动、远端下载缓存
+    tvbox_source.dart       脚本源响应体 -> MediaItem / SpiderList
+    tvbox_catalogue.dart    脚本源首页片单
+    local_proxy.dart        /proxy 与 /cache，只绑 127.0.0.1
+    # 源与可用性
+    source_catalogue.dart   猫源首页片单（只问 homeSite）
+    source_probe.dart       检测 = 真跑一遍（分类数 / 片数 / 耗时）
+    media_mount.dart        挂载抽象（Emby / WebDAV 共用）
+    emby_client.dart        Emby / Jellyfin 登录、列表、搜索、剧集、直链
+    webdav_client.dart      WebDAV / AList（PROPFIND Depth 1）
+    # 播放
+    playback_clock.dart     播放页唯一 seek 出口（续播校验 / 片头片尾 / 漂移）
+    skip_rule.dart          片头片尾护栏（单不超四成、合计不超一半）
+    awake.dart              防休眠（按持有者计数）
+    track_map.dart          Tracks 事件 -> 面板选项 + 原始轨道
+    track_choice.dart       字幕 8 档偏好 / 次字幕 / 记住的轨道
+    picture.dart            画面比例六档 + 画面调节五量
+    player_info.dart        分辨率 / 帧率 / 码率格式化
+    play_target.dart        播放地址 + headers
+    player/subtitle_file.dart 本地外挂字幕（srt/ass/vtt、zip、7z/RAR 提示）
+    # 内容增强
+    badge_rule.dart         从片名/备注识别规格徽章
+    danmaku/
+      danmaku_api.dart      弹弹play 契约 + JSON/XML 解析
+      danmaku_layout.dart   滚动/顶部/底部轨排版（纯逻辑）
+      source_danmaku.dart   按片名+集数搜、失败才 match，按源缓存
   ui/
-    shell.dart              侧栏 + 顶栏 + 页面切换（详情页/搜索态都挂在内容列）
+    shell.dart              侧栏 + 顶栏 + 页面切换（详情/搜索/播放都挂在内容列）
     page_header.dart
     pages/
-      home_page.dart        首页（hero/续播/分区）
+      home_page.dart        首页（hero/续播/分区/⊞ 浏览内容）
       common_pages.dart     资源/收藏/历史页
       detail_page.dart      详情页（hero + 选集 + 演员 + 分类）
       search_page.dart      搜索页（空态 / 联想 / 分组结果）
-      settings_page.dart    设置 + 5 个子页
+      grid_page.dart        分类网格页（9 列 / 分页 / 查看全部）
+      player_page.dart      播放页（时钟 / 轨道 / 画面 / 字幕 / 弹幕 / 浮层）
+      settings_page.dart    设置 + 子页（2003 行，待按原版声明式索引重构）
     widgets/
       hero_banner.dart
       media_card.dart
-      poster_art.dart       PosterArt（有 image 显示真实封面，否则渐变占位）
+      poster_art.dart       PosterArt（有图真实封面，无图中性占位）
+      rail.dart             首页横滑 + hover 翻页圆盘
+      browse_dialog.dart    顶栏 ⊞「浏览内容」分类/筛选浮层
       manage_folders_sheet.dart
       search_sources_dialog.dart 「搜索哪些资源」源选择弹窗
-      source_dialogs.dart   添加 / 编辑 / 删除源 + 重新检测（联网拉取）
+      source_dialogs.dart   添加 / 编辑 / 删除源 + 重新检测
       add_source_menu.dart  添加资源三组九项菜单
       backup_dialog.dart    备份与恢复弹窗
       site_picker_dialog.dart 首页站点选择器（带过滤框）
       shell_header.dart
+      media_badges.dart     海报角落规格徽章
+      track_panel.dart      线路/画质/声音/字幕四组面板
+      picture_panel.dart    画面比例 + 五滑块
+      skip_panel.dart       本剧片头/片尾
+      player_info_overlay.dart 常驻信息浮层 + 迷你进度条
+      subtitle_style.dart   主/次字幕字号与描边
+      danmaku_layer.dart    弹幕渲染层（Ticker 插值）
 ```
 
 ---
@@ -230,22 +314,22 @@ lib/
 1. ~~**HistoryEntry 补 `sourceUrl`/`sourceType` 字段**~~ — 已完成，接 `copyWith`/`toJson`/`fromJson`，
    并有序列化单测覆盖。
 2. ~~**详情页骨架**（tvbox_detail_page/emby_detail_page）~~ — 已完成并做过像素对照
-   （尺寸表见 `ARCHITECTURE.md` Phase 1「详情页」节）。演示数据在 `demo_data.dart` 的
-   `detailDemo`（尚公主）与 `detailFor()`，接真实源后替换为按 id 查详情。
+   （尺寸表见 `ARCHITECTURE.md` Phase 1「详情页」节）。现在按 id 查真实详情；
+   `demo_data.dart` 的 `detailDemo` 已随夹具关闭不再使用。
 3. ~~**搜索结果页**~~ — 已完成：空态 / 联想 / 分组结果 / 源选择弹窗四块都做了，
    像素对照见 `ARCHITECTURE.md` Phase 1「搜索页」节。
-4. **设置页「媒体徽章」子页** — 原版无独立 badge settings 字段，暂占位（**唯一剩下的一项**）。
+4. ~~**设置页「媒体徽章」子页**~~ — 已完成（`d331403`），识别与渲染都是真规格。
+   Phase 1 至此无剩余项。
 
 ### 🟡 搜索页遗留（可选，不阻塞）
-- 联想词现在是本地片单 + 后缀词的兜底；原版是联网 suggest（如「尚公主 历史背景解读」），
-  Phase 2 换成真实接口即可，UI 不动。
-- 结果来自 `searchCatalogue()` 的 demo 分发（站点名取自原版实测），真实站点搜索在 Phase 2。
-- 「严格」开关语义已对齐原版（关=包含匹配 75 条 / 开=标题全等 15 条），但 demo 目录小，
-  数量不会一样。
+- 搜索已走真实站点（猫源 / TVBox 脚本源 / Emby / WebDAV），失败站点不出组；
+  `严格` 在本地按标题精确过滤（源的搜索是模糊包含）。
+- 联想词仍是本地片单 + 后缀词兜底；原版是联网 suggest（`services/search_suggest`），未接。
+- 「严格」语义已对齐原版（关=包含匹配 / 开=标题全等），条数随源变化。
 
 ### 🟡 详情页遗留（可选，不阻塞）
-- 原版「换平台」按钮是跨源搜索同名片源，需 Phase 2 的源能力；当前仅占位不可用。
-- 「下载」「追更」「评论」按钮同样等 Phase 3/4 落地，目前只做视觉。
+- 原版「换平台」= 跨源搜索同名片源；源能力已具备（搜索 fan-out），UI 仍未接。
+- 「下载」「追更」「评论」按钮等 Phase 4 落地，目前只做视觉。
 - 选集分页只做了「1-20 / 21-40」这类按 20 切分，未做原版的更多档位（如 100 集以上）。
 
 ### 🔶 Phase 2 — 源接入（灵魂）
@@ -269,7 +353,7 @@ lib/
 - js 宿主的覆盖率取决于源用了什么：`pdfh/pdfa` 常见语法都实现了，`html2map`、`aes`
   之类额外全局没有，遇到会报具体错误
 - 本地 js spider 直接执行（猫源宿主只认订阅目录，不认单个文件；单文件走 js 宿主）
-- 片头/片尾是全局一组数值，还不能按剧集单独记
+- 挂载令牌失效后的**重新登录入口**（目前提示「删掉这个源重新添加」）
 
 **已完成（Emby / Jellyfin 挂载，2026-11-21）**
 
@@ -368,8 +452,9 @@ lib/
   /spider/<key>/<type>/<action>` → MediaItem）、`cat_bundle.dart`（订阅式下载 bundle 到
   `%APPDATA%/cat/<hash>/`，MD5 校验）、`spider_session.dart`（组合三者，懒加载 + 惰性不抛）
 - store：`spider` 字段 + `searchReal`/`detailReal`/`homeCategoriesReal`/`categoryReal`
-- UI：搜索异步化（demo 秒出 + 真实结果替换，失败回退 demo）、详情打开后异步拉真实记录、
-  海报支持网络 URL
+- UI：搜索异步化、详情打开后异步拉真实记录、海报支持网络 URL
+  （当时的「demo 秒出 + 失败回退 demo」已在 2026-11-21 夹具全关时删除，现在是
+  加载 / 失败 / 空三态，绝不回退夹具）
 - 实测：jianpian `search`/`detail` 返回真实片单；`home` 只有分类名、`category` 空
 
 （原「添加资源其余 8 入口」「从配置地址联网拉取」两项已完成，见上。）
@@ -422,7 +507,7 @@ lib/
   `index.js` + `index.config.js`），真起 `node.exe` 跑一遍，断言 2 分类 / 2 部 / 耗时 > 0；
   外加 `spiderAddressOf`、`applyProbe`（含跨重启持久化）纯逻辑用例。
 
-### 🔶 Phase 3 — 播放链路（核心已落地）
+### 🔶 Phase 3 — 播放链路（大部分完成）
 - `media_kit` + libmpv（暂用 `media_kit_libs_video` 自带的 DLL，尚未换成原版 `libmpv-2.dll`）。
 - **`lib/services/playback_clock.dart` 是播放页唯一允许 seek 的地方**，三条原版事故由此关闭：
   1. 定位基准被污染 → 进度条在 `duration == 0` 时不可拖动，`pendingSeek()` 未就绪不换算；
@@ -430,13 +515,29 @@ lib/
      复核，差超 20% 直接拒绝；播放中时长突变（`drifting`）时关闭不写位置；
   3. 跳片头与续播争抢 → 取走即销毁，一回合一次 seek；用户拖动顶掉未执行的续播。
 - `start:` 只当提示：`duration` 一到就复核落点，偏超 8 秒才补发一次（HLS 会把 `start` 丢掉）。
-- 验证：`test/playback_clock_test.dart` 19 例 + `store_test` 的跨层用例 +
-  **`dart run tool/verify_clock_live.dart <clip.mp4>` 真起 libmpv 跑 4 组场景 9 项断言**全过。
-- 音量与倍速随关闭一起写进 `flutter.settings`（`playerVolume` / `playerRate`），下一集沿用。
-- 未做：跳片头/片尾（等源数据）、播放中防休眠（`wakelock_plus`）、画质/音轨/字幕轨选择。
+- 片头/片尾：`skip_rule.dart` 两条护栏（单个不超片长四成、合计不超一半）；全局值 + 按作品
+  `SkipOverride` 逐字段覆盖；`PlaybackClock` 把片头并进开播那一次决策，`takeOutro()` 每回合报一次。
+- 防休眠：`awake.dart` 按持有者计数（切集时新页 hold 早于旧页 release）。
+- 轨道：`track_map.dart` 唯一映射，`track_panel.dart` 四组面板，`TrackPrefs` 记住选择。
+- 画面：`picture.dart` 六档比例 + 五量调节（mpv 属性）。
+- 信息：`player_info.dart` 分辨率/帧率/码率常驻浮层 + 迷你进度条。
+- 字幕：8 档偏好、次字幕（`secondary-sid` 自绘）、本地外挂字幕（每集记忆）。
+- 弹幕：弹弹play match/comment、纯逻辑排版、Ticker 渲染层。
+- 验证：`playback_clock_test` 27 例、`skip_rule_test` 9 例、`track_*`、`subtitle_*`、
+  `danmaku_*`、`picture_*`、`player_info*`；真 libmpv 自检脚本
+  `verify_clock_live` / `verify_tracks_live` / `verify_subtitle_live` / `verify_picture_live` /
+  `verify_player_info_live`（远程桌面无 GPU 时信息浮层脚本降级退出 0）。
+- 未做：内核切换（mpv/ijk/exo/mdk + 硬解软解，`services/player/` 缺 12 模块）、上下滑动调
+  亮度/音量、长按倍速、投屏/全屏/小窗/锁屏/截图、播放失败自动换线路换源、短剧预载、
+  播放列表/选集浮层；字幕网站/字体/样式覆盖/PGS 提示/AI 翻译；弹幕 LogVar/视频自带/
+  本地 xml-json/字号速度屏蔽词。
 
-### 🟡 Phase 4 — 外设模块（未开始）
-弹幕（dandanplay）、刮削（TMDB/Bangumi/豆瓣）、下载、字幕、投屏 DLNA、备份同步（WebDAV）
+### 🔶 Phase 4 — 外设模块（已开两个口）
+- **弹幕**：弹弹play 一系已通（搜索匹配 → 取该集 → 排版 → 渲染 + 设置页弹幕源）。
+  缺 LogVar 插件、视频自带弹幕、本地 `.xml/.json`、字号/透明度/速度/屏蔽词。
+- **字幕**：本地那一半已通（8 档偏好、次字幕、外挂字幕、每集记忆）。
+  缺字幕网站（SubHD / 射手网 assrt / OpenSubtitles）+ 在线搜索面板、字体导入与样式覆盖、AI 翻译。
+- 刮削（TMDB/Bangumi/豆瓣）、下载、投屏 DLNA、备份同步（WebDAV）未开始。
 
 ### 🟡 Phase 5 — 多端（未开始）
 TV 焦点导航（原版 `ui/tv/*` 9 个文件）、Android 适配、AI 辅助（集名清洗/字幕翻译）
@@ -449,7 +550,7 @@ TV 焦点导航（原版 `ui/tv/*` 9 个文件）、Android 适配、AI 辅助�
 cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
-flutter test                    # 冒烟测试（当前 313 个全绿）
+flutter test                    # 冒烟测试（当前 538 个全绿）
 flutter analyze                 # 静态检查（当前零问题）
 dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 
@@ -457,8 +558,12 @@ dart run tool/verify_toolchain.dart  # 校验 SDK 版本对齐
 bash tool/sync_runtime.sh
 ./assets/runtime/node/node.exe tool/verify_host.js
 
-# 播放时钟真机自检（真起 libmpv；先 flutter build windows --debug）
+# 真 libmpv 自检（先 flutter build windows --debug）
 dart run tool/verify_clock_live.dart /path/to/clip.mp4
+dart run tool/verify_tracks_live.dart
+dart run tool/verify_subtitle_live.dart
+dart run tool/verify_picture_live.dart
+dart run tool/verify_player_info_live.dart
 ```
 
 `tool/sync_runtime.sh` 同步 node.exe、整份 CPython（39MB，git-ignored）与 `pyhost/`
@@ -481,7 +586,8 @@ dart run tool/verify_clock_live.dart /path/to/clip.mp4
 3. **版本号三处同步**：`package.json`、`src/main/core/db/init/tbl_setting.json`、
    `src/renderer/src/pages/setting/base/BaseSetting.vue`（注：这是 FengMi/Player 的规则，
    LaiCuiBa 目前还没到发版阶段，暂无版本号同步需求）。
-4. 像素测量一律走 `.probe/measure.py`，强制窗口 1920×1040。
+4. 像素测量一律走 `.probe/shot_win.py` / `.probe/shot_client.py`（`measure.py` 已不在仓库），
+   强制窗口 1920×1040 再截图；点击/输入见 `ARCHITECTURE.md` 附录 G。
 
 **已完成（Python / TVBox 接入，2026-11-21）**
 
@@ -500,27 +606,31 @@ dart run tool/verify_clock_live.dart /path/to/clip.mp4
   `playerContent`（`store.resolvesPlayUrl`），URL 与 `header` 一起拿回，交给播放器。
 - 检测：`TvBoxSource.probe()` 真跑一次，写回分类数与首页片数；`py` 卡片从
   「待宿主执行」变成实测数字。
-- 缺口：聚合源、`.js` 站点、本地 js spider 仍未接（会得到真实错误，不是空列表）。
+- 缺口：本地 js spider 仍未接（会得到真实错误，不是空列表）；聚合源与 `.js` 站点已在
+  `70d5e42` / `2fc3418` 补齐。
 
 ---
 
 ## 九、下一步建议
 
-1. **让用户验收这一轮**：
-   - 先跑 `bash tool/sync_runtime.sh` 同步 node.exe 到 assets 与 build 产物，再
-     `flutter build windows --debug` 后运行 exe（构建前先 `taskkill //IM LaiCuiBa.exe //F`）；
-   - 启动日志应出现 `LcbSpider: runtime ready (...)`；
-   - **首页**：默认源会先转圈（首轮要 load 9MB 的 index.js + 探测站点），几秒后出真实分区；
-     若失败会写明原因并给「重试」——这是真实回答，不是 bug；
-   - **搜索**：输入关键词回车，结果按站点分组，来自真实源；
-   - **网盘**：添加资源 → 「WebDAV / AList 网盘」，填 AList 的 `http://IP:5244/dav`
-     与账号，能连上才保存；保存后首页画目录、详情画选集。
-2. 验收无误后由**用户自己**推送（AI 不 push）：`git push -u origin master`。
-3. 下一步自然顺序：
-   - **画质 / 音轨 / 字幕轨选择**（Phase 3 最后一块）：libmpv 的 `track-list` 已经在
-     `media_kit` 里，缺的是 UI 与「按线路记住选择」；
-   - 或纯本地收尾：设置页「媒体徽章」子页（**Phase 1 唯一剩下的一项**，现在是死控件）；
-   - 或外设线（Phase 4）：弹幕、刮削、投屏。
+当前工作区干净、538 测试绿、`flutter analyze` 零问题，可以直接验收或继续开发。
+
+1. **验收（可选）**：`flutter build windows --debug` 后运行
+   `build/windows/x64/runner/Debug/LaiCuiBa.exe`（构建前先 `taskkill //IM LaiCuiBa.exe //F`）。
+   重点看：首页 hero/分区来自选中站、顶栏 ⊞ 筛选、分类网格 9 列、播放页底栏
+   （轨道/片头/画面/弹幕）、字幕 8 档与次字幕、继续观看回到历史那一集。
+2. **推送由用户自己执行**（AI 不 push）：`git push -u origin master`。
+3. **下一步按 `topics/parity.md` 的顺序**（新功能先查原版三处明文，不要自创）：
+   - **设置页重构**：原版 `settings_index` 声明式索引 + 设置搜索 + 按域拆子页。
+     现在 `settings_page.dart` 已 2003 行，而字幕网站/弹幕源/内核设置都要新增子页，
+     先拆再加班。
+   - **字幕网站 + 在线搜索面板**：SubHD / 射手网 assrt / OpenSubtitles，
+     播放页可搜索、下载并挂到当前集（`services/subtitle/subtitle_search.dart`、
+     `ui/widgets/subtitle_search_panel.dart`、`ui/pages/subtitle_sites_page.dart`）。
+   - **播放内核层**：`services/player/` 按原版拆域，先 playback_engine（内核切换）、
+     playback_recovery、source_video_cache、video_viewport。
+   - 零碎：挂载令牌失效重登、js 宿主缺 `html2map/aes`、本地 js spider 直执行、
+     弹幕 LogVar / 视频自带 / 本地文件。
 
 ---
 
