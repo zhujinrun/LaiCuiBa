@@ -68,6 +68,22 @@ Future<({String line, bool ok})> probeSourceQuietly(
   AppStore store,
   SourceInfo source,
 ) async {
+  // 直播源问的是「有多少频道」，不是「有多少站点」：它的列表里没有 site 也没有
+  // 片名，交给下面任何一条分支都会得到「没有解析到站点」这种冤枉的失败。
+  if (source.type == 'live') {
+    if (source.url.trim().isEmpty) {
+      return (line: '${source.name}：没有直播列表地址', ok: false);
+    }
+    if (!source.url.trimLeft().toLowerCase().startsWith('http')) {
+      return (line: '${source.name}：本地列表已在导入时数过频道', ok: true);
+    }
+    final report = await store.probeLiveSource(source);
+    final detail = report.ok
+        ? '${report.showCount} 个频道，${report.latencyMs} ms'
+        : report.error!;
+    return (line: '${source.name}：$detail', ok: report.ok);
+  }
+
   if (AppStore.isMountSource(source)) {
     if (store.mountClientOf(source) == null) {
       return (line: '${source.name}：还没登录，编辑它重填一次账号', ok: false);
@@ -129,6 +145,7 @@ Future<({String line, bool ok})> probeSourceQuietly(
 /// kind (a server handshake, a worker boot, an HTTP round trip) that one
 /// 「正在检测…」 would hide what is actually happening.
 String _stageLine(AppStore store, SourceInfo source) {
+  if (source.type == 'live') return '正在读取直播列表…';
   if (AppStore.isMountSource(source)) return '正在连接服务器并读取影片库…';
   if (store.spiderAddressOf(source) != null) return '正在启动源并读取首页…';
   if (store.scriptSitesOf(source).isNotEmpty) return '正在启动 Python 源并读取首页…';

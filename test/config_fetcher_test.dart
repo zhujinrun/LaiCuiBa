@@ -189,4 +189,33 @@ void main() {
     expect(result.ok, isFalse);
     expect(result.error, isNotNull);
   });
+
+  test('a live list comes back as text, not as a failed config', () async {
+    await serve((request) {
+      request.response
+        ..statusCode = 200
+        ..headers.contentType = ContentType.text
+        ..write('#EXTM3U\n#EXTINF:-1,A\nhttp://a/1.m3u8\n');
+      request.response.close();
+    });
+
+    final result = await fetchPlainText('$base/list.m3u');
+
+    // The whole point: fetchConfig would call this 「没有解析到站点」.
+    expect(result.error, isNull);
+    expect(result.text, contains('#EXTM3U'));
+    expect((await fetchConfig('$base/list.m3u')).ok, isFalse);
+  });
+
+  test('a live list over HTTP reports a missing file honestly', () async {
+    await serve((request) {
+      request.response.statusCode = 404;
+      request.response.close();
+    });
+
+    final result = await fetchPlainText('$base/gone.m3u');
+
+    expect(result.text, isNull);
+    expect(result.error, contains('404'));
+  });
 }

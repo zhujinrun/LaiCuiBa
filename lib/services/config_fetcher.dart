@@ -102,6 +102,27 @@ Future<FetchResult> fetchConfig(
   );
 }
 
+/// Pulls a plain-text document -- a live list (m3u / txt) rather than a config.
+///
+/// A live list is not a config: it has no `sites`, so [fetchConfig] would report
+/// "没有解析到站点" for a file that is perfectly good. Same transport, same
+/// errors, just the body handed back for the caller to count channels in.
+Future<({String? text, int latencyMs, String? error})> fetchPlainText(
+  String url, {
+  Duration timeout = const Duration(seconds: 20),
+}) async {
+  final target = url.trim();
+  if (target.isEmpty) {
+    return (text: null, latencyMs: 0, error: '地址为空');
+  }
+  final response = await _get(target, timeout: timeout);
+  return (
+    text: response.body,
+    latencyMs: response.latencyMs,
+    error: response.error,
+  );
+}
+
 class _Response {
   const _Response({this.body, this.error, this.latencyMs = 0});
 

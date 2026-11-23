@@ -467,10 +467,13 @@ class _SourceCard extends StatelessWidget {
   String get _status {
     switch (source.type) {
       case 'live':
+        // A live list has channels, not titles. Once 检测 has pulled and counted
+        // it, the real number shows; a local file got its count at import time.
         if (source.channelCount > 0) {
-          return '${selected ? '当前使用 · ' : ''}本地列表 · ${source.channelCount} 个频道';
+          return '${selected ? '当前使用 · ' : ''}${source.channelCount} 个频道';
         }
-        return '直播地址 · 待联网解析';
+        if (source.url.isEmpty) return '未设置地址';
+        return selected ? '当前使用 · 待检测' : '未使用 · 待检测';
       case 'py':
         // A Python source is one file that is its own site; 检测 runs it.
         return _measuredLine;

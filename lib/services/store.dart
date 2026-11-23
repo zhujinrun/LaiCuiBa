@@ -7,11 +7,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
 import 'catalog_sites.dart';
+import 'config_fetcher.dart';
 import 'danmaku/danmaku_api.dart';
 import 'danmaku/source_danmaku.dart';
 import 'demo_data.dart' as demo;
 import 'emby_client.dart';
 import 'source_catalogue.dart';
+import 'source_import.dart' show countLiveChannels;
 import 'source_probe.dart';
 import 'media_mount.dart';
 import 'picture.dart';
@@ -1890,6 +1892,39 @@ class AppStore extends ChangeNotifier {
   // -------------------------------------------------------------------------
   // Backup
   // -------------------------------------------------------------------------
+
+  /// Checks a 直播 source by pulling its list and counting channels.
+  ///
+  /// A live list answers a different question than a VOD source: it has no
+  /// sites and no titles, only channels. So the count lands on [channelCount]
+  /// (what the card prints) rather than on the title counts, and an empty list
+  /// is a failure with the reason spelled out instead of a quiet zero.
+  Future<ProbeReport> probeLiveSource(SourceInfo source) async {
+    final result = await fetchPlainText(source.url);
+    final channels = result.error == null && result.text != null
+        ? countLiveChannels(result.text!)
+        : 0;
+    final index = _sources.indexWhere((existing) => existing.id == source.id);
+    if (index >= 0) {
+      _sources[index] = _sources[index].copyWith(
+        latencyMs: result.latencyMs,
+        channelCount: channels,
+        checkedAt: DateTime.now().millisecondsSinceEpoch,
+      );
+      await _persistSources();
+      notifyListeners();
+    }
+    if (result.error != null) {
+      return ProbeReport.failure(result.error!, latencyMs: result.latencyMs);
+    }
+    if (channels == 0) {
+      return ProbeReport.failure(
+        '没读到频道，确认这是 M3U 或 TXT 直播列表',
+        latencyMs: result.latencyMs,
+      );
+    }
+    return ProbeReport(latencyMs: result.latencyMs, showCount: channels);
+  }
 
   /// Puts one source into the user's own [group]. An empty (or blank) name
   /// clears it, which is 原版's「分组名称（留空移出分组）」: the source goes back

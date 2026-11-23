@@ -982,6 +982,50 @@ void main() {
       expect(store.homeSections, isEmpty);
     });
 
+    test('直播源检测时真的去拉列表、数频道并写回', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((request) {
+        request.response
+          ..statusCode = 200
+          ..headers.contentType = ContentType.text
+          ..write(
+            '#EXTM3U\n#EXTINF:-1,A\nhttp://a/1.m3u8\n'
+            '#EXTINF:-1,B\nhttp://b/1.m3u8\n',
+          );
+        request.response.close();
+      });
+
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      final id = await store.addSource(
+        SourceInfo(
+          id: 'live-1',
+          type: 'live',
+          name: '自家 IPTV',
+          url: 'http://127.0.0.1:${server.port}/list.m3u',
+        ),
+      );
+
+      final report = await store.probeLiveSource(
+        store.sources.firstWhere((source) => source.id == id),
+      );
+
+      expect(report.ok, isTrue);
+      expect(report.showCount, 2);
+
+      final source = store.sources.firstWhere((source) => source.id == id);
+      expect(source.channelCount, 2);
+      expect(source.latencyMs, greaterThan(0));
+
+      // 持久化：频道数是卡片要显示的，重载后还得在。
+      final reloaded = await AppStore.load();
+      expect(
+        reloaded.sources.firstWhere((source) => source.id == id).channelCount,
+        2,
+      );
+    });
+
     test('分组名写进源里，留空就退回按类型分组', () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();
