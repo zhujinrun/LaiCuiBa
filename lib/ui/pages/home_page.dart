@@ -8,6 +8,7 @@ import '../../core/nav.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
+import '../../services/home_feed_cache.dart';
 import '../../services/source_catalogue.dart';
 import '../../services/store.dart';
 import '../widgets/hero_banner.dart';
@@ -59,6 +60,11 @@ class _HomePageState extends State<HomePage> {
 
   bool _failed = false;
 
+  /// Set when a background refresh of already-cached rails failed. The rails
+  /// stay up (they are a real answer, just an older one) and this line says so,
+  /// instead of either hiding the failure or wiping the page for it.
+  String? _staleError;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -75,13 +81,22 @@ class _HomePageState extends State<HomePage> {
     // is on screen. Two keys, not one.
     final site = answers ? store.homeSite?.key : null;
     if (id == _askedId && site == _askedSite) return;
+    // A source answers slowly enough (a node round trip, a Python boot) that
+    // leaving and coming back used to mean a white page every time. Whatever
+    // this source+site answered last is painted straight away and refreshed
+    // behind the page.
+    final key = id == null ? null : HomeFeedCache.keyOf(id, site);
+    final cached = key == null ? null : store.homeFeed.sectionsOf(key);
     setState(() {
       _askedId = id;
       _askedSite = site;
-      _sections = null;
+      _sections = cached;
       _feedError = null;
-      _feedSite = '';
+      _feedSite = cached == null
+          ? ''
+          : store.homeFeed.siteNameOf(key!);
       _failed = false;
+      _staleError = null;
       _mount = id != null && store.hasMount;
     });
     if (id != null) _loadFeed(store, id, site);
@@ -95,11 +110,15 @@ class _HomePageState extends State<HomePage> {
     if (store.hasMount) {
       final items = await store.mountLibrary(limit: 30);
       if (!_current(id, site)) return;
-      setState(() {
-        _sections = items.isEmpty
-            ? const <HomeSection>[]
-            : [HomeSection(title: '影片库', items: items)];
-      });
+      final sections = items.isEmpty
+          ? const <HomeSection>[]
+          : [HomeSection(title: '影片库', items: items)];
+      store.homeFeed.put(
+        HomeFeedCache.keyOf(id, site),
+        sections: sections,
+        siteName: _sourceNameOf(store),
+      );
+      setState(() => _sections = sections);
       return;
     }
 
@@ -109,17 +128,33 @@ class _HomePageState extends State<HomePage> {
         ? await store.scriptCatalogue()
         : await store.spiderCatalogue();
     if (!_current(id, site)) return;
-    setState(() {
-      _feedSite = feed?.siteName ?? '';
-      if (feed == null || !feed.ok) {
+    final hadContent = _sections != null;
+    if (feed == null || !feed.ok) {
+      setState(() {
+        _feedError = feed?.error ?? '源没有返回片单';
         // Say it failed. Keeping fixtures on screen here was the old behaviour,
         // and it made a dead source look exactly like a working one -- the whole
-        // reason the fixtures are off.
-        _failed = true;
-        _feedError = feed?.error ?? '源没有返回片单';
-        return;
-      }
+        // reason the fixtures are off. Cached rails are a different thing: they
+        // are what this source really said, so they stay and the line above the
+        // rails says they are old.
+        if (hadContent) {
+          _staleError = _feedError;
+        } else {
+          _failed = true;
+        }
+      });
+      return;
+    }
+    final siteName = feed.siteName;
+    store.homeFeed.put(
+      HomeFeedCache.keyOf(id, site),
+      sections: feed.sections,
+      siteName: siteName,
+    );
+    setState(() {
       _sections = feed.sections;
+      _feedSite = siteName.isEmpty ? _feedSite : siteName;
+      _staleError = null;
       _feedError = feed.error ?? feed.note;
     });
   }
@@ -136,8 +171,10 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _failed = false;
       _feedError = null;
-      _feedSite = '';
-      _sections = null;
+      _staleError = null;
+      // Rails already on screen stay up while the retry runs: blanking them
+      // would trade a readable page for a spinner the user just complained about.
+      if (_sections == null) _feedSite = '';
     });
     _loadFeed(store, id, site);
   }
@@ -207,6 +244,22 @@ class _HomePageState extends State<HomePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // 缓存铺上来了，但这一次没重新取到：说出来，别让旧片单
+                      // 假装是刚拿到的。
+                      if (_staleError != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            LcbMetrics.pagePadding,
+                            0,
+                            LcbMetrics.pagePadding,
+                            4,
+                          ),
+                          child: _StaleRailsNote(
+                            message: _staleError!,
+                            siteName: _feedSite,
+                            onRetry: () => _retry(store),
+                          ),
+                        ),
                       // 继续观看 only renders when there is watch history;
                       // the original hides the whole rail when it is empty.
                       if (continueWatching.isNotEmpty) ...[
@@ -290,6 +343,60 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The line above cached rails when this round's refresh failed: the page keeps
+/// showing what the source said last time, and says exactly that instead of
+/// either pretending the fetch worked or throwing the page away.
+class _StaleRailsNote extends StatelessWidget {
+  const _StaleRailsNote({
+    required this.message,
+    required this.siteName,
+    required this.onRetry,
+  });
+
+  final String message;
+  final String siteName;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final who = siteName.isEmpty ? '这个站点' : siteName;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 9, 6, 9),
+      decoration: BoxDecoration(
+        color: LcbColors.card,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            CupertinoIcons.exclamationmark_circle,
+            size: 15,
+            color: LcbColors.textTertiary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '$who 这次没答上来（$message），下面是上次的片单',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12.5, color: LcbColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: onRetry,
+            style: TextButton.styleFrom(
+              minimumSize: const Size(0, 30),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('重试', style: TextStyle(fontSize: 12.5)),
+          ),
+        ],
       ),
     );
   }

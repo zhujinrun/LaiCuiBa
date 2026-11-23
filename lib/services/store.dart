@@ -15,6 +15,7 @@ import 'emby_client.dart';
 import 'source_catalogue.dart';
 import 'source_import.dart' show countLiveChannels;
 import 'source_probe.dart';
+import 'home_feed_cache.dart';
 import 'media_mount.dart';
 import 'picture.dart';
 import 'play_target.dart';
@@ -74,6 +75,13 @@ class AppStore extends ChangeNotifier {
   /// record is worth covering without node.exe on the test machine.
   @visibleForTesting
   Future<MediaItem?> Function(MediaItem item)? detailStub;
+
+  /// 首页片单的上一次答案，按「源 + 站点」分开存。切回首页时先用它铺满，
+  /// 再在后台重取一次（原版 `services/home_cache.dart` 的那条）。
+  ///
+  /// 它挂在 store 上而不是做成全局单例：每次 `AppStore.load()` 都是一份新的，
+  /// 测试之间不会互相喂片单。
+  final HomeFeedCache homeFeed = HomeFeedCache();
 
   /// Active favourites sub-tab (0 = 收藏, 1 = 追剧). Kept here so the header
   /// tabs and the body stay in sync without threading a controller through.
@@ -1837,6 +1845,7 @@ class AppStore extends ChangeNotifier {
     final index = _sources.indexWhere((source) => source.id == id);
     if (index < 0) return;
     _sources.removeAt(index);
+    homeFeed.drop(id);
     if (_current == id) {
       _current = _sources.isNotEmpty ? _sources.first.id : null;
       await _prefs.setString(_kCurrent, jsonEncode(_current));
@@ -1853,6 +1862,9 @@ class AppStore extends ChangeNotifier {
     final gone = ids.toSet();
     if (gone.isEmpty) return;
     _sources.removeWhere((source) => gone.contains(source.id));
+    for (final id in gone) {
+      homeFeed.drop(id);
+    }
     if (_current == null || gone.contains(_current)) {
       _current = _sources.isNotEmpty ? _sources.first.id : null;
       await _prefs.setString(_kCurrent, jsonEncode(_current));

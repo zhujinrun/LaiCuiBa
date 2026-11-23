@@ -1209,6 +1209,101 @@ void main() {
     expect(find.text(demo.homeSections.first.items.first.title), findsNothing);
   });
 
+  testWidgets('回首页先用上次的片单铺满，再在后台重取一次', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+    final host = FakePyHost(
+      bodies: {
+        'home': (_) => '{"class":[{"type_id":"1","type_name":"纪录片"}]}',
+        'category': (_) =>
+            '{"list":[{"vod_id":"1001","vod_name":"夹具电影",'
+                '"vod_pic":"http://example.invalid/m.jpg","vod_remarks":"HD"}]}',
+      },
+    );
+    store.scripts = FakeScriptSources(host);
+    await store.addSource(
+      const SourceInfo(
+        id: 'py-home',
+        type: 'py',
+        name: '本地 Python 源',
+        url: r'D://sources//main.py',
+      ),
+    );
+    await store.selectSource('py-home');
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('夹具电影'), findsWidgets);
+    final firstRound = host.calls.where((m) => m == 'category').length;
+
+    // 走到别的页面再回来：这一次不能又变成一片白等源回答。
+    await tester.tap(find.text('资源').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('首页').last);
+    await tester.pump();
+
+    expect(find.text('夹具电影'), findsWidgets);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    // 后台那一次真的发生了，只是没挡住页面。
+    await tester.pumpAndSettle();
+    expect(
+      host.calls.where((m) => m == 'category').length,
+      greaterThan(firstRound),
+    );
+  });
+
+  testWidgets('重取失败时旧片单留着，并说清这是上次的', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+    final host = FakePyHost(
+      bodies: {
+        'home': (_) => '{"class":[{"type_id":"1","type_name":"纪录片"}]}',
+        'category': (_) =>
+            '{"list":[{"vod_id":"1001","vod_name":"夹具电影",'
+                '"vod_pic":"http://example.invalid/m.jpg","vod_remarks":"HD"}]}',
+      },
+    );
+    store.scripts = FakeScriptSources(host);
+    await store.addSource(
+      const SourceInfo(
+        id: 'py-home',
+        type: 'py',
+        name: '本地 Python 源',
+        url: r'D://sources//main.py',
+      ),
+    );
+    await store.selectSource('py-home');
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('夹具电影'), findsWidgets);
+
+    // 源这会儿答不上来了。
+    host.bodies['category'] = (_) => throw StateError('站点今天挂了');
+
+    await tester.tap(find.text('资源').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('首页').last);
+    await tester.pumpAndSettle();
+
+    // 旧的片单还在，并且明说这是上次的，没有假装刚取到。
+    expect(find.text('夹具电影'), findsWidgets);
+    expect(find.textContaining('下面是上次的片单'), findsOneWidget);
+  });
+
   testWidgets('首页大图的播放按钮真的开播', (tester) async {
     MediaItem? played;
     await tester.pumpWidget(
