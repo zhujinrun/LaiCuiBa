@@ -1826,8 +1826,7 @@ class AppStore extends ChangeNotifier {
     final index = _sources.indexWhere((existing) => existing.id == source.id);
     if (index < 0) return;
     _sources[index] = source;
-    await _persistSources();
-    notifyListeners();
+    await _persistSources();    notifyListeners();
   }
 
   /// Removes a source. When it was the active one the next source (or nothing)
@@ -1891,6 +1890,19 @@ class AppStore extends ChangeNotifier {
   // -------------------------------------------------------------------------
   // Backup
   // -------------------------------------------------------------------------
+
+  /// Puts one source into the user's own [group]. An empty (or blank) name
+  /// clears it, which is 原版's「分组名称（留空移出分组）」: the source goes back
+  /// to being grouped by its type.
+  Future<void> setSourceGroup(String sourceId, String group) async {
+    final index = _sources.indexWhere((source) => source.id == sourceId);
+    if (index < 0) return;
+    final name = group.trim();
+    if (_sources[index].groupName == name) return;
+    _sources[index] = _sources[index].copyWith(groupName: name);
+    await _persistSources();
+    notifyListeners();
+  }
 
   /// Total sites across every source -- what 数据与存储 reports and what the
   /// resource card counts.

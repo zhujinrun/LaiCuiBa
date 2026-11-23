@@ -982,6 +982,23 @@ void main() {
       expect(store.homeSections, isEmpty);
     });
 
+    test('分组名写进源里，留空就退回按类型分组', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await AppStore.load();
+      final id = store.sources.first.id;
+
+      await store.setSourceGroup(id, '我的常用');
+      expect(store.sources.first.groupName, '我的常用');
+
+      // 持久化：重新加载还能读回来，不是内存里的临时值。
+      final reloaded = await AppStore.load();
+      expect(reloaded.sources.first.groupName, '我的常用');
+
+      // 留空（含空白）＝移出分组。
+      await reloaded.setSourceGroup(id, '   ');
+      expect(reloaded.sources.first.groupName, '');
+    });
+
     test('单文件脚本源的站点也是有名有姓的首页站点', () async {
       SharedPreferences.setMockInitialValues({});
       final store = await AppStore.load();

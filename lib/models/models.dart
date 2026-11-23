@@ -460,6 +460,7 @@ class SourceInfo {
     this.sites = const [],
     this.homeSite = '',
     this.channelCount = 0,
+    this.groupName = '',
   });
 
   final String id;
@@ -489,6 +490,10 @@ class SourceInfo {
   /// what the card shows instead of a site count.
   final int channelCount;
 
+  /// The user's own group for this source. Empty means "group by type", which
+  /// is what the original does when 分组名称 is left blank.
+  final String groupName;
+
   /// The site the home feed is drawn from, matching the original's
   /// `homeSite` (`nodejs_jianpian`). Empty when the config has not named one;
   /// the store then falls back to the first active site.
@@ -512,6 +517,7 @@ class SourceInfo {
     List<SiteInfo>? sites,
     String? homeSite,
     int? channelCount,
+    String? groupName,
   }) => SourceInfo(
     id: id,
     type: type,
@@ -528,6 +534,7 @@ class SourceInfo {
     sites: sites ?? this.sites,
     homeSite: homeSite ?? this.homeSite,
     channelCount: channelCount ?? this.channelCount,
+    groupName: groupName ?? this.groupName,
   );
 
   /// Replaces one site by key, leaving the rest in order. Used by the editor to
@@ -559,6 +566,7 @@ class SourceInfo {
     if (sites.isNotEmpty) 'sites': sites.map((e) => e.toJson()).toList(),
     if (homeSite.isNotEmpty) 'homeSite': homeSite,
     if (channelCount != 0) 'channelCount': channelCount,
+    if (groupName.isNotEmpty) 'groupName': groupName,
   };
 
   factory SourceInfo.fromJson(Map<String, dynamic> json) => SourceInfo(
@@ -580,6 +588,7 @@ class SourceInfo {
     ],
     homeSite: json['homeSite'] as String? ?? '',
     channelCount: json['channelCount'] as int? ?? 0,
+    groupName: json['groupName'] as String? ?? '',
   );
 }
 

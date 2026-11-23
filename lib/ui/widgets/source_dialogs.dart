@@ -49,6 +49,9 @@ Future<void> showSourceMenu(BuildContext context, SourceInfo source) async {
     case _SourceAction.edit:
       if (!context.mounted) return;
       await showEditSourceDialog(context, source);
+    case _SourceAction.group:
+      if (!context.mounted) return;
+      await showSourceGroupDialog(context, source);
     case _SourceAction.delete:
       if (!context.mounted) return;
       await showDeleteSourceDialog(context, source);
@@ -258,6 +261,15 @@ Future<void> showDeleteSourceDialog(BuildContext context, SourceInfo source) {
   );
 }
 
+/// 「放进分组」：给一个组名，留空就回到按类型自动分组。
+Future<void> showSourceGroupDialog(BuildContext context, SourceInfo source) {
+  return showDialog<void>(
+    context: context,
+    barrierColor: const Color(0x78000000),
+    builder: (_) => _SourceGroupDialog(source: source),
+  );
+}
+
 /// Confirms deleting the ticked sources. True means go ahead; the caller does
 /// the actual removal so it can clear the selection and leave 多选 in one step.
 Future<bool?> showDeleteSourcesConfirm(
@@ -271,7 +283,7 @@ Future<bool?> showDeleteSourcesConfirm(
   );
 }
 
-enum _SourceAction { select, recheck, edit, delete }
+enum _SourceAction { select, recheck, edit, group, delete }
 
 // ---------------------------------------------------------------------------
 // Shared chrome
@@ -821,6 +833,10 @@ class _SourceMenuDialog extends StatelessWidget {
             onTap: () => Navigator.of(context).pop(_SourceAction.edit),
           ),
           _MenuRow(
+            label: '放进分组',
+            onTap: () => Navigator.of(context).pop(_SourceAction.group),
+          ),
+          _MenuRow(
             label: '删除',
             danger: true,
             onTap: () => Navigator.of(context).pop(_SourceAction.delete),
@@ -974,6 +990,105 @@ class _DeleteSourcesDialog extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 「放进分组」表单：一个输入框 + 已有组名的快捷选择，留空＝按类型分组。
+class _SourceGroupDialog extends StatefulWidget {
+  const _SourceGroupDialog({required this.source});
+
+  final SourceInfo source;
+
+  @override
+  State<_SourceGroupDialog> createState() => _SourceGroupDialogState();
+}
+
+class _SourceGroupDialogState extends State<_SourceGroupDialog> {
+  late final TextEditingController _group = TextEditingController(
+    text: widget.source.groupName,
+  );
+
+  @override
+  void dispose() {
+    _group.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    await StoreScope.of(context).setSourceGroup(
+      widget.source.id,
+      _group.text,
+    );
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Groups that already exist, offered as one-tap fills so a second source
+    // lands in the same group without retyping the name and splitting it.
+    final existing = <String>{
+      for (final source in StoreScope.of(context).sources)
+        if (source.groupName.isNotEmpty) source.groupName,
+    }.toList()..sort();
+
+    return _sheet(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _TitleRow(title: '放进分组'),
+          const SizedBox(height: 16),
+          _Field(
+            controller: _group,
+            hint: '分组名称（留空就按类型自动分组）',
+            icon: CupertinoIcons.folder,
+            onChanged: (_) => setState(() {}),
+          ),
+          if (existing.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final name in existing)
+                  GestureDetector(
+                    onTap: () => setState(() => _group.text = name),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: LcbColors.card,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          color: LcbColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 10),
+          const Text(
+            '同一个组名会把资源收到一起；留空就按资源类型自动分组。',
+            style: TextStyle(
+              fontSize: 11.5,
+              height: 1.5,
+              color: LcbColors.textTertiary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _PrimaryButton(label: '保存', onTap: _save),
         ],
       ),
     );

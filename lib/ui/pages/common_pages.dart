@@ -98,9 +98,11 @@ class ResourcesPage extends StatelessWidget {
         onMenu: state.selecting ? null : () => showSourceMenu(context, source),
       );
 
-  /// Groups the visible cards by source type, in the order the types first
-  /// appear. Only the first group starts expanded, matching 「默认打开第一个
-  /// 分组」; the rest start folded so a long list reads as a handful of rows.
+  /// Groups the visible cards. A source the user put in their own group goes
+  /// there; everything else falls back to its type, which is 原版
+  /// 「留空按类型自动分组」. Only the first group starts expanded, matching
+  /// 「默认打开第一个分组」; the rest start folded so a long list reads as a
+  /// handful of rows.
   List<Widget> _grouped(
     BuildContext context,
     List<SourceInfo> visible,
@@ -108,7 +110,10 @@ class ResourcesPage extends StatelessWidget {
   ) {
     final groups = <String, List<SourceInfo>>{};
     for (final source in visible) {
-      groups.putIfAbsent(source.type.sourceTypeLabel, () => []).add(source);
+      final key = source.groupName.isNotEmpty
+          ? source.groupName
+          : source.type.sourceTypeLabel;
+      groups.putIfAbsent(key, () => []).add(source);
     }
     final rows = <Widget>[];
     var first = true;

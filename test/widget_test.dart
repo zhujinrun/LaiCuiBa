@@ -886,6 +886,28 @@ void main() {
     expect(find.text('TVBox'), findsWidgets);
   });
 
+  testWidgets('资源页：自定义组名覆盖按类型分组', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+    await store.setSourceGroup(store.sources.first.id, '我的常用');
+
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.tap(find.text('资源').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('resource-group-我的常用')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('resource-group-TVBox')), findsNothing);
+  });
+
   testWidgets('资源页搜索按名字过滤，没命中时说明没找到', (tester) async {
     tester.view.physicalSize = const Size(1920, 1040);
     tester.view.devicePixelRatio = 1.0;
