@@ -498,7 +498,6 @@ class _PlayerPageState extends State<PlayerPage> {
     // A viewer who starts an episode and walks away should come back to a
     // playing episode, not a locked screen.
     _awake.hold();
-    _applyDecoder();
     _open();
     // 弹幕高亮默认关着：进播放页不发任何弹幕请求。设置里的「显示弹幕」只是
     // 允许，真正开还是关由底栏按钮决定——原版进页面不会先弹一句要 AppId。
@@ -511,7 +510,6 @@ class _PlayerPageState extends State<PlayerPage> {
       await platform.setProperty(
         'hwdec',
         widget.decoderMode == 'software' ? 'no' : 'auto-safe',
-        waitForInitialization: false,
       );
     } on Object {
       // 不支持的属性交给 mpv 自己忽略；不能因为一个解码偏好挡住播放。
@@ -595,6 +593,9 @@ class _PlayerPageState extends State<PlayerPage> {
     if (mounted) setState(() {});
     try {
       // Both are mpv properties, so they hold across the upcoming load.
+      // hwdec must be set here, after the native player exists; doing it from
+      // initState could hand mpv a property write before its handle is ready.
+      await _applyDecoder();
       await _player.setVolume(widget.initialVolume.toDouble());
       await _player.setRate(widget.initialRate);
       // `start` is only a hint: mpv applies it while loading and drops it for
