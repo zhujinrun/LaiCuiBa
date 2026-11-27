@@ -18,6 +18,7 @@ class SubtitlePanel extends StatelessWidget {
     this.externalSubtitleLabel,
     this.onPickSubtitleFile,
     this.onClearSubtitleFile,
+    this.onSearchSubtitles,
   });
 
   final TrackChoices choices;
@@ -31,6 +32,9 @@ class SubtitlePanel extends StatelessWidget {
 
   /// 取消外挂字幕；没挂时是 null。
   final VoidCallback? onClearSubtitleFile;
+
+  /// 打开字幕网站搜索（原版「字幕网站」）。
+  final VoidCallback? onSearchSubtitles;
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +68,12 @@ class SubtitlePanel extends StatelessWidget {
                 onTap: () => onSubtitle?.call(t),
               ),
           ],
+          const PanelGroupHeader('字幕网站'),
+          PanelRow(
+            label: '搜索字幕网站…',
+            selected: false,
+            onTap: onSearchSubtitles ?? () {},
+          ),
           if (hasFiles) ...[
             const PanelGroupHeader('本地文件'),
             PanelRow(

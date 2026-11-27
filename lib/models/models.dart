@@ -772,6 +772,7 @@ class AppSettings {
     this.tmdbApiKey = '',
     this.playerButtons = 'text',
     this.decoderMode = 'hardware',
+    this.subtitleSites = const [],
     this.extra = const {},
   });
 
@@ -908,6 +909,9 @@ class AppSettings {
   /// mpv 的硬解 / 软解（hwdec），只作用于当前唯一可用的 mpv 内核。
   final String decoderMode;
 
+  /// 用户自己配的字幕网站表，保持原始 JSON；语义在 services/subtitle/sites.dart。
+  final List<Map<String, dynamic>> subtitleSites;
+
   /// Unmodelled keys carried through unchanged.
   final Map<String, dynamic> extra;
 
@@ -961,6 +965,7 @@ class AppSettings {
     String? tmdbApiKey,
     String? playerButtons,
     String? decoderMode,
+    List<Map<String, dynamic>>? subtitleSites,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -1012,6 +1017,7 @@ class AppSettings {
       tmdbApiKey: tmdbApiKey ?? this.tmdbApiKey,
       playerButtons: playerButtons ?? this.playerButtons,
       decoderMode: decoderMode ?? this.decoderMode,
+      subtitleSites: subtitleSites ?? this.subtitleSites,
       extra: extra,
     );
   }
@@ -1073,6 +1079,9 @@ class AppSettings {
     'tmdbApiKey': tmdbApiKey,
     'playerButtons': playerButtons,
     'decoderMode': decoderMode,
+    'subtitleSites': [
+      for (final site in subtitleSites) Map<String, dynamic>.from(site),
+    ],
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -1149,6 +1158,10 @@ class AppSettings {
       tmdbApiKey: pop('tmdbApiKey', ''),
       playerButtons: pop('playerButtons', 'text'),
       decoderMode: pop('decoderMode', 'hardware'),
+      subtitleSites: [
+        for (final raw in (extra.remove('subtitleSites') as List?) ?? const [])
+          if (raw is Map) Map<String, dynamic>.from(raw),
+      ],
       extra: extra,
     );
   }

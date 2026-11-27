@@ -20,6 +20,7 @@ void main() {
     );
 
     expect(find.text('这一集没有内嵌字幕'), findsOneWidget);
+    expect(find.text('搜索字幕网站…'), findsOneWidget);
     expect(find.text('选择本地字幕文件…'), findsOneWidget);
     // 没挂字幕时不该有「取消外挂字幕」这一行。
     expect(find.text('不再使用外挂字幕'), findsNothing);
@@ -67,5 +68,20 @@ void main() {
     expect(find.text('外挂：01.ass'), findsOneWidget);
     await tester.tap(find.text('不再使用外挂字幕'));
     expect(cleared, 1);
+  });
+
+  testWidgets('字幕网站行点击后交给播放页去搜', (tester) async {
+    var searched = 0;
+    await tester.pumpWidget(
+      _wrap(
+        SubtitlePanel(
+          choices: const TrackChoices(),
+          onSearchSubtitles: () => searched++,
+        ),
+      ),
+    );
+    await tester.tap(find.text('搜索字幕网站…'));
+    await tester.pump();
+    expect(searched, 1);
   });
 }

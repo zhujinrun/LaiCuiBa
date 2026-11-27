@@ -7,6 +7,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../services/awake.dart';
@@ -18,9 +19,11 @@ import '../../services/player_info.dart';
 import '../../services/player/subtitle_file.dart';
 import '../../services/player/volume_step.dart';
 import '../../services/skip_rule.dart';
+import '../../services/subtitle/sites.dart';
 import '../../services/track_choice.dart';
 import '../../services/track_map.dart';
 import '../widgets/skip_panel.dart';
+import '../widgets/subtitle_search_dialog.dart';
 import '../widgets/subtitle_style.dart';
 import '../widgets/track_panel.dart';
 import '../widgets/picture_panel.dart';
@@ -754,6 +757,20 @@ class _PlayerPageState extends State<PlayerPage> {
   // ---------------------------------------------------------------------------
 
   /// 打开文件选择器，把挑中的字幕挂上去并记在这一集上。
+  Future<void> _searchSubtitles() async {
+    final sites = [
+      for (final raw in StoreScope.of(context).settings.subtitleSites)
+        if ((raw['id'] as String?)?.isNotEmpty ?? false)
+          SubtitleSite.fromJson(raw),
+    ];
+    final picked = await showDialog<SubtitleFile>(
+      context: context,
+      builder: (_) => SubtitleSearchDialog(sites: sites),
+    );
+    if (picked == null || !mounted) return;
+    await _useSubtitleFile(picked);
+  }
+
   Future<void> _pickSubtitleFile() async {
     if (_pickingSubtitle) return;
     _pickingSubtitle = true;
@@ -1432,6 +1449,7 @@ class _PlayerPageState extends State<PlayerPage> {
                 onSubtitle: (t) => _setSubtitle(t.id),
                 externalSubtitleLabel: _externalLabel,
                 onPickSubtitleFile: _pickSubtitleFile,
+                onSearchSubtitles: _searchSubtitles,
                 onClearSubtitleFile: _externalLabel == null
                     ? null
                     : _clearSubtitleFile,

@@ -1711,6 +1711,35 @@ void main() {
   });
 
 
+  testWidgets('字幕网站配置入口能真加站点', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1040);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final store = await AppStore.load();
+    await tester.pumpWidget(LcbApp(store: store));
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.tap(find.text('设置').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('播放'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('字幕'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('字幕网站'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('添加字幕网站'), findsOneWidget);
+    await tester.tap(find.text('添加字幕网站'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '测试站');
+    await tester.enterText(find.byType(TextField).last, 'https://example.com/?q={query}');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(store.settings.subtitleSites.single['name'], '测试站');
+  });
+
   testWidgets('弹幕 settings configure real sources', (tester) async {
     tester.view.physicalSize = const Size(1920, 1040);
     tester.view.devicePixelRatio = 1.0;

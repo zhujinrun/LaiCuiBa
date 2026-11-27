@@ -15,6 +15,7 @@ import '../../services/track_choice.dart';
 import '../page_header.dart';
 import '../custom/widgets_settings_page.dart';
 import '../widgets/backup_dialog.dart';
+import '../widgets/subtitle_sites_settings.dart';
 import '../widgets/subtitle_style.dart';
 
 /// Settings root + the sub-pages reachable from it.
@@ -250,6 +251,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return _playbackRows(store);
       case '字幕':
         return _subtitleRows(store);
+      case '字幕网站':
+        return const [SubtitleSitesSettings()];
       case '弹幕':
         return _danmakuRows(store);
       case '弹幕源':
@@ -986,6 +989,13 @@ class _SettingsPageState extends State<SettingsPage> {
                   '${LcbSubtitleStyle.labelOf(store.settings.subtitleSize)} '
                   '${store.settings.subtitleSize}',
               onTap: () => _pickSubtitleSize(store),
+            ),
+            _Row(
+              icon: CupertinoIcons.globe,
+              color: LcbColors.sysPink,
+              title: '字幕网站',
+              subtitle: '配好搜索地址，播放时可以直接搜字幕挂到本集',
+              onTap: () => _open('字幕网站'),
             ),
             _Row(
               icon: CupertinoIcons.rectangle_on_rectangle_angled,
