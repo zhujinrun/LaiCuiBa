@@ -6,9 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
-import '../../services/skip_rule.dart';
 import '../widgets/media_badges.dart';
-import '../widgets/skip_panel.dart';
 
 /// 详情页 — 影片详情（hero + 选集 + 演员阵容 + 分类）。
 ///
@@ -129,60 +127,6 @@ class _DetailPageState extends State<DetailPage> {
     });
   }
 
-  String _skipLabel(int ms) =>
-      ms <= 0 ? '不跳过' : '${ms ~/ 1000} 秒';
-
-  Future<void> _openSkipSettings() async {
-    final store = StoreScope.of(context);
-    final own = store.skipOverrideFor(item.title);
-    final chosen = await showDialog<SkipOverride>(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: const Color(0xF21C1C1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 10),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                '本剧片头片尾',
-                style: TextStyle(fontSize: 15, color: Colors.white),
-              ),
-              const SizedBox(height: 12),
-              SkipPanel(
-                global: store.skipRule,
-                own: own,
-                effective: store.skipRuleFor(item.title),
-                enabled: store.settings.skipIntroOutro,
-                onPicked: (value) => Navigator.of(context).pop(value),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  if (own.isNotEmpty)
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(
-                        SkipOverride.none,
-                      ),
-                      child: const Text('清除本剧设置'),
-                    ),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('取消'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (chosen == null) return;
-    await store.setSkipOverride(item.title, chosen);
-  }
-
   @override
   Widget build(BuildContext context) {
     final ranges = <int>[
@@ -215,25 +159,6 @@ class _DetailPageState extends State<DetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 30),
-                  const _SectionTitle('片头片尾'),
-                  const SizedBox(height: 12),
-                  _SkipRow(
-                    intro: _skipLabel(
-                      StoreScope.of(context)
-                          .skipRuleFor(item.title)
-                          .intro.inMilliseconds,
-                    ),
-                    outro: _skipLabel(
-                      StoreScope.of(context)
-                          .skipRuleFor(item.title)
-                          .outro.inMilliseconds,
-                    ),
-                    own: StoreScope.of(context)
-                        .skipOverrideFor(item.title)
-                        .isNotEmpty,
-                    onTap: _openSkipSettings,
-                  ),
                   if (episodes.isNotEmpty) ...[
                     _EpisodeHeader(
                       ranges: ranges,
@@ -1112,75 +1037,6 @@ class _FilterChip extends StatelessWidget {
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-/// 详情页的「片头片尾」入口。原版把它放在作品自己的页里，而不是只让用户在
-/// 播放中右键进度条碰运气；这里显示的永远是实际生效值（全局 + 本剧覆盖）。
-class _SkipRow extends StatelessWidget {
-  const _SkipRow({
-    required this.intro,
-    required this.outro,
-    required this.own,
-    required this.onTap,
-  });
-
-  final String intro;
-  final String outro;
-  final bool own;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        height: 62,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          color: LcbColors.card,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            const Icon(
-              Icons.fast_forward,
-              size: 18,
-              color: LcbColors.sysPurple,
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '片头 $intro · 片尾 $outro',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: LcbColors.text,
-                    ),
-                  ),
-                  Text(
-                    own ? '本剧单独设置过' : '跟随全局设置',
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      color: LcbColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(
-              CupertinoIcons.chevron_right,
-              size: 14,
-              color: LcbColors.textTertiary,
-            ),
-          ],
-        ),
       ),
     );
   }
