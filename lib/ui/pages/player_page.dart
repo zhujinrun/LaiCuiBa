@@ -11,6 +11,7 @@ import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../services/ai/subtitle_translate.dart';
+import '../../services/cast/dlna.dart';
 import '../../services/awake.dart';
 import '../../services/danmaku/danmaku_api.dart';
 import '../../services/danmaku/source_danmaku.dart';
@@ -24,6 +25,7 @@ import '../../services/subtitle/sites.dart';
 import '../../services/track_choice.dart';
 import '../../services/track_map.dart';
 import '../widgets/skip_panel.dart';
+import '../widgets/cast_sheet.dart';
 import '../widgets/subtitle_search_dialog.dart';
 import '../widgets/subtitle_style.dart';
 import '../widgets/track_panel.dart';
@@ -393,6 +395,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
   bool _fullScreen = false;
   bool _miniWindow = false;
+  DlnaDevice? _castDevice;
   Rect? _savedBounds;
 
   bool _controlsVisible = true;
@@ -963,6 +966,32 @@ class _PlayerPageState extends State<PlayerPage> {
     await windowManager.setSize(const Size(440, 280));
     await windowManager.setAlwaysOnTop(true);
     if (mounted) setState(() => _miniWindow = true);
+  }
+
+  Future<void> _cast() async {
+    final device = await showCastSheet(context);
+    if (device == null || !mounted) return;
+    try {
+      await Dlna.play(device, widget.url, title: widget.title);
+      if (!mounted) return;
+      setState(() => _castDevice = device);
+      _showNotice('正在投屏到 ${device.name}');
+    } on DlnaException catch (error) {
+      _showNotice('投屏失败：${error.message}');
+    }
+  }
+
+  Future<void> _stopCast() async {
+    final device = _castDevice;
+    if (device == null) return;
+    try {
+      await Dlna.stop(device);
+      if (!mounted) return;
+      setState(() => _castDevice = null);
+      _showNotice('已退出投屏');
+    } on DlnaException catch (error) {
+      _showNotice('投屏失败：${error.message}');
+    }
   }
 
   Future<void> _screenshot() async {
@@ -1555,6 +1584,9 @@ class _PlayerPageState extends State<PlayerPage> {
                 onScreenshot: _screenshot,
                 fullScreen: _fullScreen,
                 miniWindow: _miniWindow,
+                casting: _castDevice != null,
+                onCast: _cast,
+                onStopCast: _stopCast,
               ),
             ),
           if (_panel == _PlayerPanel.episodes)

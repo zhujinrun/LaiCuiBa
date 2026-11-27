@@ -100,6 +100,7 @@ void main() {
     expect(find.text('全屏（F）'), findsOneWidget);
     expect(find.text('小窗播放'), findsOneWidget);
     expect(find.text('截图'), findsOneWidget);
+    expect(find.text('投屏'), findsOneWidget);
     await tester.tap(find.text('全屏（F）'));
     await tester.tap(find.text('小窗播放'));
     await tester.tap(find.text('截图'));
@@ -107,6 +108,25 @@ void main() {
     expect(full, 1);
     expect(mini, 1);
     expect(shot, 1);
+  });
+
+  testWidgets('投屏中给退出投屏，而不是再给一个投屏按钮', (tester) async {
+    tester.view.physicalSize = const Size(1280, 1100);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _wrap(
+        const PicturePanel(
+          adjust: PictureAdjust.none,
+          onAdjust: _noop,
+          casting: true,
+        ),
+      ),
+    );
+    expect(find.text('退出投屏'), findsOneWidget);
+    expect(find.text('投屏'), findsNothing);
   });
 }
 

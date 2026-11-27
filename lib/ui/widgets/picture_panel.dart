@@ -18,6 +18,9 @@ class PicturePanel extends StatelessWidget {
     this.onScreenshot,
     this.fullScreen = false,
     this.miniWindow = false,
+    this.casting = false,
+    this.onCast,
+    this.onStopCast,
   });
 
   final PictureAdjust adjust;
@@ -27,6 +30,11 @@ class PicturePanel extends StatelessWidget {
   final VoidCallback? onScreenshot;
   final bool fullScreen;
   final bool miniWindow;
+
+  /// 投屏状态与入口（原版底栏那一排里有「投屏」）。
+  final bool casting;
+  final VoidCallback? onCast;
+  final VoidCallback? onStopCast;
 
   @override
   Widget build(BuildContext context) {
@@ -81,6 +89,18 @@ class PicturePanel extends StatelessWidget {
             selected: false,
             onTap: onScreenshot ?? () {},
           ),
+          if (casting)
+            PanelRow(
+              label: '退出投屏',
+              selected: false,
+              onTap: onStopCast ?? () {},
+            )
+          else
+            PanelRow(
+              label: '投屏',
+              selected: false,
+              onTap: onCast ?? () {},
+            ),
           const PanelNote('0% 是原始画面；这里的亮度和屏幕亮度分开'),
         ],
       ),
