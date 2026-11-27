@@ -4,6 +4,6 @@ abstract final class LcbAppInfo {
   /// Product name shown to users. Dart package names stay snake_case, so the
   /// display name is kept here rather than derived from `package:` metadata.
   static const name = 'LaiCuiBa';
-  static const version = '0.1.0';
-  static const build = 1;
+  static const version = '0.1.1';
+  static const build = 2;
 }

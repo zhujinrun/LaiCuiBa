@@ -6,9 +6,16 @@ the section whose heading matches the pushed tag.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-27
+
 ### Fixed
 - HLS mid-roll ad pods are removed before mpv sees the playlist, so an injected
   ad no longer changes the timeline and sends the progress bar back to 00:00.
+  Playlists are fetched through a loopback cleaner that drops the ad marker,
+  its TS segments and both discontinuities; the remaining segments keep their
+  original URLs and headers.
+- The player header's episode-count label is rendered as `共N集` instead of the
+  source's `第N集` / `全N集`, matching the original app.
 
 ## [0.1.0] - 2026-11-27
 

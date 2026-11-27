@@ -689,7 +689,7 @@ media_kit_libs_video 自带 libmpv-2.dll            29.7MB  2023-09-24 build
 cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
-flutter test                    # 当前 637 个全绿
+flutter test                    # 当前 643 个全绿
 ./assets/runtime/node/node.exe tool/verify_host.js  # 猫源宿主端到端自检
 
 # 真 libmpv 自检（取 build 产物里的 DLL；先 flutter build windows --debug）
@@ -701,8 +701,8 @@ dart run tool/verify_player_info_live.dart # 无 GPU 时降级退出 0
 
 # 发版校验（CI 也会跑）
 python tool/ci_release.py version
-python tool/ci_release.py check-tag v0.1.0
-python tool/ci_release.py release-body 0.1.0
+python tool/ci_release.py check-tag v0.1.1
+python tool/ci_release.py release-body 0.1.1
 ```
 
 环境约束（**已锁定，勿随意升级**）：

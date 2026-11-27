@@ -1,7 +1,7 @@
 name: lai_cui_ba
 description: "LaiCuiBa - a self-maintained Flutter desktop media client."
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.1.1+2
 
 # Pinned to the toolchain the original app was built with. Hotfixes inside the
 # same minor are allowed; a new minor must be a deliberate, verified upgrade.
