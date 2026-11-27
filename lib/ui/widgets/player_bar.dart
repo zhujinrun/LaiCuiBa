@@ -4,20 +4,14 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
 
-/// 播放页底部那条悬浮控制条。
+/// 播放页底部那条悬浮控制条，完全照用户给的原版全屏截图排：
 ///
-/// 内容照原版：上面一行是时间 + 进度，下面一行左边是快退 / 播放暂停 / 快进 /
-/// 上一集 / 下一集，右边是一排**文字**按钮 倍速 / 字幕 / 弹幕 / (轨道) / 比例 /
-/// 画面 / 信息 / 选集。
+/// * 一根细进度条在上，紫色已播 + 白色滑块；
+/// * 下一行左边是 `01:41 / 48:25` 加 上一集 / 快退10 / 播放暂停 / 快进10 / 下一集；
+/// * 右边是一排**图标**：倍速 / 字幕 / 弹幕 / 比例 / 画面 / 信息 / 投屏 / 选集 /
+///   画中画 / 音量 / 全屏。
 ///
-/// 两处与原版对齐时删掉的自家东西：
-/// * 音量滑杆（原版没有）。音量改成在画面上滚动滚轮调，见播放页的 `_nudgeVolume`。
-/// * 「片头 90s」胶囊（原版没有）。本剧片头片尾改成右键进度条打开——它只能边看
-///   边设，而进度条就是「当前位置」本身。
-///
-/// 「轨道」是唯一一个原版没有的按钮，而且只在真的有多条线路/画质/音轨可换时
-/// 才出现（[TrackPanel.worthShowing]）；一条流的常见情况下它不出现。
-
+/// 原版没有「轨道」按钮，也没有片头胶囊；这两件事分别放在画面面板和右键进度条里。
 class PlayerBar extends StatelessWidget {
   const PlayerBar({
     super.key,
@@ -56,6 +50,12 @@ class PlayerBar extends StatelessWidget {
     this.onForward10,
     this.onCast,
     this.casting = false,
+    this.onMiniWindow,
+    this.onFullScreen,
+    this.miniWindow = false,
+    this.fullScreen = false,
+    this.volume = 100,
+    this.onVolumeChanged,
     this.iconMode = false,
   });
 
@@ -70,54 +70,49 @@ class PlayerBar extends StatelessWidget {
   final VoidCallback onSeekEnd;
   final ValueChanged<double> onSeekChanged;
 
-  /// 倍速：原版是一个「倍速」文字按钮，点开给几档。这里同样是面板。
+  /// 倍速：原版是右上角那一排里的小图标，点开给几档。
   final VoidCallback onRatePanel;
   final bool rateOpen;
-
-  /// 底栏右侧那一排**文字**按钮，顺序照原版：
-  /// 倍速 / 字幕 / 弹幕 / (轨道) / 比例 / 画面 / 信息 / 选集。
-  ///
-  /// 原版是纯文字，没有图标也没有胶囊底；我们原来是「图标 + 文字 + 胶囊」，
-  /// 条上挤了六个胶囊，看起来比原版重一截。
   final VoidCallback onSubtitle;
   final bool subtitleOpen;
   final VoidCallback onDanmaku;
   final bool danmakuOn;
   final bool danmakuAsking;
 
-  /// 轨道（线路/画质/声音）。null 表示这一条流没什么可换的，按钮不出现。
+  /// 轨道（线路/画质/声音）保留参数兼容旧调用，但按钮已经移进画面面板。
   final VoidCallback? onTracks;
   final bool tracksOpen;
 
   final VoidCallback onAspect;
   final bool aspectOpen;
-
-  /// 画面调节（亮度那一组）。比例已经拆到 [onAspect] 下。
   final VoidCallback onPicture;
   final bool pictureOpen;
-
   final VoidCallback onInfo;
   final bool infoOpen;
-
   final VoidCallback onEpisodes;
   final bool episodesOpen;
   final int episodeCount;
 
-  /// 本剧片头片尾：右键（或长按）进度条打开。原版底栏没有这个按钮，但它
-  /// 只能边看边设，所以挂在「时间轴」这件事本身上。
+  /// 右键（或长按）进度条打开本剧片头片尾；原版底栏没有这个按钮。
   final VoidCallback onSkipPanel;
 
-  final VoidCallback? onBack10;
-  final VoidCallback? onForward10;
-
-  /// 原版底栏在「信息」和「选集」之间有「投屏」。
-  final VoidCallback? onCast;
-  final bool casting;
-
-  /// 原版 player_buttons：操作按钮显示成图标而不是文字。
-  final bool iconMode;
   final VoidCallback? onNext;
   final VoidCallback? onPrev;
+  final VoidCallback? onBack10;
+  final VoidCallback? onForward10;
+  final VoidCallback? onCast;
+  final bool casting;
+  final VoidCallback? onMiniWindow;
+  final VoidCallback? onFullScreen;
+  final bool miniWindow;
+  final bool fullScreen;
+
+  /// 音量滑杆：原版底栏确实有，滚轮调音量的做法只是我们早先的误判。
+  final double volume;
+  final ValueChanged<double>? onVolumeChanged;
+
+  /// player_buttons 设置：原版截图是图标，所以默认应走图标；文字只是可选项。
+  final bool iconMode;
 
   @override
   Widget build(BuildContext context) {
@@ -135,12 +130,11 @@ class PlayerBar extends StatelessWidget {
           alignment: Alignment.bottomCenter,
           child: Container(
             margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
-            // 宽度照原版量出来的比例：1360 的窗口里那条悬浮条是 1088 宽
-            // （80%），而不是一个固定值。
+            padding: const EdgeInsets.fromLTRB(18, 8, 18, 10),
+            // 原版在 1360 的窗口里这条是 1088 宽（80%）；1920 时约 1536。
             constraints: BoxConstraints(
               minWidth: 480,
-              maxWidth: math.min(MediaQuery.sizeOf(context).width * 0.8, 1180),
+              maxWidth: math.min(MediaQuery.sizeOf(context).width * 0.8, 1600),
             ),
             decoration: BoxDecoration(
               color: const Color(0xCC1A1A20),
@@ -149,99 +143,89 @@ class PlayerBar extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Seek bar row. 右键它能设本剧片头片尾——原版把这件事放在
-                // 「当前位置」上，而进度条就是位置本身。
-                Tooltip(
-                  // 原版没有「片头」按钮，这件事就藏进了右键里。没有这句
-                  // 提示，右键进度条基本等于不存在。
-                  message: '右键设置本剧片头片尾',
-                  waitDuration: const Duration(milliseconds: 800),
-                  child: GestureDetector(
-                    onSecondaryTap: onSkipPanel,
-                    child: Row(
-                      children: [
-                        Text(
-                          _fmt(position),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFFDDDDDD),
+                SizedBox(
+                  height: 22,
+                  child: Tooltip(
+                    message: '右键设置本剧片头片尾',
+                    waitDuration: const Duration(milliseconds: 800),
+                    child: GestureDetector(
+                      onSecondaryTap: onSkipPanel,
+                      child: SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          trackHeight: 3,
+                          thumbShape: const RoundSliderThumbShape(
+                            enabledThumbRadius: 5,
                           ),
+                          overlayShape: SliderComponentShape.noOverlay,
+                          activeTrackColor: LcbColors.primary,
+                          inactiveTrackColor: const Color(0x66FFFFFF),
+                          thumbColor: Colors.white,
                         ),
-                        Expanded(
-                          child: Slider(
-                            value: value,
-                            activeColor: LcbColors.primary,
-                            inactiveColor: const Color(0x66FFFFFF),
-                            // Dragging a bar whose scale is unknown can only
-                            // land on zero, so it stays inert until the
-                            // duration is in.
-                            onChangeStart: totalMs <= 0
-                                ? null
-                                : (_) => onSeekStart(),
-                            onChanged: totalMs <= 0
-                                ? null
-                                : (v) => onSeekChanged(v),
-                            onChangeEnd: totalMs <= 0
-                                ? null
-                                : (v) => onSeekEnd(),
-                          ),
+                        child: Slider(
+                          value: value,
+                          onChangeStart: totalMs <= 0
+                              ? null
+                              : (_) => onSeekStart(),
+                          onChanged: totalMs <= 0 ? null : onSeekChanged,
+                          onChangeEnd: totalMs <= 0 ? null : (_) => onSeekEnd(),
                         ),
-                        Text(
-                          _fmt(duration),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFFDDDDDD),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 3),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // 左侧这一组的顺序照原版：快退 / 播放暂停 / 快进 /
-                        // 上一集 / 下一集。
-                        _RoundButton(
-                          key: const ValueKey('player-back-10'),
-                          icon: Icons.replay_10,
-                          onTap: onBack10,
+                        Text(
+                          '${_fmt(position)} / ${_fmt(duration)}',
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            color: Color(0xFFDDDDDD),
+                          ),
                         ),
-                        const SizedBox(width: 4),
-                        _RoundButton(
-                          key: const ValueKey('player-play-pause'),
-                          icon: playing ? Icons.pause : Icons.play_arrow,
-                          onTap: onTogglePlay,
-                        ),
-                        const SizedBox(width: 4),
-                        _RoundButton(
-                          key: const ValueKey('player-forward-10'),
-                          icon: Icons.forward_10,
-                          onTap: onForward10,
-                        ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 14),
                         if (onPrev != null) ...[
                           _RoundButton(
                             key: const ValueKey('player-prev'),
                             icon: Icons.skip_previous,
                             onTap: onPrev,
                           ),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 2),
                         ],
-                        if (onNext != null)
+                        _RoundButton(
+                          key: const ValueKey('player-back-10'),
+                          icon: Icons.replay_10,
+                          onTap: onBack10,
+                        ),
+                        const SizedBox(width: 2),
+                        _RoundButton(
+                          key: const ValueKey('player-play-pause'),
+                          icon: playing ? Icons.pause : Icons.play_arrow,
+                          onTap: onTogglePlay,
+                        ),
+                        const SizedBox(width: 2),
+                        _RoundButton(
+                          key: const ValueKey('player-forward-10'),
+                          icon: Icons.forward_10,
+                          onTap: onForward10,
+                        ),
+                        if (onNext != null) ...[
+                          const SizedBox(width: 2),
                           _RoundButton(
                             key: const ValueKey('player-next'),
                             icon: Icons.skip_next,
                             onTap: onNext,
                           ),
+                        ],
                         if (buffering) ...[
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 8),
                           const SizedBox(
-                            width: 14,
-                            height: 14,
+                            width: 13,
+                            height: 13,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
                               color: Colors.white70,
@@ -250,9 +234,6 @@ class PlayerBar extends StatelessWidget {
                         ],
                       ],
                     ),
-                    // 右半边贴右对齐，并且能横向滚：窗口最窄（1040）时这一
-                    // 排按钮确实差几十像素，宁可让它滚，也不能把「选集」挤到
-                    // 悬浮条外面去。`reverse` 让内容从右边开始排。
                     Expanded(
                       child: ScrollConfiguration(
                         behavior: ScrollConfiguration.of(
@@ -263,13 +244,12 @@ class PlayerBar extends StatelessWidget {
                           reverse: true,
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.end,
                             children: [
                               _BarButton(
                                 key: const ValueKey('player-rate'),
                                 label: '倍速',
                                 icon: Icons.speed,
-                                // 不是 1.0x 的时候亮着，不用点开就知道看过
-                                // 之后为什么「感觉快了一点」。
                                 active: rateOpen || rate != 1.0,
                                 onTap: onRatePanel,
                                 iconMode: iconMode,
@@ -328,7 +308,6 @@ class PlayerBar extends StatelessWidget {
                                 onTap: onCast ?? () {},
                                 iconMode: iconMode,
                               ),
-                              // 选集：40 集的剧靠两个箭头点过去不现实。
                               if (episodeCount > 1) ...[
                                 const SizedBox(width: 4),
                                 _BarButton(
@@ -337,9 +316,31 @@ class PlayerBar extends StatelessWidget {
                                   icon: Icons.list,
                                   active: episodesOpen,
                                   onTap: onEpisodes,
-                                iconMode: iconMode,
+                                  iconMode: iconMode,
                                 ),
                               ],
+                              const SizedBox(width: 4),
+                              _BarButton(
+                                key: const ValueKey('player-mini-window'),
+                                label: '画中画',
+                                icon: Icons.picture_in_picture_alt,
+                                active: miniWindow,
+                                onTap: onMiniWindow ?? () {},
+                                iconMode: true,
+                              ),
+                              const SizedBox(width: 6),
+                              _volumeControl(context),
+                              const SizedBox(width: 6),
+                              _BarButton(
+                                key: const ValueKey('player-fullscreen'),
+                                label: '全屏',
+                                icon: fullScreen
+                                    ? Icons.fullscreen_exit
+                                    : Icons.fullscreen,
+                                active: false,
+                                onTap: onFullScreen ?? () {},
+                                iconMode: true,
+                              ),
                             ],
                           ),
                         ),
@@ -354,16 +355,47 @@ class PlayerBar extends StatelessWidget {
       ),
     );
   }
+
+  Widget _volumeControl(BuildContext context) {
+    final icon = volume <= 0 ? Icons.volume_off : Icons.volume_up;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18, color: Colors.white),
+        const SizedBox(width: 6),
+        SizedBox(
+          width: 64,
+          height: 22,
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
+              overlayShape: SliderComponentShape.noOverlay,
+              activeTrackColor: Colors.white,
+              inactiveTrackColor: const Color(0x55FFFFFF),
+              thumbColor: Colors.white,
+            ),
+            child: Slider(
+              value: volume.clamp(0, 100).toDouble(),
+              min: 0,
+              max: 100,
+              onChanged: onVolumeChanged ?? (_) {},
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 String _fmt(Duration d) {
   final h = d.inHours;
   final m = d.inMinutes % 60;
   final s = d.inSeconds % 60;
-  if (h > 0) {
-    return '$h:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-  }
-  return '$m:${s.toString().padLeft(2, '0')}';
+  final mm = m.toString().padLeft(2, '0');
+  final ss = s.toString().padLeft(2, '0');
+  if (h > 0) return '$h:$mm:$ss';
+  return '$mm:$ss';
 }
 
 class _RoundButton extends StatefulWidget {
@@ -388,40 +420,33 @@ class _RoundButtonState extends State<_RoundButton> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: Container(
-          width: 36,
-          height: 36,
+          width: 32,
+          height: 32,
           decoration: BoxDecoration(
             color: _hover ? const Color(0x33FFFFFF) : Colors.transparent,
             shape: BoxShape.circle,
           ),
-          child: Icon(widget.icon, size: 24, color: Colors.white),
+          child: Icon(widget.icon, size: 20, color: Colors.white),
         ),
       ),
     );
   }
 }
 
-/// A pill in the bottom bar that opens a pop-up panel: an icon plus a short
-/// label, filled purple while its panel is open. Used for 片头 and 轨道.
-/// 底栏右侧那颗文字按钮。
-///
-/// 原版这一排是纯文字：没有图标，也没有胶囊底，靠字重和颜色表示「正在开着」。
-/// 我们原来每个都是「图标 + 文字 + 胶囊」，六个胶囊在深色条上比原版重一截，
-/// 而且图标各自表意（剪刀 = 片头、tune = 轨道）比字更难认。
 class _BarButton extends StatefulWidget {
   const _BarButton({
     super.key,
     required this.label,
     required this.active,
     required this.onTap,
-    this.icon,
+    required this.icon,
     this.iconMode = false,
   });
 
   final String label;
   final bool active;
   final VoidCallback onTap;
-  final IconData? icon;
+  final IconData icon;
   final bool iconMode;
 
   @override
@@ -443,16 +468,15 @@ class _BarButtonState extends State<_BarButton> {
         onTap: widget.onTap,
         child: Container(
           height: 30,
-          constraints: const BoxConstraints(minWidth: 40),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          constraints: const BoxConstraints(minWidth: 28),
+          padding: const EdgeInsets.symmetric(horizontal: 6),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            // 只在鼠标停上来时给一点点底色：静止时和原版一样是纯文字。
             color: _hover ? const Color(0x1AFFFFFF) : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: widget.iconMode && widget.icon != null
-              ? Icon(widget.icon, size: 17, color: color)
+          child: widget.iconMode
+              ? Icon(widget.icon, size: 18, color: color)
               : Text(
                   widget.label,
                   style: TextStyle(

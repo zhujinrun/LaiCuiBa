@@ -395,6 +395,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
   bool _fullScreen = false;
   bool _miniWindow = false;
+  bool _maximized = false;
   DlnaDevice? _castDevice;
   Rect? _savedBounds;
 
@@ -407,6 +408,9 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void initState() {
     super.initState();
+    windowManager.isMaximized().then((value) {
+      if (mounted) setState(() => _maximized = value);
+    });
     _prefs = widget.trackPrefs;
     _positionSub = _player.stream.position.listen((d) {
       if (!_seeking) _position = d;
@@ -1405,7 +1409,7 @@ class _PlayerPageState extends State<PlayerPage> {
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 1100),
                     child: Text(
-                      _secondaryText,
+                      _aiText.isNotEmpty ? _aiText : _secondaryText,
                       textAlign: TextAlign.center,
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
@@ -1474,13 +1478,30 @@ class _PlayerPageState extends State<PlayerPage> {
                 ),
               ),
             ),
-          Align(
-            alignment: Alignment.topLeft,
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
             child: _TopBar(
               title: _titleLine,
               subtitle: _subtitleLine,
               onClose: widget.onClose,
               visible: chromeVisible,
+              decoderMode: widget.decoderMode,
+              rate: _rate,
+              rateOpen: _panel == _PlayerPanel.rate,
+              onRatePanel: _toggleRatePanel,
+              danmakuOn: _danmakuOn,
+              onDanmaku: _toggleDanmaku,
+              hasPrev: widget.episodeIndex != null && widget.episodeIndex! > 0,
+              hasNext: _hasNext,
+              onPrev: (widget.episodeIndex != null && widget.episodeIndex! > 0)
+                  ? () => widget.onEpisode!(widget.episodeIndex! - 1)
+                  : null,
+              onNext: _hasNext
+                  ? () => widget.onEpisode!(widget.episodeIndex! + 1)
+                  : null,
+              maximized: _maximized,
             ),
           ),
           // 常驻信息浮层：选中的信息钉在画面右上角，不随操作菜单隐藏（原版
@@ -1632,6 +1653,12 @@ class _PlayerPageState extends State<PlayerPage> {
             danmakuOn: _danmakuOn,
             danmakuAsking: _danmakuLoading,
             iconMode: widget.buttonsIcon,
+            volume: _volume,
+            onVolumeChanged: (value) => _player.setVolume(value),
+            onMiniWindow: _toggleMiniWindow,
+            onFullScreen: _toggleFullScreen,
+            miniWindow: _miniWindow,
+            fullScreen: _fullScreen,
             // 原版底栏没有「轨道」这一项：一条流的常见情况下这里没得换，
             // 按钮就不出现。真的有多条线路/画质/音轨时才补一个。
             onTracks:
@@ -1678,11 +1705,24 @@ class _PlayerPageState extends State<PlayerPage> {
 /// second line. The original keeps no dark gradient strip here — the text sits
 /// directly on the video with a soft shadow for legibility — so the video runs
 /// all the way up underneath it.
+/// 原版顶栏：左边是返回箭头 + 标题 + 「第N集 · 分辨率 · 画质」，右边是
+/// `MPV ⚡ |< >> >| 💬` 加窗口按钮。整条只在控制条显示时出现。
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.title,
     required this.onClose,
     required this.visible,
+    required this.decoderMode,
+    required this.rate,
+    required this.rateOpen,
+    required this.onRatePanel,
+    required this.danmakuOn,
+    required this.onDanmaku,
+    required this.hasPrev,
+    required this.hasNext,
+    required this.onPrev,
+    required this.onNext,
+    required this.maximized,
     this.subtitle,
   });
 
@@ -1690,6 +1730,17 @@ class _TopBar extends StatelessWidget {
   final String? subtitle;
   final VoidCallback? onClose;
   final bool visible;
+  final String decoderMode;
+  final double rate;
+  final bool rateOpen;
+  final VoidCallback onRatePanel;
+  final bool danmakuOn;
+  final VoidCallback onDanmaku;
+  final bool hasPrev;
+  final bool hasNext;
+  final VoidCallback? onPrev;
+  final VoidCallback? onNext;
+  final bool maximized;
 
   @override
   Widget build(BuildContext context) {
@@ -1699,16 +1750,16 @@ class _TopBar extends StatelessWidget {
       child: IgnorePointer(
         ignoring: !visible,
         child: Padding(
-          padding: const EdgeInsets.only(left: 12, top: 8),
+          padding: const EdgeInsets.fromLTRB(20, 16, 0, 0),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _BackArrow(
                 onTap: onClose ?? () => Navigator.of(context).maybePop(),
               ),
-              const SizedBox(width: 8),
-              Flexible(
+              const SizedBox(width: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1719,7 +1770,7 @@ class _TopBar extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                         color: Colors.white,
                         shadows: [
                           Shadow(color: Color(0x99000000), blurRadius: 4),
@@ -1742,7 +1793,194 @@ class _TopBar extends StatelessWidget {
                   ],
                 ),
               ),
+              const Spacer(),
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'MPV',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        shadows: [
+                          Shadow(color: Color(0x99000000), blurRadius: 4),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    _TopIcon(
+                      icon: Icons.bolt,
+                      tooltip: decoderMode == 'software'
+                          ? '软件解码'
+                          : '硬件解码',
+                      color: decoderMode == 'software'
+                          ? const Color(0xFFAAAAAA)
+                          : Colors.white,
+                      onTap: () {},
+                    ),
+                    if (hasPrev && onPrev != null) ...[
+                      const SizedBox(width: 10),
+                      _TopIcon(
+                        icon: Icons.skip_previous,
+                        tooltip: '上一集',
+                        onTap: onPrev!,
+                      ),
+                    ],
+                    const SizedBox(width: 10),
+                    _TopIcon(
+                      icon: Icons.fast_forward,
+                      tooltip: rateOpen || rate != 1.0
+                          ? '倍速 ${rate.toStringAsFixed(2)}x'
+                          : '倍速',
+                      color: rateOpen || rate != 1.0
+                          ? const Color(0xFFC8B6FF)
+                          : Colors.white,
+                      onTap: onRatePanel,
+                    ),
+                    if (hasNext && onNext != null) ...[
+                      const SizedBox(width: 10),
+                      _TopIcon(
+                        icon: Icons.skip_next,
+                        tooltip: '下一集',
+                        onTap: onNext!,
+                      ),
+                    ],
+                    const SizedBox(width: 10),
+                    _TopIcon(
+                      icon: Icons.chat_bubble_outline,
+                      tooltip: danmakuOn ? '关闭弹幕' : '打开弹幕',
+                      color: danmakuOn ? const Color(0xFFC8B6FF) : Colors.white,
+                      onTap: onDanmaku,
+                    ),
+                    const SizedBox(width: 14),
+                    _SmallWinButton(
+                      icon: Icons.remove,
+                      tooltip: '最小化',
+                      onTap: () => windowManager.minimize(),
+                    ),
+                    _SmallWinButton(
+                      icon: maximized ? Icons.filter_none : Icons.crop_square,
+                      tooltip: maximized ? '还原' : '最大化',
+                      onTap: () async {
+                        if (await windowManager.isMaximized()) {
+                          await windowManager.unmaximize();
+                        } else {
+                          await windowManager.maximize();
+                        }
+                      },
+                    ),
+                    _SmallWinButton(
+                      icon: Icons.close,
+                      tooltip: '关闭',
+                      danger: true,
+                      onTap: () => windowManager.close(),
+                    ),
+                  ],
+                ),
+              ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TopIcon extends StatefulWidget {
+  const _TopIcon({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.color = Colors.white,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final Color color;
+
+  @override
+  State<_TopIcon> createState() => _TopIconState();
+}
+
+class _TopIconState extends State<_TopIcon> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: widget.tooltip,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: Container(
+            width: 24,
+            height: 28,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: _hover ? const Color(0x33FFFFFF) : Colors.transparent,
+              borderRadius: BorderRadius.circular(5),
+            ),
+            child: Icon(
+              widget.icon,
+              size: 17,
+              color: _hover ? Colors.white : widget.color,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SmallWinButton extends StatefulWidget {
+  const _SmallWinButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool danger;
+
+  @override
+  State<_SmallWinButton> createState() => _SmallWinButtonState();
+}
+
+class _SmallWinButtonState extends State<_SmallWinButton> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: widget.tooltip,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: Container(
+            width: 38,
+            height: 30,
+            color: _hover
+                ? (widget.danger ? const Color(0xFFE81123) : const Color(0x33FFFFFF))
+                : Colors.transparent,
+            child: Icon(
+              widget.icon,
+              size: 14,
+              color: Colors.white,
+            ),
           ),
         ),
       ),

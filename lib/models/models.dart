@@ -770,7 +770,7 @@ class AppSettings {
     this.widgetItems = const [],
     this.widgetProxy = const {},
     this.tmdbApiKey = '',
-    this.playerButtons = 'text',
+    this.playerButtons = 'icon',
     this.decoderMode = 'hardware',
     this.subtitleSites = const [],
     this.aiBaseUrl = 'https://api.openai.com/v1',
@@ -1178,7 +1178,7 @@ class AppSettings {
       ],
       widgetProxy: _readStringMap(extra.remove('widgetProxy')),
       tmdbApiKey: pop('tmdbApiKey', ''),
-      playerButtons: pop('playerButtons', 'text'),
+      playerButtons: pop('playerButtons', 'icon'),
       decoderMode: pop('decoderMode', 'hardware'),
       subtitleSites: [
         for (final raw in (extra.remove('subtitleSites') as List?) ?? const [])

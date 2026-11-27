@@ -628,8 +628,8 @@ void main() {
     expect(find.text('操作按钮'), findsOneWidget);
     await tester.tap(find.text('操作按钮'));
     await tester.pumpAndSettle();
-    expect(store.settings.playerButtons, 'icon');
-    expect(find.text('图标'), findsOneWidget);
+    expect(store.settings.playerButtons, 'text');
+    expect(find.text('文字'), findsOneWidget);
 
     // 内核切换如实说明 Windows 只有 mpv；解码方式真的写进设置。
     await tester.tap(find.text('播放内核'));
