@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
+import '../../services/widgets/widget_center.dart';
 
 /// Picks which site the home feed speaks for.
 ///
@@ -127,6 +128,35 @@ class _SitePickerDialogState extends State<_SitePickerDialog> {
                   ],
                 ),
               ),
+              const SizedBox(height: 12),
+              const Text(
+                '自定义页面',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: LcbColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              _PageChoice(
+                label: '使用资源自己的首页',
+                selected: store.settings.homePageId.isEmpty,
+                onTap: () async {
+                  await WidgetCenter.setHomePage(store, null);
+                  if (context.mounted) Navigator.of(context).pop();
+                },
+              ),
+              for (final page in WidgetCenter.pages(store)) ...[
+                _PageChoice(
+                  label: page.displayName,
+                  selected: store.settings.homePageId == page.id,
+                  onTap: () async {
+                    await WidgetCenter.setHomePage(store, page.id);
+                    if (context.mounted) Navigator.of(context).pop();
+                  },
+                ),
+              ],
+              const SizedBox(height: 12),
+              const Divider(height: 1),
               const SizedBox(height: 10),
               SizedBox(
                 height: 320,
@@ -187,6 +217,51 @@ class _SitePickerDialogState extends State<_SitePickerDialog> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PageChoice extends StatelessWidget {
+  const _PageChoice({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        height: 36,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  color: selected ? LcbColors.primaryDim : LcbColors.text,
+                ),
+              ),
+            ),
+            if (selected)
+              const Icon(
+                CupertinoIcons.checkmark_alt,
+                size: 16,
+                color: LcbColors.primaryDim,
+              ),
+          ],
         ),
       ),
     );

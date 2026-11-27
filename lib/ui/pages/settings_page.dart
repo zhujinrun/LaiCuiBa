@@ -13,6 +13,7 @@ import '../../services/icon_packs.dart';
 import '../../services/store.dart';
 import '../../services/track_choice.dart';
 import '../page_header.dart';
+import '../custom/widgets_settings_page.dart';
 import '../widgets/backup_dialog.dart';
 import '../widgets/subtitle_style.dart';
 
@@ -259,6 +260,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return _dataRows(store);
       case '源图标包':
         return const [_IconPacksSection()];
+      case '自定义页面':
+        return const [CustomPagesSettings()];
       default:
         return const [];
     }
@@ -643,6 +646,13 @@ class _SettingsPageState extends State<SettingsPage> {
               title: '首页分类',
               subtitle: '电影、电视剧、动漫、综艺等分区',
               onTap: () {},
+            ),
+            _Row(
+              icon: CupertinoIcons.rectangle_grid_2x2,
+              color: LcbColors.sysTeal,
+              title: '自定义页面',
+              subtitle: '新建页面，用组件区域拼出首页',
+              onTap: () => _open('自定义页面'),
             ),
             _Row(
               icon: CupertinoIcons.clock_fill,

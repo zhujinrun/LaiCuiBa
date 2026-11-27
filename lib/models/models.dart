@@ -761,6 +761,8 @@ class AppSettings {
     this.badgeSpot = 'leftTop',
     this.badgeText = false,
     this.badgeSpecs = const {},
+    this.customPages = const [],
+    this.homePageId = '',
     this.extra = const {},
   });
 
@@ -875,6 +877,13 @@ class AppSettings {
   /// 各类规格的细开关：`{'hdr10': false}` 表示不显示 HDR10。缺省的键视为开。
   final Map<String, bool> badgeSpecs;
 
+  /// 自定义页面表，保持原始 JSON：页面/组件区域的语义在
+  /// `services/widgets/widget_models.dart`，模型包不反过来 import 服务。
+  final List<Map<String, dynamic>> customPages;
+
+  /// 首页当前显示的自定义页面 id。空表示用资源自己的首页。
+  final String homePageId;
+
   /// Unmodelled keys carried through unchanged.
   final Map<String, dynamic> extra;
 
@@ -920,6 +929,8 @@ class AppSettings {
     String? badgeSpot,
     bool? badgeText,
     Map<String, bool>? badgeSpecs,
+    List<Map<String, dynamic>>? customPages,
+    String? homePageId,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -963,6 +974,8 @@ class AppSettings {
       badgeSpot: badgeSpot ?? this.badgeSpot,
       badgeText: badgeText ?? this.badgeText,
       badgeSpecs: badgeSpecs ?? this.badgeSpecs,
+      customPages: customPages ?? this.customPages,
+      homePageId: homePageId ?? this.homePageId,
       extra: extra,
     );
   }
@@ -1010,6 +1023,10 @@ class AppSettings {
     'badgeSpot': badgeSpot,
     'badgeText': badgeText,
     'badgeSpecs': badgeSpecs,
+    'customPages': [
+      for (final page in customPages) Map<String, dynamic>.from(page),
+    ],
+    'homePageId': homePageId,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -1069,6 +1086,11 @@ class AppSettings {
       badgeSpot: pop('badgeSpot', 'leftTop'),
       badgeText: pop('badgeText', false),
       badgeSpecs: _readBadgeSpecs(extra.remove('badgeSpecs')),
+      customPages: [
+        for (final raw in (extra.remove('customPages') as List?) ?? const [])
+          if (raw is Map) Map<String, dynamic>.from(raw),
+      ],
+      homePageId: pop('homePageId', ''),
       extra: extra,
     );
   }

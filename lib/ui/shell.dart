@@ -13,6 +13,8 @@ import '../services/awake.dart';
 import '../services/demo_data.dart';
 import '../services/store.dart';
 import '../services/track_choice.dart';
+import '../services/widgets/widget_center.dart';
+import 'custom/custom_home.dart';
 import 'pages/common_pages.dart';
 import 'pages/detail_page.dart';
 import 'pages/grid_page.dart';
@@ -427,7 +429,10 @@ class _ShellState extends State<Shell> {
     }
     switch (_page) {
       case LcbPage.home:
-        return const HomePage();
+        final custom = WidgetCenter.homePage(StoreScope.of(context));
+        return custom == null
+            ? const HomePage()
+            : CustomHomePage(pageId: custom.id);
       case LcbPage.resources:
         return ResourcesPage(state: _resources);
       case LcbPage.favorites:
