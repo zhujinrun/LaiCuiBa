@@ -19,6 +19,7 @@ class _WidgetRepoSettingsState extends State<WidgetRepoSettings> {
   late List<WidgetRepo> _repos = WidgetCenter.repos(StoreScope.of(context));
   late List<WidgetInfo> _widgets = WidgetCenter.widgets(StoreScope.of(context));
   String? _notice;
+  String _query = '';
 
   void _reload() {
     final store = StoreScope.of(context);
@@ -213,8 +214,30 @@ class _WidgetRepoSettingsState extends State<WidgetRepoSettings> {
           ]),
           const SizedBox(height: 12),
         ],
-        if (_widgets.isNotEmpty) const _Heading('组件'),
-        for (final widget in _widgets) ...[
+        if (_widgets.isNotEmpty) ...[
+          const _Heading('组件'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+            child: SizedBox(
+              height: 34,
+              child: TextField(
+                onChanged: (value) => setState(() => _query = value.trim()),
+                decoration: const InputDecoration(
+                  hintText: '搜索组件名称',
+                  prefixIcon: Icon(Icons.search, size: 16),
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
+          ),
+        ],
+        for (final widget in _widgets.where(
+          (widget) =>
+              _query.isEmpty ||
+              widget.displayName.contains(_query) ||
+              widget.group.contains(_query),
+        )) ...[
           _card([
             _row(
               icon: Icons.extension,
@@ -223,6 +246,7 @@ class _WidgetRepoSettingsState extends State<WidgetRepoSettings> {
                   ? '${widget.modules.length} 个数据源 · 未分组'
                   : '${widget.modules.length} 个数据源 · ${widget.group}',
               value: '分组',
+              iconUrl: widget.icon,
               onTap: () => _group(widget),
             ),
           ]),
@@ -245,6 +269,7 @@ class _WidgetRepoSettingsState extends State<WidgetRepoSettings> {
     required String title,
     required String subtitle,
     String? value,
+    String? iconUrl,
     required VoidCallback onTap,
   }) => GestureDetector(
     behavior: HitTestBehavior.opaque,
@@ -255,7 +280,22 @@ class _WidgetRepoSettingsState extends State<WidgetRepoSettings> {
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: LcbColors.sysPurple),
+            iconUrl != null && iconUrl.isNotEmpty
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Image.network(
+                      iconUrl,
+                      width: 24,
+                      height: 24,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const Icon(
+                        Icons.extension,
+                        size: 18,
+                        color: LcbColors.sysPurple,
+                      ),
+                    ),
+                  )
+                : Icon(icon, size: 18, color: LcbColors.sysPurple),
             const SizedBox(width: 14),
             Expanded(
               child: Column(

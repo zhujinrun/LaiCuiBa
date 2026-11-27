@@ -98,13 +98,16 @@ class MediaItem {
   /// Emby, for instance, has no `vod_play_from` equivalent and only sets the
   /// play lines it synthesised.
   MediaItem withDetail({
+    String? title,
     String? overview,
     String? latest,
+    List<String>? categories,
+    List<String>? actors,
     List<String>? episodes,
     List<PlayLine>? playLines,
   }) => MediaItem(
     id: id,
-    title: title,
+    title: title ?? this.title,
     subtitle: subtitle,
     score: score,
     tag: tag,
@@ -114,8 +117,8 @@ class MediaItem {
     image: image,
     latest: latest ?? this.latest,
     area: area,
-    categories: categories,
-    actors: actors,
+    categories: categories ?? this.categories,
+    actors: actors ?? this.actors,
     episodes: episodes ?? this.episodes,
     playLines: playLines ?? this.playLines,
     siteKey: siteKey,
@@ -766,6 +769,7 @@ class AppSettings {
     this.widgetRepos = const [],
     this.widgetItems = const [],
     this.widgetProxy = const {},
+    this.tmdbApiKey = '',
     this.extra = const {},
   });
 
@@ -893,6 +897,9 @@ class AppSettings {
   final List<Map<String, dynamic>> widgetItems;
   final Map<String, dynamic> widgetProxy;
 
+  /// 用户自己的 TMDB v3 Key，只保存在本机，不进备份（原版明文）。
+  final String tmdbApiKey;
+
   /// Unmodelled keys carried through unchanged.
   final Map<String, dynamic> extra;
 
@@ -943,6 +950,7 @@ class AppSettings {
     List<Map<String, dynamic>>? widgetRepos,
     List<Map<String, dynamic>>? widgetItems,
     Map<String, dynamic>? widgetProxy,
+    String? tmdbApiKey,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -991,6 +999,7 @@ class AppSettings {
       widgetRepos: widgetRepos ?? this.widgetRepos,
       widgetItems: widgetItems ?? this.widgetItems,
       widgetProxy: widgetProxy ?? this.widgetProxy,
+      tmdbApiKey: tmdbApiKey ?? this.tmdbApiKey,
       extra: extra,
     );
   }
@@ -1049,6 +1058,7 @@ class AppSettings {
       for (final item in widgetItems) Map<String, dynamic>.from(item),
     ],
     'widgetProxy': Map<String, dynamic>.from(widgetProxy),
+    'tmdbApiKey': tmdbApiKey,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -1122,6 +1132,7 @@ class AppSettings {
           if (raw is Map) Map<String, dynamic>.from(raw),
       ],
       widgetProxy: _readStringMap(extra.remove('widgetProxy')),
+      tmdbApiKey: pop('tmdbApiKey', ''),
       extra: extra,
     );
   }

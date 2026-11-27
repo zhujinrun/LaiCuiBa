@@ -28,6 +28,7 @@ import 'tvbox_source.dart';
 import 'webdav_client.dart';
 import 'spider_session.dart';
 import 'track_choice.dart';
+import 'widgets/widget_models.dart';
 import 'widgets/widget_runtime.dart';
 
 /// Application-wide persistent state: watch history, favourites (in their own
@@ -1228,6 +1229,56 @@ class AppStore extends ChangeNotifier {
     final stub = detailStub;
     if (stub != null) return stub(item);
 
+    // 组件条目由 siteKey 标记，详情链接放在 id 上（CapyPlayer 推荐 id=link）。
+    // loadDetail 是组件的二次解析出口，返回播放线路 / 季集 / 简介补充。
+    final siteKey = item.siteKey;
+    if (siteKey != null && siteKey.startsWith('widget:')) {
+      final widgetId = siteKey.substring('widget:'.length);
+      WidgetInfo? widget;
+      for (final raw in _settings.widgetItems) {
+        if (raw['id'] == widgetId) {
+          widget = WidgetInfo.fromJson(raw);
+          break;
+        }
+      }
+      final runtime = widgets;
+      if (widget == null || runtime == null) return null;
+      try {
+        final detail = await runtime.detail(widget.scriptPath, item.id);
+        if (detail == null) return null;
+        final lines = <PlayLine>[
+          for (final line in detail.lines)
+            PlayLine(
+              name: line.name,
+              episodes: [PlayEpisode(label: '正片', url: line.url)],
+            ),
+        ];
+        if (detail.episodes.isNotEmpty) {
+          lines.add(
+            PlayLine(
+              name: '组件',
+              episodes: [
+                for (final episode in detail.episodes)
+                  PlayEpisode(label: episode.label, url: episode.url),
+              ],
+            ),
+          );
+        }
+        return item.withDetail(
+          title: detail.title.isEmpty ? item.title : detail.title,
+          overview: item.overview,
+          categories: detail.tags.isEmpty ? item.categories : detail.tags,
+          actors: detail.cast.isEmpty ? item.actors : detail.cast,
+          episodes: [
+            for (final episode in detail.episodes) episode.label,
+          ],
+          playLines: lines,
+        );
+      } on Object {
+        return null;
+      }
+    }
+
     final mount = mountClientOf(currentSource);
     if (mount != null) {
       try {
@@ -1260,7 +1311,6 @@ class AppStore extends ChangeNotifier {
     final session = spider;
     final js = _jsSource();
     if (session == null || js == null) return null;
-    final siteKey = item.siteKey;
     final site = siteKey == null ? null : siteOf(js.$1, siteKey);
     if (site == null) return null;
     // The search list's vod_id is the id the source uses for a detail lookup.
@@ -2021,6 +2071,7 @@ class AppStore extends ChangeNotifier {
   Map<String, dynamic> _exportSettings() {
     final json = _settings.toJson();
     json.remove('widgetProxy');
+    json.remove('tmdbApiKey');
     return json;
   }
 

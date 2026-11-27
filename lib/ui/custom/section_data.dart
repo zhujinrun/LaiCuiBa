@@ -1,5 +1,6 @@
 import '../../models/models.dart';
 import '../../services/store.dart';
+import '../../services/tmdb.dart';
 import '../../services/widgets/widget_center.dart';
 import '../../services/widgets/widget_models.dart';
 
@@ -36,7 +37,7 @@ class SectionDataLoader {
       case SectionSource.widget:
         return _widget(store, section);
       case SectionSource.tmdb:
-        return const SectionData(error: 'TMDB 数据源还没接');
+        return _tmdb(store, section);
     }
   }
 }
@@ -63,34 +64,59 @@ Future<SectionData> _widget(AppStore store, PageSection section) async {
     final answer = await runtime.load(
       widget.scriptPath,
       module.functionName,
-      const {'page': 1},
+      section.params.isEmpty ? const {'page': 1} : section.params,
     );
     return SectionData(
-      items: [for (final item in answer.items) _mediaOf(item, module.title)],
+      items: [
+        for (final item in answer.items)
+          WidgetMediaMapper.map(item, module.title, widget.id),
+      ],
     );
   } on Object catch (error) {
     return SectionData(error: '$error');
   }
 }
 
-MediaItem _mediaOf(Map<String, dynamic> item, String lineName) {
-  final video = '${item['videoUrl'] ?? ''}';
-  final link = '${item['link'] ?? ''}';
-  final description = '${item['description'] ?? ''}';
-  return MediaItem(
-    id: '${item['id'] ?? ''}',
-    title: '${item['title'] ?? ''}',
-    subtitle: description.isEmpty ? null : description,
-    overview: link.isEmpty ? null : '详情链接：$link',
-    image: '${item['image'] ?? ''}',
-    tag: '${item['mediaType'] ?? ''}'.isEmpty ? null : '${item['mediaType']}',
-    playLines: video.isEmpty
-        ? const []
-        : [
-            PlayLine(
-              name: lineName,
-              episodes: [PlayEpisode(label: '正片', url: video)],
-            ),
-          ],
-  );
+class WidgetMediaMapper {
+  static MediaItem map(
+    Map<String, dynamic> item,
+    String lineName,
+    String widgetId,
+  ) {
+    final video = '${item['videoUrl'] ?? ''}';
+    final link = '${item['link'] ?? ''}';
+    final description = '${item['description'] ?? ''}';
+    final rawId = '${item['id'] ?? ''}';
+    return MediaItem(
+      // 有详情链接的条目把 link 放在 id 上，detailReal 会交给 loadDetail 解析。
+      id: video.isEmpty && link.isNotEmpty ? link : rawId,
+      title: '${item['title'] ?? ''}',
+      subtitle: description.isEmpty ? null : description,
+      overview: link.isEmpty ? null : '详情链接：$link',
+      image: '${item['image'] ?? ''}',
+      tag: '${item['mediaType'] ?? ''}'.isEmpty ? null : '${item['mediaType']}',
+      playLines: video.isEmpty
+          ? const []
+          : [
+              PlayLine(
+                name: lineName,
+                episodes: [PlayEpisode(label: '正片', url: video)],
+              ),
+            ],
+      siteKey: 'widget:$widgetId',
+    );
+  }
+}
+
+Future<SectionData> _tmdb(AppStore store, PageSection section) async {
+  final key = store.settings.tmdbApiKey.trim();
+  if (key.isEmpty) {
+    return const SectionData(error: '请先到设置配置 TMDB API Key');
+  }
+  final kind = section.categoryId == 'tv' ? 'tv' : 'movie';
+  try {
+    return SectionData(items: await TmdbService.trending(key, kind: kind));
+  } on Object catch (error) {
+    return SectionData(error: '$error');
+  }
 }

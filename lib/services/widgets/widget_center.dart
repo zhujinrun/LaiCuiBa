@@ -171,6 +171,7 @@ class WidgetCenter {
       description: meta.description,
       version: meta.version,
       author: meta.author,
+      icon: meta.icon,
       modules: [
         for (final module in meta.modules)
           WidgetModule(
@@ -178,6 +179,7 @@ class WidgetCenter {
             title: module.title,
             functionName: module.functionName,
             type: module.type,
+            params: module.params,
           ),
       ],
     );

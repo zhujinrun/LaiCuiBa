@@ -36,7 +36,7 @@ void main() {
       store,
       const PageSection(id: 's', source: SectionSource.tmdb),
     );
-    expect(tmdb.error, 'TMDB 数据源还没接');
+    expect(tmdb.error, '请先到设置配置 TMDB API Key');
 
     final empty = await SectionDataLoader.load(
       store,

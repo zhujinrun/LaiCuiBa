@@ -321,6 +321,7 @@ function normalizeMeta(raw) {
     version: String(raw.version || '1.0.0'),
     author: String(raw.author || ''),
     site: String(raw.site || ''),
+    icon: String(raw.icon || raw.iconUrl || ''),
     modules,
   };
 }
@@ -378,6 +379,90 @@ async function callData(scriptPath, functionName, params) {
   return { items, logs: logs.slice(-40) };
 }
 
+
+function urlOf(item, fallbacks) {
+  for (const key of ['videoUrl'].concat(fallbacks || [])) {
+    if (item && item[key]) return String(item[key]);
+  }
+  return '';
+}
+
+async function callDetail(scriptPath, link) {
+  const entry = loadScript(scriptPath);
+  const fn = entry.context.loadDetail;
+  if (typeof fn !== 'function') throw new Error('loadDetail function not found');
+  const answer = await fn.call(entry.context, link);
+  if (!answer) return { detail: null, logs: logs.slice(-40) };
+
+  let raw = answer;
+  if (Array.isArray(raw)) {
+    if (raw.length && (raw[0].seasons || raw[0].episodes || raw[0].episodeItems)) {
+      raw = raw[0];
+    } else {
+      raw = { playSources: raw };
+    }
+  }
+
+  const lines = [];
+  const direct = urlOf(raw, ['video_url', 'url']);
+  if (direct) lines.push({ name: '组件', url: direct });
+  for (const source of (raw.playSources || raw.play_sources || [])) {
+    const url = urlOf(source, ['video_url', 'url', 'path', 'link']);
+    if (url) lines.push({ name: String(source.title || source.name || source.label || '线路'), url });
+  }
+
+  const seasons = [];
+  const allEpisodes = [];
+  for (const season of (raw.seasons || [])) {
+    const episodes = [];
+    for (const episode of (season.episodes || season.episodeItems || season.episode_items || [])) {
+      const labels = [];
+      if (season.seasonNumber || season.season_number) labels.push('S' + (season.seasonNumber || season.season_number));
+      if (episode.episodeNumber || episode.episode_number) labels.push('E' + (episode.episodeNumber || episode.episode_number));
+      const label = labels.join('') || String(episode.title || '剧集');
+      const url = urlOf(episode, ['video_url']);
+      if (url) episodes.push({ label, url });
+      const sources = (episode.playSources || episode.play_sources || []).map((s) => ({
+        name: String(s.title || s.name || '线路'),
+        url: urlOf(s, ['video_url', 'url', 'path', 'link']),
+      })).filter((s) => s.url);
+      for (const source of sources) episodes.push({ label: label + ' · ' + source.name, url: source.url });
+    }
+    if (episodes.length) seasons.push({ number: Number(season.seasonNumber || season.season_number || 0), episodes });
+  }
+  for (const episode of (raw.episodeItems || raw.episodes || [])) {
+    const label = 'E' + String(episode.episodeNumber || episode.episode_number || '');
+    const url = urlOf(episode, ['video_url']);
+    if (url) allEpisodes.push({ label, url });
+    for (const source of (episode.playSources || episode.play_sources || [])) {
+      const sourceUrl = urlOf(source, ['video_url', 'url', 'path', 'link']);
+      if (sourceUrl) allEpisodes.push({ label: label + ' · ' + String(source.title || source.name || '线路'), url: sourceUrl });
+    }
+  }
+
+  const tags = (Array.isArray(raw.tags) ? raw.tags : [])
+    .map((tag) => String(tag && tag.name ? tag.name : tag).trim())
+    .filter((tag) => tag.length);
+  const cast = [];
+  const credits = raw.credits || {};
+  for (const person of (credits.cast || raw.cast || raw.actors || [])) {
+    if (person && person.name) cast.push(String(person.name));
+  }
+
+  return {
+    detail: {
+      title: String(raw.title || raw.name || ''),
+      mediaType: String(raw.mediaType || raw.media_type || ''),
+      lines,
+      seasons,
+      episodes: allEpisodes,
+      tags,
+      cast,
+    },
+    logs: logs.slice(-40),
+  };
+}
+
 readline.createInterface({ input: process.stdin, crlfDelay: Infinity }).on('line', async (line) => {
   let request;
   try {
@@ -398,6 +483,8 @@ readline.createInterface({ input: process.stdin, crlfDelay: Infinity }).on('line
         result = JSON.stringify(metadata(args[0]));
       } else if (request.method === 'data') {
         result = JSON.stringify(await callData(args[0], args[1], args[2] || {}));
+      } else if (request.method === 'detail') {
+        result = JSON.stringify(await callDetail(args[0], String(args[1] || '')));
       } else {
         throw new Error('未知的组件操作：' + request.method);
       }

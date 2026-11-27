@@ -53,6 +53,7 @@ class PageSection {
     this.categoryName = '',
     this.widgetId = '',
     this.moduleId = '',
+    this.params = const {},
   });
 
   final String id;
@@ -68,6 +69,9 @@ class PageSection {
   final String widgetId;
   final String moduleId;
 
+  /// 数据源函数的运行时参数（搜索框等填进来的值）。
+  final Map<String, dynamic> params;
+
   PageSection copyWith({
     String? title,
     SectionView? view,
@@ -76,6 +80,7 @@ class PageSection {
     String? categoryName,
     String? widgetId,
     String? moduleId,
+    Map<String, dynamic>? params,
   }) => PageSection(
     id: id,
     title: title ?? this.title,
@@ -85,6 +90,7 @@ class PageSection {
     categoryName: categoryName ?? this.categoryName,
     widgetId: widgetId ?? this.widgetId,
     moduleId: moduleId ?? this.moduleId,
+    params: params ?? this.params,
   );
 
   Map<String, dynamic> toJson() => {
@@ -96,6 +102,7 @@ class PageSection {
     'categoryName': categoryName,
     'widgetId': widgetId,
     'moduleId': moduleId,
+    'params': params,
   };
 
   factory PageSection.fromJson(Map<String, dynamic> json) => PageSection(
@@ -107,6 +114,10 @@ class PageSection {
     categoryName: json['categoryName'] as String? ?? '',
     widgetId: json['widgetId'] as String? ?? '',
     moduleId: json['moduleId'] as String? ?? '',
+    params: {
+      for (final entry in ((json['params'] as Map?) ?? const {}).entries)
+        if (entry.key is String) '${entry.key}': entry.value,
+    },
   );
 }
 
@@ -210,6 +221,7 @@ class WidgetModule {
     required this.title,
     required this.functionName,
     this.type = 'media_list',
+    this.params = const [],
   });
 
   final String id;
@@ -217,11 +229,15 @@ class WidgetModule {
   final String functionName;
   final String type;
 
+  /// WidgetMetadata.modules[].params，搜索表单按它生成输入框。
+  final List<Map<String, dynamic>> params;
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,
     'functionName': functionName,
     'type': type,
+    'params': params,
   };
 
   factory WidgetModule.fromJson(Map<String, dynamic> json) => WidgetModule(
@@ -229,6 +245,10 @@ class WidgetModule {
     title: json['title'] as String? ?? '',
     functionName: json['functionName'] as String? ?? '',
     type: json['type'] as String? ?? 'media_list',
+    params: [
+      for (final raw in (json['params'] as List?) ?? const [])
+        if (raw is Map) Map<String, dynamic>.from(raw),
+    ],
   );
 }
 
@@ -242,6 +262,7 @@ class WidgetInfo {
     this.description = '',
     this.version = '',
     this.author = '',
+    this.icon = '',
     this.group = '',
     this.modules = const [],
   });
@@ -253,6 +274,7 @@ class WidgetInfo {
   final String description;
   final String version;
   final String author;
+  final String icon;
   final String group;
   final List<WidgetModule> modules;
 
@@ -266,6 +288,7 @@ class WidgetInfo {
     description: description,
     version: version,
     author: author,
+    icon: icon,
     group: group ?? this.group,
     modules: modules,
   );
@@ -278,6 +301,7 @@ class WidgetInfo {
     'description': description,
     'version': version,
     'author': author,
+    'icon': icon,
     'group': group,
     'modules': [for (final module in modules) module.toJson()],
   };
@@ -290,6 +314,7 @@ class WidgetInfo {
     description: json['description'] as String? ?? '',
     version: json['version'] as String? ?? '',
     author: json['author'] as String? ?? '',
+    icon: json['icon'] as String? ?? '',
     group: json['group'] as String? ?? '',
     modules: [
       for (final raw in (json['modules'] as List?) ?? const [])

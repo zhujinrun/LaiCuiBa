@@ -1,12 +1,16 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 
 import '../../core/detail_nav.dart';
+import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
+import '../../services/widgets/widget_center.dart';
 import '../../services/widgets/widget_models.dart';
 import '../widgets/hero_banner.dart';
 import '../widgets/media_card.dart';
 import '../widgets/rail.dart';
+import 'widget_search_dialog.dart';
 
 /// 一个组件区域按选中的展示方式画出来，对应原版 `section_views.dart`。
 class SectionViewWidget extends StatelessWidget {
@@ -31,7 +35,21 @@ class SectionViewWidget extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: LcbMetrics.pagePadding),
-          child: SectionHeader(title: title.isEmpty ? '组件区域' : title),
+          child: Row(
+            children: [
+              Expanded(
+                child: SectionHeader(title: title.isEmpty ? '组件区域' : title),
+              ),
+              if (section.source == SectionSource.widget)
+                IconButton(
+                  onPressed: () => _search(context),
+                  icon: const Icon(CupertinoIcons.search, size: 16),
+                  color: LcbColors.textSecondary,
+                  tooltip: '搜索组件内容',
+                  splashRadius: 18,
+                ),
+            ],
+          ),
         ),
         const SizedBox(height: 12),
         if (items.isEmpty)
@@ -56,6 +74,26 @@ class SectionViewWidget extends StatelessWidget {
             SectionView.rail => _rail(context, items),
           },
       ],
+    );
+  }
+
+  Future<void> _search(BuildContext context) async {
+    final store = StoreScope.of(context);
+    final widget = WidgetCenter.widget(store, section.widgetId);
+    if (widget == null) return;
+    WidgetModule? module;
+    for (final candidate in widget.modules) {
+      if (candidate.id == section.moduleId) module = candidate;
+    }
+    module ??= widget.modules.firstOrNull;
+    if (module == null) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => WidgetSearchDialog(
+        section: section,
+        widget: widget,
+        module: module!,
+      ),
     );
   }
 

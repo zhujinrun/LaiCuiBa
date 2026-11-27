@@ -435,11 +435,7 @@ class _SectionEditorState extends State<_SectionEditor> {
                 for (final source in SectionSource.values)
                   DropdownMenuItem(
                     value: source,
-                    child: Text(
-                      source == SectionSource.tmdb
-                          ? '${source.label}（还没接）'
-                          : source.label,
-                    ),
+                    child: Text(source.label),
                   ),
               ],
               onChanged: (value) => setState(() => _source = value ?? _source),
@@ -460,6 +456,21 @@ class _SectionEditorState extends State<_SectionEditor> {
                     ),
                 ],
                 onChanged: (value) => setState(() => _categoryId = value ?? ''),
+              ),
+            ],
+            if (_source == SectionSource.tmdb) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _categoryId == 'tv' ? 'tv' : 'movie',
+                decoration: const InputDecoration(
+                  labelText: 'TMDB 片单',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'movie', child: Text('热门电影')),
+                  DropdownMenuItem(value: 'tv', child: Text('热门剧集')),
+                ],
+                onChanged: (value) => setState(() => _categoryId = value ?? 'movie'),
               ),
             ],
             if (_source == SectionSource.widget) ...[

@@ -267,6 +267,18 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _setTmdbKey() async {
+    final store = StoreScope.of(context);
+    final key = await showDialog<String>(
+      context: context,
+      builder: (_) => _ApiKeyDialog(current: store.settings.tmdbApiKey),
+    );
+    if (key == null) return;
+    await store.updateSettings(store.settings.copyWith(tmdbApiKey: key.trim()));
+    if (!mounted) return;
+    _toast(key.trim().isEmpty ? 'TMDB API Key 已清除' : 'TMDB API Key 已保存');
+  }
+
   String _themeModeLabel(String mode) {
     switch (mode) {
       case 'dark':
@@ -300,6 +312,14 @@ class _SettingsPageState extends State<SettingsPage> {
         const _GroupLabel('数据'),
         _Group(
           rows: [
+            _Row(
+              icon: Icons.key,
+              color: LcbColors.sysBlue,
+              title: '填写 TMDB API Key',
+              subtitle: '只保存在本机，不进备份；留空保存即清除',
+              value: store.settings.tmdbApiKey.isEmpty ? '未设置' : '已设置',
+              onTap: _setTmdbKey,
+            ),
             _Row(
               icon: CupertinoIcons.chart_pie_fill,
               color: LcbColors.sysPurple,
@@ -2276,6 +2296,53 @@ class _IconPackNameDialogState extends State<_IconPackNameDialog> {
           child: const Text('取消'),
         ),
         TextButton(onPressed: _save, child: const Text('保存')),
+      ],
+    );
+  }
+}
+
+
+class _ApiKeyDialog extends StatefulWidget {
+  const _ApiKeyDialog({required this.current});
+
+  final String current;
+
+  @override
+  State<_ApiKeyDialog> createState() => _ApiKeyDialogState();
+}
+
+class _ApiKeyDialogState extends State<_ApiKeyDialog> {
+  late final _controller = TextEditingController(text: widget.current);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('填写 TMDB API Key'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        obscureText: true,
+        decoration: const InputDecoration(
+          labelText: 'API Key（v3）',
+          isDense: true,
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('保存'),
+        ),
       ],
     );
   }

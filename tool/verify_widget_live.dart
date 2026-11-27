@@ -40,6 +40,7 @@ Future<void> main() async {
     _check('WidgetMetadata 读到标题', meta.title == '测试组件', meta.title);
     _check('模块函数被认出', meta.modules.single.functionName == 'getPopular');
     _check('组件编号来自脚本', meta.id == 'fixture_widget', meta.id);
+    _check('组件图标读进来', meta.icon.contains('widget.png'), meta.icon);
 
     final answer = await runtime.load(fixture, 'getPopular', {'page': 1});
     _check('数据源返回数组', answer.items.length == 2, '${answer.items.length} 条');
@@ -50,6 +51,19 @@ Future<void> main() async {
     _check('name 兜底到 title', '${second['title']}' == '夹具影片二');
     _check('media_type 兜底', '${second['mediaType']}' == 'tv');
     _check('组件日志带回来', answer.logs.any((line) => line.contains('widget fixture')));
+
+    final detail = await runtime.detail(
+      fixture,
+      'https://example.com/detail/2',
+    );
+    _check('loadDetail 被调用', detail != null);
+    _check('详情标题来自组件', detail?.title == '夹具详情', detail?.title ?? '');
+    _check('多季多集被归一', detail?.episodes.length == 2, '${detail?.episodes.length}');
+    _check(
+      '播放线路来自组件',
+      detail?.episodes.first.url.contains('s1e1-line1') ?? false,
+    );
+    _check('标签与演员带回来', detail?.tags.length == 2 && detail?.cast.length == 1);
 
     try {
       await runtime.load(fixture, 'noSuchFunction', {});
