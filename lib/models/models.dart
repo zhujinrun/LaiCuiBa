@@ -763,6 +763,9 @@ class AppSettings {
     this.badgeSpecs = const {},
     this.customPages = const [],
     this.homePageId = '',
+    this.widgetRepos = const [],
+    this.widgetItems = const [],
+    this.widgetProxy = const {},
     this.extra = const {},
   });
 
@@ -884,6 +887,12 @@ class AppSettings {
   /// 首页当前显示的自定义页面 id。空表示用资源自己的首页。
   final String homePageId;
 
+  /// 导入的组件仓库、组件元数据与本机代理配置，保持原始 JSON：
+  /// 语义在 `services/widgets/widget_models.dart`。
+  final List<Map<String, dynamic>> widgetRepos;
+  final List<Map<String, dynamic>> widgetItems;
+  final Map<String, dynamic> widgetProxy;
+
   /// Unmodelled keys carried through unchanged.
   final Map<String, dynamic> extra;
 
@@ -931,6 +940,9 @@ class AppSettings {
     Map<String, bool>? badgeSpecs,
     List<Map<String, dynamic>>? customPages,
     String? homePageId,
+    List<Map<String, dynamic>>? widgetRepos,
+    List<Map<String, dynamic>>? widgetItems,
+    Map<String, dynamic>? widgetProxy,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -976,6 +988,9 @@ class AppSettings {
       badgeSpecs: badgeSpecs ?? this.badgeSpecs,
       customPages: customPages ?? this.customPages,
       homePageId: homePageId ?? this.homePageId,
+      widgetRepos: widgetRepos ?? this.widgetRepos,
+      widgetItems: widgetItems ?? this.widgetItems,
+      widgetProxy: widgetProxy ?? this.widgetProxy,
       extra: extra,
     );
   }
@@ -1027,6 +1042,13 @@ class AppSettings {
       for (final page in customPages) Map<String, dynamic>.from(page),
     ],
     'homePageId': homePageId,
+    'widgetRepos': [
+      for (final repo in widgetRepos) Map<String, dynamic>.from(repo),
+    ],
+    'widgetItems': [
+      for (final item in widgetItems) Map<String, dynamic>.from(item),
+    ],
+    'widgetProxy': Map<String, dynamic>.from(widgetProxy),
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -1091,6 +1113,15 @@ class AppSettings {
           if (raw is Map) Map<String, dynamic>.from(raw),
       ],
       homePageId: pop('homePageId', ''),
+      widgetRepos: [
+        for (final raw in (extra.remove('widgetRepos') as List?) ?? const [])
+          if (raw is Map) Map<String, dynamic>.from(raw),
+      ],
+      widgetItems: [
+        for (final raw in (extra.remove('widgetItems') as List?) ?? const [])
+          if (raw is Map) Map<String, dynamic>.from(raw),
+      ],
+      widgetProxy: _readStringMap(extra.remove('widgetProxy')),
       extra: extra,
     );
   }

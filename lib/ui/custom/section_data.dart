@@ -1,5 +1,6 @@
 import '../../models/models.dart';
 import '../../services/store.dart';
+import '../../services/widgets/widget_center.dart';
 import '../../services/widgets/widget_models.dart';
 
 /// 一个组件区域真正取到的答案。失败和「今天没有内容」是两回事：前者说清
@@ -33,9 +34,63 @@ class SectionDataLoader {
           return SectionData(error: '$error');
         }
       case SectionSource.widget:
-        return const SectionData(error: '还没有导入组件仓库');
+        return _widget(store, section);
       case SectionSource.tmdb:
         return const SectionData(error: 'TMDB 数据源还没接');
     }
   }
+}
+
+/// 组件仓库数据源。原版的说法是组件运行在沙箱里但仍能访问网络；这里的宿主
+/// 是有超时的独立 Node 进程，组件报错按原版文案原样摆出来。
+Future<SectionData> _widget(AppStore store, PageSection section) async {
+  if (section.widgetId.isEmpty || section.moduleId.isEmpty) {
+    return const SectionData(error: '这个区域还没有选组件');
+  }
+  final widget = WidgetCenter.widget(store, section.widgetId);
+  if (widget == null) {
+    return const SectionData(error: '组件仓库或数据源已被删除');
+  }
+  final runtime = store.widgets;
+  if (runtime == null) {
+    return const SectionData(error: '当前设备不支持运行组件');
+  }
+  final module = widget.modules.firstWhere(
+    (candidate) => candidate.id == section.moduleId,
+    orElse: () => widget.modules.first,
+  );
+  try {
+    final answer = await runtime.load(
+      widget.scriptPath,
+      module.functionName,
+      const {'page': 1},
+    );
+    return SectionData(
+      items: [for (final item in answer.items) _mediaOf(item, module.title)],
+    );
+  } on Object catch (error) {
+    return SectionData(error: '$error');
+  }
+}
+
+MediaItem _mediaOf(Map<String, dynamic> item, String lineName) {
+  final video = '${item['videoUrl'] ?? ''}';
+  final link = '${item['link'] ?? ''}';
+  final description = '${item['description'] ?? ''}';
+  return MediaItem(
+    id: '${item['id'] ?? ''}',
+    title: '${item['title'] ?? ''}',
+    subtitle: description.isEmpty ? null : description,
+    overview: link.isEmpty ? null : '详情链接：$link',
+    image: '${item['image'] ?? ''}',
+    tag: '${item['mediaType'] ?? ''}'.isEmpty ? null : '${item['mediaType']}',
+    playLines: video.isEmpty
+        ? const []
+        : [
+            PlayLine(
+              name: lineName,
+              episodes: [PlayEpisode(label: '正片', url: video)],
+            ),
+          ],
+  );
 }

@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../services/widgets/widget_center.dart';
 import '../../services/widgets/widget_models.dart';
 import 'page_editor.dart';
+import 'widget_repo_settings.dart';
 
 /// 设置里的「自定义页面」子页，对应原版 `widgets_settings_page.dart`。
 class CustomPagesSettings extends StatefulWidget {
@@ -125,6 +126,8 @@ class _CustomPagesSettingsState extends State<CustomPagesSettings> {
           ]),
           const SizedBox(height: 14),
         ],
+        const SizedBox(height: 22),
+        const WidgetRepoSettings(),
       ],
     );
   }

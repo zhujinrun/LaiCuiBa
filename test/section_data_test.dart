@@ -19,7 +19,18 @@ void main() {
       const PageSection(id: 's', source: SectionSource.widget),
     );
     expect(widget.failed, isTrue);
-    expect(widget.error, '还没有导入组件仓库');
+    expect(widget.error, '这个区域还没有选组件');
+
+    final missing = await SectionDataLoader.load(
+      store,
+      const PageSection(
+        id: 's',
+        source: SectionSource.widget,
+        widgetId: 'not-imported',
+        moduleId: 'popular',
+      ),
+    );
+    expect(missing.error, '组件仓库或数据源已被删除');
 
     final tmdb = await SectionDataLoader.load(
       store,

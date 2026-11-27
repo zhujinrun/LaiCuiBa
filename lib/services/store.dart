@@ -28,6 +28,7 @@ import 'tvbox_source.dart';
 import 'webdav_client.dart';
 import 'spider_session.dart';
 import 'track_choice.dart';
+import 'widgets/widget_runtime.dart';
 
 /// Application-wide persistent state: watch history, favourites (in their own
 /// store, matching the original's `flutter.favorites` + `flutter.favoriteFolders`),
@@ -63,6 +64,10 @@ class AppStore extends ChangeNotifier {
   /// neither binary is present -- the same rule as [spider]: no runtime, no
   /// answer, and the pages say so.
   ScriptSources? scripts;
+
+  /// CapyPlayer / Forward 组件宿主。跟 spider/scripts 一样懒装配，缺 node.exe
+  /// 时为 null，组件数据源会明说运行环境没起来。
+  WidgetRuntimeApi? widgets;
 
   /// Test seam: when set, [searchRealStream] answers from here instead of the
   /// cat host. The search page is worth exercising without node.exe, and a stub
@@ -2009,8 +2014,15 @@ class AppStore extends ChangeNotifier {
     'history': [for (final entry in _history) entry.toJson()],
     'favorites': [for (final entry in _favorites) entry.toJson()],
     'favoriteFolders': [for (final entry in _favoriteFolders) entry.toJson()],
-    'settings': _settings.toJson(),
+    // 组件代理只保存在本机，不随备份或同步传输（原版明文）。
+    'settings': _exportSettings(),
   };
+
+  Map<String, dynamic> _exportSettings() {
+    final json = _settings.toJson();
+    json.remove('widgetProxy');
+    return json;
+  }
 
   /// Replaces every list with the bundle's and persists once.
   ///

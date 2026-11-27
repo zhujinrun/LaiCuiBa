@@ -42,6 +42,8 @@ for target in \
     # 单文件 js 站点（TVBox `api: …/x.js`）用的是另一个宿主，外加它要的 DOM。
     cp "$HERE/assets/runtime/node/js_site_host.js" "$target/js_site_host.js"
     cp "$HERE/assets/runtime/node/linkedom.js" "$target/linkedom.js"
+    # CapyPlayer / Forward 组件宿主，跟组件页面一起用。
+    cp "$HERE/assets/runtime/node/widget_host.js" "$target/widget_host.js"
     echo "已同步 $target"
   fi
 done

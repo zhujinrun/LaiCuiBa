@@ -18,6 +18,8 @@ void main() {
           source: SectionSource.category,
           categoryId: '1',
           categoryName: '电影',
+          widgetId: 'w1',
+          moduleId: 'popular',
         ),
         PageSection(
           id: 's2',
@@ -35,6 +37,8 @@ void main() {
     expect(restored.sections.length, 2);
     expect(restored.sections.first.view, SectionView.grid);
     expect(restored.sections.first.categoryId, '1');
+    expect(restored.sections.first.widgetId, 'w1');
+    expect(restored.sections.first.moduleId, 'popular');
     expect(restored.sections.last.source, SectionSource.tmdb);
   });
 

@@ -13,7 +13,12 @@ import 'package:path/path.dart' as p;
 ///   2. `<executable dir>/runtime/node/` (packaged build);
 ///   3. `<project root>/assets/runtime/node/` (running from source).
 class RuntimePaths {
-  const RuntimePaths._(this.node, this.hostScript, this.jsSiteHost);
+  const RuntimePaths._(
+    this.node,
+    this.hostScript,
+    this.jsSiteHost,
+    this.widgetHost,
+  );
 
   final String node;
   final String hostScript;
@@ -23,6 +28,9 @@ class RuntimePaths {
   /// bundles, the other runs single-file `.js` sites.
   final String jsSiteHost;
 
+  /// `widget_host.js` — CapyPlayer / Forward 组件的宿主，和 js 站点宿主同目录。
+  final String widgetHost;
+
   /// True when both files exist, so the app can skip wiring the spider at all
   /// when the runtime has not been synced yet.
   bool get available => File(node).existsSync() && File(hostScript).existsSync();
@@ -30,6 +38,10 @@ class RuntimePaths {
   /// True when the Node binary and the js-site bridge are both in place.
   bool get jsAvailable =>
       File(node).existsSync() && File(jsSiteHost).existsSync();
+
+  /// True when the Node binary and the Widget bridge are both in place.
+  bool get widgetAvailable =>
+      File(node).existsSync() && File(widgetHost).existsSync();
 
   /// Resolves from [overrideDir] when given, else by probing the two standard
   /// locations. Returns null when neither file is present.
@@ -44,6 +56,7 @@ class RuntimePaths {
         p.join(dir, 'node.exe'),
         p.join(dir, 'cat_host.js'),
         p.join(dir, 'js_site_host.js'),
+        p.join(dir, 'widget_host.js'),
       );
       if (paths.available) return paths;
     }
@@ -53,6 +66,7 @@ class RuntimePaths {
       p.join(candidates.last, 'node.exe'),
       p.join(candidates.last, 'cat_host.js'),
       p.join(candidates.last, 'js_site_host.js'),
+      p.join(candidates.last, 'widget_host.js'),
     );
   }
 }

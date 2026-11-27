@@ -11,6 +11,8 @@ import 'services/script_runtime.dart';
 import 'services/runtime_paths.dart';
 import 'services/spider_session.dart';
 import 'services/store.dart';
+import 'services/widgets/widget_models.dart';
+import 'services/widgets/widget_runtime.dart';
 import 'ui/shell.dart';
 
 Future<void> main() async {
@@ -65,6 +67,17 @@ Future<void> main() async {
     );
   } else {
     debugPrint('LcbScript: runtime absent, TVBox sources unavailable');
+  }
+
+  // CapyPlayer / Forward 组件宿主，跟 js 站点共用 node.exe 但要自己的桥。
+  if (runtime != null && runtime.widgetAvailable) {
+    store.widgets = WidgetRuntime(
+      nodePath: runtime.node,
+      hostScript: runtime.widgetHost,
+    );
+    await store.widgets!.applyProxy(
+      WidgetProxy.fromJson(store.settings.widgetProxy),
+    );
   }
 
   const options = WindowOptions(

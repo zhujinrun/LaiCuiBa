@@ -372,6 +372,17 @@ class _SectionEditorState extends State<_SectionEditor> {
   late SectionView _view = widget.section.view;
   late SectionSource _source = widget.section.source;
   late String _categoryId = widget.section.categoryId;
+  late final List<WidgetInfo> _widgets = WidgetCenter.widgets(
+    StoreScope.of(context),
+  );
+  late String _widgetId = widget.section.widgetId.isNotEmpty
+      ? widget.section.widgetId
+      : (_widgets.isNotEmpty ? _widgets.first.id : '');
+  late String _moduleId = widget.section.moduleId.isNotEmpty
+      ? widget.section.moduleId
+      : (_widgets.isNotEmpty && _widgets.first.modules.isNotEmpty
+          ? _widgets.first.modules.first.id
+          : '');
 
   @override
   void dispose() {
@@ -425,9 +436,9 @@ class _SectionEditorState extends State<_SectionEditor> {
                   DropdownMenuItem(
                     value: source,
                     child: Text(
-                      source == SectionSource.category
-                          ? source.label
-                          : '${source.label}（还没接）',
+                      source == SectionSource.tmdb
+                          ? '${source.label}（还没接）'
+                          : source.label,
                     ),
                   ),
               ],
@@ -450,6 +461,65 @@ class _SectionEditorState extends State<_SectionEditor> {
                 ],
                 onChanged: (value) => setState(() => _categoryId = value ?? ''),
               ),
+            ],
+            if (_source == SectionSource.widget) ...[
+              const SizedBox(height: 12),
+              if (_widgets.isEmpty)
+                const Text(
+                  '还没有导入组件仓库。可以在 设置 → 自定义页面 → 组件仓库 里导入。',
+                  style: TextStyle(fontSize: 12, color: LcbColors.textSecondary),
+                )
+              else ...[
+                DropdownButtonFormField<String>(
+                  initialValue: _widgets.any((w) => w.id == _widgetId)
+                      ? _widgetId
+                      : _widgets.first.id,
+                  decoration: const InputDecoration(
+                    labelText: '组件',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final widget in _widgets)
+                      DropdownMenuItem(
+                        value: widget.id,
+                        child: Text(widget.displayName),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    final picked = _widgets.firstWhere(
+                      (widget) => widget.id == value,
+                      orElse: () => _widgets.first,
+                    );
+                    setState(() {
+                      _widgetId = picked.id;
+                      _moduleId = picked.modules.isNotEmpty
+                          ? picked.modules.first.id
+                          : '';
+                    });
+                  },
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _moduleId,
+                  decoration: const InputDecoration(
+                    labelText: '数据源',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final module in _widgets
+                        .firstWhere(
+                          (widget) => widget.id == _widgetId,
+                          orElse: () => _widgets.first,
+                        )
+                        .modules)
+                      DropdownMenuItem(
+                        value: module.id,
+                        child: Text(module.title),
+                      ),
+                  ],
+                  onChanged: (value) => setState(() => _moduleId = value ?? ''),
+                ),
+              ],
             ],
           ],
         ),
@@ -476,6 +546,8 @@ class _SectionEditorState extends State<_SectionEditor> {
                 categoryName: _source == SectionSource.category
                     ? category.name
                     : '',
+                widgetId: _source == SectionSource.widget ? _widgetId : '',
+                moduleId: _source == SectionSource.widget ? _moduleId : '',
               ),
             );
           },
