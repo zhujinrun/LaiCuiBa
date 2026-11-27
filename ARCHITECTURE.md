@@ -7,6 +7,16 @@ BieCuiLe 1.0.6 (Windows) 的 Flutter 重建版。目标不是"抄一份源码"�
 故 import 路径为 `package:lai_cui_ba/...`），可执行文件 `LaiCuiBa.exe`。
 代码内前缀统一为 `Lcb`（`LcbColors`、`LcbText`、`LcbPage`…）。
 
+## 当前状态（2026-11-27）
+
+已完成本轮「按原版逐页实测对齐」：资源页、首页、收藏页、历史页、设置页根列表与所有
+一级子页（含滚到底的下半部分）；播放线路按名字记忆，历史封面在详情空图时保留。
+工程基线：`flutter analyze` 干净、**637 测试全绿**；未 push、未打 tag。
+
+发布链路已接入 GitHub Actions：推 `vX.Y.Z` tag 自动校验版本与 `CHANGELOG.md`、
+构建 Windows x64 / Android APK，并从更新日志小节创建 Release（见 `.github/workflows/release.yml`）。
+阶段提交：`13c1385 → e343a1d → b7ab67d → 83e638e → 53a6acb → 2655608 → 147d52b`。
+
 ## 一、复刻的性质（先读这一段）
 
 原版是 Flutter AOT 编译产物（`data/app.so`，17MB），**不可反编译成 Dart 源码**。
@@ -23,7 +33,7 @@ BieCuiLe 1.0.6 (Windows) 的 Flutter 重建版。目标不是"抄一份源码"�
 | 主题色采样 | — | `lib/core/theme.dart` 的 token |
 | 标题字体 | `assets/fonts/LcbSerif-SemiBold.otf` | OFL 授权，可合法使用 |
 
-## 二、已完成（Phase 0）
+## 二、界面骨架（Phase 0，已完成）
 
 可运行、可对照的界面骨架，Windows 下 `flutter build windows` 直接出包。
 
@@ -78,13 +88,30 @@ lib/
     pages/common_pages.dart 资源 / 收藏 / 历史页
     widgets/search_sources_dialog.dart 「搜索哪些资源」源选择弹窗
     widgets/source_dialogs.dart 添加 / 编辑 / 删除源
+    custom/             自定义页面：page_editor / widgets_settings_page / widget_repo_settings
     widgets/             hero_banner / media_card / poster_art / rail / browse_dialog /
                          track_panel / picture_panel / skip_panel /
                          player_info_overlay / subtitle_style / danmaku_layer /
-                         media_badges / manage_folders_sheet
+                         manage_folders_sheet / subtitle_sites_settings / detail_action_dialogs
+  services/widgets/     组件仓库 / 自定义页面数据源（CapyPlayer / Forward / TMDB）
+tool/                   开发者脚本 + ci_release.py（tag / changelog 校验）
+.github/workflows/      release.yml：tag 推送自动打包并发布
+CHANGELOG.md            发布正文来源（Keep a Changelog 格式）
 ```
 
-`PosterArt` 是占位海报（渐变 + 纹理 + 片名），接口上预留了换成真实封面的位置。
+`PosterArt` 有真实图片时优先显示，缺图回落到确定性渐变 + 纹理 + 片名占位。
+
+## 关键实现约定（原 `HANDOFF.md` 中仍有效的部分）
+
+- `shared_preferences_windows` 会给 key 自动加 `flutter.` 前缀；store 里的 key 常量必须写裸 key
+  （`history` / `favorites` / `favoriteFolders` / `sources` / `settings`），落盘才与原版一致。
+  本机数据文件：`C://Users//lxy//AppData//Roaming//LaiCuiBa//LaiCuiBa//shared_preferences.json`。
+- 夹具开关 `lcbDemoCatalogue` / `lcbSeedSampleUserData` 一律 false；没有真实源就空态或失败态，
+  不回落 demo。
+- 收藏是独立结构 `flutter.favorites` + `flutter.favoriteFolders`，不合并进 history。
+- 历史行右侧圆钮打开详情（不是直接播放）；右键进入批量选择；线路按名字记在
+  `AppSettings.playLines`，历史 `flag` 只作回退。
+- 用户自己 push / tag；CI 在 tag 推送后自动 Release，AI 不主动 push、不打 tag。
 
 ## 四、阶段规划
 
@@ -550,26 +577,23 @@ ExoPlayer 下显示 --」；迷你进度条「画面最底下一条线：蓝色�
   + 添加 / 编辑 / 删除弹窗。
 
 #### 还没做的
-- 内核切换（mpv / ijk / exo / mdk + 硬解软解）：`services/player/` 原版 13 个模块里
-  我们只落了 `subtitle_file`。
-- 上下滑动调亮度/音量、长按倍速。
-- 投屏 / 全屏 / 小窗 / 锁屏 / 截图（平台相关）。
-- 播放失败自动换线路换源、短剧预载、播放列表/选集浮层。
-- 字幕网站（SubHD / 射手网 assrt / OpenSubtitles）+ 在线搜索面板、字体导入与样式覆盖、
-  PGS/VobSub 提示、AI 翻译。
-- 弹幕 LogVar 插件、视频自带弹幕、本地 `.xml/.json`、字号/透明度/速度/屏蔽词。
-- 片头/片尾是**全局一组 + 按作品覆盖**，还没有按单集记（原版也是全局，但可以做得更好）。
+- ijk / exo / mdk 安卓内核的**真实实现**（Windows 构建只有 mpv；设置项与切换面板已落地）。
+- 上下滑动调亮度/音量的真实手势；长按倍速的设置项已落地但手势未接。
+- 投屏 / 全屏 / 小窗 / 锁屏 / 截图的平台实现已落地入口，部分行为仍待真机验收。
+- 字幕网站、AI 翻译、弹幕源的入口与设置已落地；字体导入与 PGS/VobSub 提示仍缺。
+- 弹幕 LogVar 插件、视频自带弹幕、本地 `.xml/.json` 仍缺。
+- 片头/片尾是全局一组 + 按作品覆盖，还没有按单集记（原版也是全局）。
 
 ### Phase 4 — 外设模块（部分）
 
 | 模块 | 状态 |
 | --- | --- |
-| 弹幕 | 🔶 弹弹play 一系已通（match/comment、排版、渲染、设置页源管理）；缺 LogVar 插件、视频自带弹幕、本地 `.xml/.json`、字号/透明度/速度/屏蔽词 |
-| 字幕 | 🔶 本地半已通（8 档偏好、次字幕、外挂字幕、每集记忆）；缺字幕网站（SubHD / 射手网 assrt / OpenSubtitles）+ 在线搜索面板、字体与样式覆盖、PGS/VobSub 提示、AI 翻译 |
-| 刮削 | ⬜ TMDB / Bangumi / 豆瓣 |
+| 弹幕 | 🔶 弹弹play 一系 + 设置页源管理已通；缺 LogVar、视频自带、本地 `.xml/.json`、字号/透明度/速度/屏蔽词 |
+| 字幕 | 🔶 8 档偏好 / 次字幕 / 外挂 / 每集记忆 / 字幕网站 / AI 翻译入口已落地；缺字体导入、PGS/VobSub 提示 |
+| 刮削 | 🔶 TMDB 真片单已通；TMDB API 代理、Bangumi / 豆瓣仍未接 |
 | 下载 | ⬜ 下载管理 / 下载设置 |
-| 投屏 | ⬜ DLNA |
-| 备份同步 | ⬜ 本地 JSON 已有；WebDAV 同步未做 |
+| 投屏 | 🔶 入口已落地；DLNA 行为待真机验收 |
+| 备份同步 | 🔶 本地 JSON 导入导出已通；WebDAV 同步未做 |
 
 ### Phase 5 — 多端
 TV 端焦点导航（原版 `ui/tv/*` 共 9 个文件）、Android 适配、AI 辅助（集名清洗、
@@ -626,7 +650,7 @@ Phase 2 做猫源宿主时把 `node/` 整体内嵌；Phase 3 让 `media_kit` 指
 cd LaiCuiBa
 flutter run -d windows          # 热重载调试
 flutter build windows --debug   # 出包到 build/windows/x64/runner/Debug/
-flutter test                    # 当前 538 个全绿
+flutter test                    # 当前 637 个全绿
 ./assets/runtime/node/node.exe tool/verify_host.js  # 猫源宿主端到端自检
 
 # 真 libmpv 自检（取 build 产物里的 DLL；先 flutter build windows --debug）
@@ -635,6 +659,11 @@ dart run tool/verify_tracks_live.dart      # 轨道映射 / 切换 / 恢复
 dart run tool/verify_subtitle_live.dart    # 主/次字幕 + 外挂
 dart run tool/verify_picture_live.dart     # 五量 set 后回读
 dart run tool/verify_player_info_live.dart # 无 GPU 时降级退出 0
+
+# 发版校验（CI 也会跑）
+python tool/ci_release.py version
+python tool/ci_release.py check-tag v0.1.0
+python tool/ci_release.py release-body 0.1.0
 ```
 
 环境约束（**已锁定，勿随意升级**）：

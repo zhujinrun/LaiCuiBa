@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify tag and source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.9'
+          channel: stable
+          cache: true
+
+      - name: Show toolchain
+        run: |
+          flutter --version
+          dart --version
+
+      - name: Check pinned toolchain
+        run: dart run tool/verify_toolchain.dart
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Check tag against pubspec version
+        run: python tool/ci_release.py check-tag "$GITHUB_REF_NAME"
+
+      - name: Check changelog section
+        run: |
+          VERSION="$(python tool/ci_release.py version)"
+          python tool/ci_release.py release-body "$VERSION" > /dev/null
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+  build-windows:
+    name: Build Windows x64
+    needs: verify
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.9'
+          channel: stable
+          cache: true
+
+      - name: Check pinned toolchain
+        run: dart run tool/verify_toolchain.dart
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Build release
+        run: flutter build windows --release
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $source = 'build/windows/x64/runner/Release'
+          if (-not (Test-Path $source)) { throw "Missing Windows build output: $source" }
+          Compress-Archive -Path "$source/*" -DestinationPath 'lai-cui-ba-windows-x64.zip' -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: lai-cui-ba-windows-x64.zip
+          if-no-files-found: error
+
+  build-android:
+    name: Build Android APK
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.9'
+          channel: stable
+          cache: true
+
+      - name: Check pinned toolchain
+        run: dart run tool/verify_toolchain.dart
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Enable Android
+        run: flutter config --enable-android
+
+      - name: Build release APK
+        run: |
+          chmod +x android/gradlew
+          flutter build apk --release
+
+      - name: Package
+        run: |
+          apk="build/app/outputs/flutter-apk/app-release.apk"
+          test -f "$apk"
+          cp "$apk" lai-cui-ba-android.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: lai-cui-ba-android.apk
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [build-windows, build-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release body from CHANGELOG.md
+        run: |
+          VERSION="$(python tool/ci_release.py version)"
+          python tool/ci_release.py release-body "$VERSION" --output release_body.md
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: release_body.md
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
+            artifacts/windows-x64/lai-cui-ba-windows-x64.zip
+            artifacts/android-apk/lai-cui-ba-android.apk
