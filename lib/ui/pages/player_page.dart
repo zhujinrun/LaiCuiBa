@@ -1183,6 +1183,10 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 打不开的时候控制条如果正好自动隐藏了，错误浮层又盖住了整块画面，
+    // 用户就只剩下「重试 / 下一集」，连返回都摸不到。失败时把常驻控件
+    // 钉回来，等下一集真正开了（duration 到了会清掉 _openError）再恢复自动隐藏。
+    final chromeVisible = _controlsVisible || _openError != null;
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -1295,7 +1299,7 @@ class _PlayerPageState extends State<PlayerPage> {
               title: _titleLine,
               subtitle: _subtitleLine,
               onClose: widget.onClose,
-              visible: _controlsVisible,
+              visible: chromeVisible,
             ),
           ),
           // 常驻信息浮层：选中的信息钉在画面右上角，不随操作菜单隐藏（原版
@@ -1407,7 +1411,7 @@ class _PlayerPageState extends State<PlayerPage> {
             position: _position,
             duration: _duration,
             rate: _rate,
-            visible: _controlsVisible,
+            visible: chromeVisible,
             onTogglePlay: _togglePlay,
             onSeekStart: () => setState(() => _seeking = true),
             onSeekEnd: () {
