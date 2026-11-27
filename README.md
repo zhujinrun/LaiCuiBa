@@ -5,9 +5,9 @@ stay close to BieCuiLe 1.0.6 (Windows) in look and feel while fixing the
 playback defects that the original cannot escape.
 
 > LaiCuiBa is an independent project. It shares no code with the original —
-> that build is a Flutter AOT snapshot and cannot be decompiled. What it does
-> reuse is the upstream `libmpv` / Node / Python runtimes, and the OFL-licensed
-> title typeface.
+> that build is a Flutter AOT snapshot and cannot be decompiled. It reuses the
+> upstream `libmpv` binary and the OFL-licensed title typeface; Node / Python
+> runtimes are assembled from matching local installations.
 
 ## Requirements
 
@@ -37,6 +37,7 @@ between minors, which invalidates the screenshot comparisons in `.probe/`.
 
 ```bash
 flutter pub get
+bash tool/sync_runtime.sh      # assemble Node 18 / Python 3.11 runtime
 flutter run -d windows          # hot reload
 flutter build windows --debug   # build/windows/x64/runner/Debug/LaiCuiBa.exe
 flutter test                    # smoke tests

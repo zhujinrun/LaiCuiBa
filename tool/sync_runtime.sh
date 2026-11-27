@@ -1,69 +1,143 @@
 #!/usr/bin/env bash
-# 把原版包的运行时二进制同步进本工程（不进 git，只供构建/调试用）。
-# 用法: bash tool/sync_runtime.sh
+# Assemble the local 猫源 runtimes from this machine's version managers.
+#
+# The binaries stay git-ignored: only the host scripts are tracked. By default
+# this script looks for Node 18.x and CPython 3.11.x, which are the versions
+# the original app shipped with. Override with LAI_CUI_BA_NODE / LAI_CUI_BA_PYTHON
+# when those exact installations live somewhere else.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-SRC="/e/code/AndroidProjects/FengMi/BieCuiLe-1.0.6-windows-x64"
+NODE_DEST="$HERE/assets/runtime/node"
+PY_DEST="$HERE/assets/runtime/python"
 
-copy() {
-  local from="$1" to="$2"
-  if [ ! -f "$from" ]; then
-    echo "缺少 $from（原版包不存在？）" >&2
-    return 1
-  fi
-  mkdir -p "$(dirname "$to")"
-  cp "$from" "$to"
-  echo "已同步 $to"
+PY_DEPS=(
+  requests==2.34.2
+  lxml==6.1.3
+  pycryptodome==3.24.1
+  pyquery==2.1.0
+  beautifulsoup4==4.15.0
+)
+
+pick_node() {
+  local candidate version
+  for candidate in \
+    "${LAI_CUI_BA_NODE:-}" \
+    "/d/Program/nvm/installs/v18.20.8/node.exe" \
+    "$(command -v node || true)"; do
+    [[ -n "$candidate" && -f "$candidate" ]] || continue
+    version="$("$candidate" --version 2>/dev/null || true)"
+    case "$version" in
+      v18.*) printf '%s\n' "$candidate"; return 0 ;;
+    esac
+  done
+  return 1
 }
 
-copy "$SRC/node/node.exe" "$HERE/assets/runtime/node/node.exe"
+pick_python() {
+  local candidate version
+  for candidate in \
+    "${LAI_CUI_BA_PYTHON:-}" \
+    "/d/Program/pvm/v3.11.9/python.exe" \
+    "$(command -v python3.11 || true)" \
+    "$(command -v python || true)"; do
+    [[ -n "$candidate" && -f "$candidate" ]] || continue
+    version="$("$candidate" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)"
+    if [[ "$version" == "3.11" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
 
-# CPython 11.9 整个发行版（python.exe + Lib/site-packages，含 requests/lxml）。
-# 39MB，只进工作区，不进 git（见 .gitignore）。
-if [ -d "$SRC/python" ]; then
-  mkdir -p "$HERE/assets/runtime/python"
-  cp -r "$SRC/python/." "$HERE/assets/runtime/python/"
-  echo "已同步 assets/runtime/python/（$(du -sh "$HERE/assets/runtime/python" | cut -f1)）"
-else
-  echo "缺少 $SRC/python（原版包不存在？）" >&2
+NODE_BIN="$(pick_node || true)"
+PY_BIN="$(pick_python || true)"
+
+if [[ -z "$NODE_BIN" ]]; then
+  echo "找不到 Node 18.x。设置 LAI_CUI_BA_NODE 指向 node.exe。" >&2
+  exit 1
+fi
+if [[ -z "$PY_BIN" ]]; then
+  echo "找不到 CPython 3.11.x。设置 LAI_CUI_BA_PYTHON 指向 python.exe。" >&2
+  exit 1
 fi
 
-# Also drop the runtime next to the debug build output, where RuntimePaths
-# resolves it from the executable's own directory. cat_host.js lives in assets
-# and is copied verbatim (it is ours, not the original's).
+echo "Node: $NODE_BIN ($("$NODE_BIN" --version))"
+echo "Python: $PY_BIN ($("$PY_BIN" --version 2>&1))"
+
+# ---------------------------------------------------------------------------
+# Node: only node.exe is needed; the hosts themselves live in this repo.
+# ---------------------------------------------------------------------------
+mkdir -p "$NODE_DEST"
+cp "$NODE_BIN" "$NODE_DEST/node.exe"
+echo "已同步 $NODE_DEST（宿主脚本已在同目录）"
+
+# ---------------------------------------------------------------------------
+# Python: portable stdlib + DLLs + pinned site-packages. A full CPython
+# installation also carries pip/venv/test files we do not need in a bundle.
+# ---------------------------------------------------------------------------
+PY_ROOT="$(dirname "$PY_BIN")"
+mkdir -p "$PY_DEST/Lib" "$PY_DEST/DLLs"
+cp "$PY_BIN" "$PY_DEST/python.exe"
+for file in pythonw.exe python3.dll python311.dll vcruntime140.dll vcruntime140_1.dll; do
+  [[ -f "$PY_ROOT/$file" ]] && cp "$PY_ROOT/$file" "$PY_DEST/$file"
+done
+cp -r "$PY_ROOT/DLLs/." "$PY_DEST/DLLs/"
+cp -r "$PY_ROOT/Lib/." "$PY_DEST/Lib/"
+rm -rf \
+  "$PY_DEST/Lib/site-packages" \
+  "$PY_DEST/Lib/test" \
+  "$PY_DEST/Lib/idlelib" \
+  "$PY_DEST/Lib/lib2to3" \
+  "$PY_DEST/Lib/turtledemo" \
+  "$PY_DEST/Lib/ensurepip"
+mkdir -p "$PY_DEST/Lib/site-packages"
+
+PY_SITE_WIN="$(cygpath -w "$PY_DEST/Lib/site-packages")"
+"$PY_BIN" -m pip install --target "$PY_SITE_WIN" "${PY_DEPS[@]}"
+
+printf '%s\n' \
+  'python311.zip' \
+  '.' \
+  'Lib' \
+  'DLLs' \
+  'Lib\site-packages' \
+  'import site' \
+  > "$PY_DEST/python311._pth"
+
+"$NODE_DEST/node.exe" --version
+"$PY_DEST/python.exe" -c 'import requests, lxml, pyquery, Crypto; print("python runtime ok")'
+echo "已同步 $PY_DEST（$(du -sh "$PY_DEST" | cut -f1)）"
+
+# ---------------------------------------------------------------------------
+# Copy the assembled runtimes next to debug/release executables as well:
+# RuntimePaths resolves them from the executable's own directory.
+# ---------------------------------------------------------------------------
 for target in \
   "$HERE/build/windows/x64/runner/Debug/runtime/node" \
   "$HERE/build/windows/x64/runner/Release/runtime/node"; do
-  if [ -d "$(dirname "$(dirname "$target")")" ]; then
+  if [[ -d "$(dirname "$(dirname "$target")")" ]]; then
     mkdir -p "$target"
-    cp "$HERE/assets/runtime/node/node.exe" "$target/node.exe"
-    cp "$HERE/assets/runtime/node/cat_host.js" "$target/cat_host.js"
-    # 单文件 js 站点（TVBox `api: …/x.js`）用的是另一个宿主，外加它要的 DOM。
-    cp "$HERE/assets/runtime/node/js_site_host.js" "$target/js_site_host.js"
-    cp "$HERE/assets/runtime/node/linkedom.js" "$target/linkedom.js"
-    # CapyPlayer / Forward 组件宿主，跟组件页面一起用。
-    cp "$HERE/assets/runtime/node/widget_host.js" "$target/widget_host.js"
+    if ! cp "$NODE_DEST/node.exe" "$target/node.exe"; then
+      echo "跳过 $target/node.exe（可能正在运行，被系统占用）" >&2
+    fi
+    cp "$NODE_DEST/"*.js "$target/"
     echo "已同步 $target"
   fi
 done
 
-# Python 运行时也要落到产物旁边，RuntimePaths 从 exe 目录找。宿主脚本
-# `pyhost/` 同样要在，否则解释器在、协议没人说。
 for root in \
   "$HERE/build/windows/x64/runner/Debug/runtime" \
   "$HERE/build/windows/x64/runner/Release/runtime"; do
-  if [ ! -d "$(dirname "$root")" ]; then
-    continue
+  if [[ -d "$(dirname "$root")" ]]; then
+    mkdir -p "$root/python" "$root/pyhost"
+    if ! cp -r "$PY_DEST/." "$root/python/"; then
+      echo "跳过 $root/python（有文件被占用，源 runtime 仍已更新）" >&2
+    fi
+    cp -r "$HERE/assets/runtime/pyhost/." "$root/pyhost/"
+    echo "已同步 $root"
   fi
-  if [ -d "$HERE/assets/runtime/python" ]; then
-    mkdir -p "$root/python"
-    cp -r "$HERE/assets/runtime/python/." "$root/python/"
-    echo "已同步 $root/python"
-  fi
-  mkdir -p "$root/pyhost"
-  cp -r "$HERE/assets/runtime/pyhost/." "$root/pyhost/"
-  echo "已同步 $root/pyhost"
 done
 
-echo "完成。node.exe / python 已就位（不提交到 git）。"
+echo "完成。Node / Python 运行时已就位（不提交到 git）。"

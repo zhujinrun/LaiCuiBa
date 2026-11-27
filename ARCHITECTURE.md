@@ -264,7 +264,7 @@ chip 与结果胶囊**直接显示 name，不再自己拼前缀**（之前写死
   订阅更新后不会继续跑 `require` 缓存里的旧代码。
 - 传 `stdin` 参数时标准输入断开即退出（桌面端子进程跟随应用退出）。
 
-**fastify 不在宿主侧**：`node.exe` 是从原版包拷来的裸 node（无 `node_modules`），
+**fastify 不在宿主侧**：`node.exe` 是本机 Node 18 安装里拷来的裸 node（无 `node_modules`），
 宿主不可能 `require('fastify')`。fastify 是源自己的依赖，源起好服务后经
 `catServerFactory` 把 server 交给宿主。宿主不关心源用什么框架。
 
@@ -336,7 +336,7 @@ TVBox 生态里的「源」其实是两种完全不同的东西，这里两种�
 
 | 部件 | 位置 | 说明 |
 | --- | --- | --- |
-| 运行时 | `assets/runtime/python/` | 原版包整份拷进来（**git-ignored**），`tool/sync_runtime.sh` 同步到 assets 与 build 产物 |
+| 运行时 | `assets/runtime/python/` | 本机 Python 3.11 安装组装出的 portable 副本（**git-ignored**），`tool/sync_runtime.sh` 同步到 assets 与 build 产物 |
 | 宿主 | `assets/runtime/pyhost/py_host.py` | 一行 JSON 进一行 JSON 出；每请求一线程；stdout 只给协议，源自己的 print 全部改到 stderr |
 | 源契约 | `assets/runtime/pyhost/base/spider.py` | 按 `base.spider` 契约**重写**（fetch/post/html/regStr/cleanText/getProxyUrl/getCache…），不是搬运原版 |
 | js 宿主 | `assets/runtime/node/js_site_host.js` | 实现 `req`/`pdfh`/`pdfa`/`local`… 并把五个 `*Content` 调出去；链表 `linkedom.js`（MIT）提供真实 DOM |
@@ -640,12 +640,13 @@ TV 端焦点导航（原版 `ui/tv/*` 共 9 个文件）、Android 适配、AI �
 | mpv | **v0.41.0-1421-ga687796d9** | `libmpv-2.dll` PE 版本资源 |
 | 打包版本 | 1.0.3+4 | `BieCuiLe.exe` 版本资源（包号 1.0.6，作者未同步） |
 
-**Node / Python / mpv 直接复用原版包里的二进制**，天然 100% 一致，不需要重新编译
-或找版本：
+**Node / Python 从本机版本管理器组装，mpv 仍复用原版包**：运行时二进制不进 git，
+`tool/sync_runtime.sh` 会自动找 Node 18.x（本机 nvm 的 `v18.20.8`）和 CPython 3.11.x
+（本机 pvm 的 `v3.11.9`），也可通过 `LAI_CUI_BA_NODE` / `LAI_CUI_BA_PYTHON` 覆盖。
 
 ```
-BieCuiLe-1.0.6-windows-x64/node/node.exe          67MB  Node 18.20.4
-BieCuiLe-1.0.6-windows-x64/python/                39MB  CPython 3.11.9
+/d/Program/nvm/installs/v18.20.8/node.exe         67MB  Node 18.20.8
+/d/Program/pvm/v3.11.9/                            portable 副本 78MB
 BieCuiLe-1.0.6-windows-x64/libmpv-2.dll          101MB  mpv 0.41.0
 ```
 

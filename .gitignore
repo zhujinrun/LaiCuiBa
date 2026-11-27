@@ -52,7 +52,8 @@ app.*.map.json
 # 那是运行时产物，不进 git。
 test/fixtures/**/data/
 
-# 原版包里的运行时二进制：node.exe 被全局 gitignore 的 *.exe 挡掉，CPython 整个
-# 发行版（39MB，含 Lib）也一并挡掉。它们由 tool/sync_runtime.sh 同步，宿主脚本
-# assets/runtime/pyhost/ 才是本仓库的代码。
+# 本机运行时二进制：node.exe 被全局 gitignore 的 *.exe 挡掉，CPython 的 portable
+# 副本（stdlib + DLLs + site-packages，约 60MB）也不进 git。它们由
+# tool/sync_runtime.sh 从本机 Node 18 / Python 3.11 安装组装；宿主脚本
+# assets/runtime/{node,pyhost}/ 才是本仓库的代码。
 assets/runtime/python/
