@@ -19,9 +19,9 @@ void main() {
       ),
     );
 
-    expect(find.text('这一集没有内嵌字幕'), findsOneWidget);
-    expect(find.text('搜索字幕网站…'), findsOneWidget);
-    expect(find.text('AI 翻译本集字幕'), findsOneWidget);
+    expect(find.textContaining('没有内嵌字幕'), findsOneWidget);
+    expect(find.text('搜索在线字幕…'), findsOneWidget);
+    expect(find.text('AI 翻译本集字幕'), findsNothing);
     expect(find.text('选择本地字幕文件…'), findsOneWidget);
     // 没挂字幕时不该有「取消外挂字幕」这一行。
     expect(find.text('不再使用外挂字幕'), findsNothing);
@@ -44,9 +44,8 @@ void main() {
       ),
     );
 
-    expect(find.text('字幕'), findsOneWidget);
-    expect(find.text('关闭'), findsOneWidget);
-    await tester.tap(find.text('关闭'));
+    expect(find.text('关闭字幕'), findsOneWidget);
+    await tester.tap(find.text('关闭字幕'));
     expect(picked?.id, 'no');
   });
 
@@ -81,7 +80,7 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('搜索字幕网站…'));
+    await tester.tap(find.text('搜索在线字幕…'));
     await tester.pump();
     expect(searched, 1);
   });
@@ -96,6 +95,8 @@ void main() {
         ),
       ),
     );
+    await tester.tap(find.text('AI 翻译'));
+    await tester.pump();
     await tester.tap(find.text('AI 翻译本集字幕'));
     await tester.pump();
     expect(toggled, 1);

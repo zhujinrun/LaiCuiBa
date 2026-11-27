@@ -497,6 +497,12 @@ class _ShellState extends State<Shell> {
             danmakuEnabled: _store.settings.danmakuEnabled,
             danmakuBlockTop: _store.settings.danmakuBlockTop,
             danmakuBlockBottom: _store.settings.danmakuBlockBottom,
+            onDanmakuBlockTop: (value) => _store.updateSettings(
+              _store.settings.copyWith(danmakuBlockTop: value),
+            ),
+            onDanmakuBlockBottom: (value) => _store.updateSettings(
+              _store.settings.copyWith(danmakuBlockBottom: value),
+            ),
             buttonsIcon: _store.settings.playerButtons == 'icon',
             decoderMode: _store.settings.decoderMode,
             onDecoderModeChanged: (mode) => _store.updateSettings(

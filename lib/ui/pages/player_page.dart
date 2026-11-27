@@ -26,6 +26,7 @@ import '../../services/track_choice.dart';
 import '../../services/track_map.dart';
 import '../widgets/skip_panel.dart';
 import '../widgets/cast_sheet.dart';
+import '../widgets/danmaku_panel.dart';
 import '../widgets/comments_dialog.dart';
 import '../widgets/kernel_dialog.dart';
 import '../widgets/subtitle_search_dialog.dart';
@@ -88,6 +89,8 @@ class PlayerPage extends StatefulWidget {
     this.danmakuEnabled = false,
     this.danmakuBlockTop = false,
     this.danmakuBlockBottom = false,
+    this.onDanmakuBlockTop,
+    this.onDanmakuBlockBottom,
     this.buttonsIcon = false,
     this.decoderMode = 'hardware',
     this.onDecoderModeChanged,
@@ -203,6 +206,8 @@ class PlayerPage extends StatefulWidget {
   final bool danmakuEnabled;
   final bool danmakuBlockTop;
   final bool danmakuBlockBottom;
+  final ValueChanged<bool>? onDanmakuBlockTop;
+  final ValueChanged<bool>? onDanmakuBlockBottom;
 
   /// 原版 player_buttons：文字还是图标。
   final bool buttonsIcon;
@@ -273,7 +278,16 @@ class PlayerPage extends StatefulWidget {
 ///
 /// 字幕、比例、画面是三个按钮，对应原版底栏的三个文字按钮；轨道只在这一条流
 /// 真的有多条线路/画质/音轨可切时才出现。
-enum _PlayerPanel { rate, subtitle, tracks, skip, aspect, picture, episodes }
+enum _PlayerPanel {
+  rate,
+  subtitle,
+  danmaku,
+  tracks,
+  skip,
+  aspect,
+  picture,
+  episodes
+}
 
 class _PlayerPageState extends State<PlayerPage> {
   late final Player _player = Player();
@@ -405,6 +419,8 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _miniWindow = false;
   bool _maximized = false;
   late String _decoderMode;
+  double _danmakuOpacity = 0.92;
+  double _danmakuFontSize = 22;
   DlnaDevice? _castDevice;
   Rect? _savedBounds;
 
@@ -608,6 +624,8 @@ class _PlayerPageState extends State<PlayerPage> {
       _showNotice(outcome.message);
     }
   }
+
+  void _toggleDanmakuPanel() => _togglePanel(_PlayerPanel.danmaku);
 
   void _toggleDanmaku() {
     final next = !_danmakuOn;
@@ -1437,6 +1455,8 @@ class _PlayerPageState extends State<PlayerPage> {
               playing: _playing,
               blockTop: widget.danmakuBlockTop,
               blockBottom: widget.danmakuBlockBottom,
+              fontSize: _danmakuFontSize,
+              opacity: _danmakuOpacity,
             ),
           // 次字幕：mpv 把它当成第二条轨，文字从 `secondary-sub-text` 报过来，
           // 这里照主字幕的字号画在画面上方，和主字幕组成双语对照。
@@ -1595,6 +1615,27 @@ class _PlayerPageState extends State<PlayerPage> {
                     : _clearSubtitleFile,
               ),
             ),
+          if (_panel == _PlayerPanel.danmaku)
+            Positioned(
+              right: 20,
+              bottom: 132,
+              child: DanmakuPanel(
+                on: _danmakuOn,
+                onToggle: _toggleDanmaku,
+                blockTop: widget.danmakuBlockTop,
+                onBlockTop: (value) => widget.onDanmakuBlockTop?.call(value),
+                blockBottom: widget.danmakuBlockBottom,
+                onBlockBottom: (value) =>
+                    widget.onDanmakuBlockBottom?.call(value),
+                opacity: _danmakuOpacity,
+                onOpacity: (value) =>
+                    setState(() => _danmakuOpacity = value),
+                fontSize: _danmakuFontSize,
+                onFontSize: (value) =>
+                    setState(() => _danmakuFontSize = value),
+                hasSource: widget.danmakuSources.isNotEmpty,
+              ),
+            ),
           if (_panel == _PlayerPanel.tracks)
             Positioned(
               right: 20,
@@ -1684,7 +1725,7 @@ class _PlayerPageState extends State<PlayerPage> {
             rateOpen: _panel == _PlayerPanel.rate,
             onSubtitle: _toggleSubtitlePanel,
             subtitleOpen: _panel == _PlayerPanel.subtitle,
-            onDanmaku: _toggleDanmaku,
+            onDanmaku: _toggleDanmakuPanel,
             danmakuOn: _danmakuOn,
             danmakuAsking: _danmakuLoading,
             iconMode: widget.buttonsIcon,

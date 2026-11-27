@@ -11,12 +11,12 @@ import 'package:flutter/rendering.dart' show BoxFit;
 ///   高度拉伸 = 高度铺满，宽度等比放大，超出部分裁掉
 ///   裁剪铺满 = 按短边铺满后居中裁剪
 enum AspectMode {
-  fit('fit', '原始比例', '保持视频原始比例，完整显示画面', BoxFit.contain),
+  fit('fit', '自适应', '保持视频原始比例，完整显示画面', BoxFit.contain),
   stretch('stretch', '拉伸全屏', '拉伸到屏幕边缘，不保留原始比例', BoxFit.fill),
-  fill('fill', '拉伸铺满', '保持原始比例铺满屏幕，边缘可能被裁掉', BoxFit.cover),
+  fill('fill', '裁剪铺满', '保持原始比例铺满屏幕，边缘可能被裁掉', BoxFit.cover),
   fitWidth('fitWidth', '宽度拉伸', '宽度铺满，高度等比放大，超出部分裁掉', BoxFit.fitWidth),
   fitHeight('fitHeight', '高度拉伸', '高度铺满，宽度等比放大，超出部分裁掉', BoxFit.fitHeight),
-  crop('crop', '裁剪铺满', '按短边铺满后居中裁剪', BoxFit.cover);
+  crop('crop', '居中裁剪', '按短边铺满后居中裁剪', BoxFit.cover);
 
   const AspectMode(this.slug, this.label, this.description, this.boxFit);
 
