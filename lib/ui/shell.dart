@@ -1346,21 +1346,19 @@ class _FavoritesHeaderTabs extends StatelessWidget {
         const SizedBox(width: 19),
         tab('追剧', 1),
         const SizedBox(width: 36),
-        const Icon(
-          CupertinoIcons.search,
-          size: 17,
-          color: LcbColors.settingsQuiet,
+        _HeaderIconButton(
+          icon: CupertinoIcons.search,
+          onTap: store.toggleFavoritesSearch,
         ),
         const SizedBox(width: 26),
         _HeaderIconButton(
-          icon: CupertinoIcons.folder,
-          onTap: () => showManageFoldersSheet(context),
+          icon: CupertinoIcons.folder_badge_plus,
+          onTap: () => showCreateFolderDialog(context),
         ),
         const SizedBox(width: 26),
-        const Icon(
-          CupertinoIcons.line_horizontal_3,
-          size: 17,
-          color: LcbColors.settingsQuiet,
+        _HeaderIconButton(
+          icon: CupertinoIcons.slider_horizontal_3,
+          onTap: () => showManageFoldersSheet(context),
         ),
       ],
     );

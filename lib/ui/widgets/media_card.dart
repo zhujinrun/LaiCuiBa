@@ -209,11 +209,13 @@ class PosterCard extends StatefulWidget {
     required this.item,
     this.width = LcbMetrics.posterWidth,
     this.onTap,
+    this.onMore,
   });
 
   final MediaItem item;
   final double width;
   final VoidCallback? onTap;
+  final ValueChanged<Offset>? onMore;
 
   @override
   State<PosterCard> createState() => _PosterCardState();
@@ -265,6 +267,30 @@ class _PosterCardState extends State<PosterCard> {
                       item: widget.item,
                       settings: StoreScope.of(context).settings,
                     ),
+                    if (_hover && widget.onMore != null)
+                      Positioned(
+                        right: 6,
+                        top: 6,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapDown: (details) =>
+                              widget.onMore?.call(details.globalPosition),
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: const Color(0x99000000),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              CupertinoIcons.ellipsis,
+                              size: 14,
+                              color: Color(0xFFFFFFFF),
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),

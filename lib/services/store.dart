@@ -393,6 +393,22 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 收藏页顶栏的放大镜：点开才出现内联搜索框，文案和原版一致。
+  bool favoritesSearchOpen = false;
+  String favoritesQuery = '';
+
+  void toggleFavoritesSearch() {
+    favoritesSearchOpen = !favoritesSearchOpen;
+    if (!favoritesSearchOpen) favoritesQuery = '';
+    notifyListeners();
+  }
+
+  void setFavoritesQuery(String query) {
+    if (favoritesQuery == query) return;
+    favoritesQuery = query;
+    notifyListeners();
+  }
+
   void setFavoriteFolder(String? folderId) {
     if (folderId == favoriteFolderId) return;
     favoriteFolderId = folderId;

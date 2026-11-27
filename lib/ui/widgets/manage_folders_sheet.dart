@@ -16,6 +16,95 @@ Future<void> showManageFoldersSheet(BuildContext context) {
   );
 }
 
+/// 原版收藏页第二个图标：直接新建收藏夹。
+Future<void> showCreateFolderDialog(BuildContext context) => showDialog<void>(
+  context: context,
+  builder: (_) => const _CreateFolderDialog(),
+);
+
+class _CreateFolderDialog extends StatefulWidget {
+  const _CreateFolderDialog();
+
+  @override
+  State<_CreateFolderDialog> createState() => _CreateFolderDialogState();
+}
+
+class _CreateFolderDialogState extends State<_CreateFolderDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    backgroundColor: Colors.white,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    title: const Text(
+      '新建收藏夹',
+      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+    ),
+    content: SizedBox(
+      width: 360,
+      child: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          hintText: '收藏夹名称',
+          isDense: true,
+          border: OutlineInputBorder(),
+        ),
+        onSubmitted: (_) => _submit(context),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('取消'),
+      ),
+      TextButton(
+        onPressed: () => _submit(context),
+        child: const Text('确定'),
+      ),
+    ],
+  );
+
+  Future<void> _submit(BuildContext context) async {
+    final name = _controller.text.trim();
+    if (name.isEmpty) return;
+    await StoreScope.of(context).createFavoriteFolder(name);
+    if (context.mounted) Navigator.of(context).pop();
+  }
+}
+
+/// 追剧页没有登录时的空态按钮：只说明去哪里登录，不假装已经授权。
+Future<void> showTraktLoginDialog(BuildContext context) => showDialog<void>(
+  context: context,
+  builder: (_) => AlertDialog(
+    backgroundColor: Colors.white,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    title: const Text(
+      'Trakt 追更',
+      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+    ),
+    content: const SizedBox(
+      width: 360,
+      child: Text(
+        '会打开浏览器的 Trakt 授权页，登录或注册后点授权即可。已授权的应用可在 Trakt 网站设置 → 已连接应用 里查看和撤销。',
+        style: TextStyle(fontSize: 13, color: LcbColors.settingsQuiet),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('知道了'),
+      ),
+    ],
+  ),
+);
+
 class _ManageFoldersDialog extends StatefulWidget {
   const _ManageFoldersDialog();
 
@@ -65,13 +154,6 @@ class _ManageFoldersDialogState extends State<_ManageFoldersDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => _create(store),
-          child: const Text(
-            '新建收藏夹',
-            style: TextStyle(color: LcbColors.primaryDim),
-          ),
-        ),
-        TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text(
             '完成',
@@ -80,12 +162,6 @@ class _ManageFoldersDialogState extends State<_ManageFoldersDialog> {
         ),
       ],
     );
-  }
-
-  Future<void> _create(AppStore store) async {
-    final name = await _promptName(context, title: '新建收藏夹');
-    if (name == null || name.isEmpty) return;
-    await store.createFavoriteFolder(name);
   }
 
   Future<void> _rename(AppStore store, FavoriteFolder folder) async {

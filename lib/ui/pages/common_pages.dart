@@ -10,6 +10,7 @@ import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../services/store.dart';
+import '../widgets/manage_folders_sheet.dart';
 import '../widgets/media_card.dart';
 import '../widgets/poster_art.dart';
 import '../widgets/source_dialogs.dart';
@@ -809,19 +810,45 @@ class FavoritesPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
 
-    // 追剧 tab: no data model yet — show the empty state.
+    // 追剧 tab: 原版在没登录 Trakt / Bangumi 时给出明确的空态和登录入口。
     if (store.favoritesTab != 0) {
-      return const Center(
+      return Center(
         child: _EmptyHint(
-          icon: CupertinoIcons.heart,
-          title: '还没有追剧',
-          subtitle: '关注的剧集更新后会出现在这里',
+          icon: CupertinoIcons.calendar,
+          title: '还没有登录 Trakt 或 Bangumi',
+          subtitle:
+              '登录任意一个后，在影视详情页点「追更」把作品加入追更，更新会显示在这里的日历上。Bangumi 在 设置 → 账号管理 里登录。',
+          action: Padding(
+            padding: const EdgeInsets.only(top: 22),
+            child: SizedBox(
+              width: 168,
+              height: 42,
+              child: ElevatedButton(
+                onPressed: () => showTraktLoginDialog(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: LcbColors.primaryDim,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  '登录 Trakt',
+                  style: TextStyle(fontSize: 15, color: Colors.white),
+                ),
+              ),
+            ),
+          ),
         ),
       );
     }
 
     final folders = store.favoriteFolders;
-    final visible = store.visibleFavorites;
+    final query = store.favoritesQuery.trim();
+    final visible = query.isEmpty
+        ? store.visibleFavorites
+        : store.visibleFavorites
+            .where((e) => e.title.contains(query))
+            .toList();
 
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
@@ -842,6 +869,9 @@ class FavoritesPage extends StatelessWidget {
               total: store.favorites.length,
               selectedFolderId: store.favoriteFolderId,
               onFolderSelected: store.setFavoriteFolder,
+              searchOpen: store.favoritesSearchOpen,
+              query: store.favoritesQuery,
+              onQuery: store.setFavoritesQuery,
             ),
     );
   }
@@ -855,6 +885,9 @@ class _FavoritesBody extends StatelessWidget {
     required this.total,
     required this.selectedFolderId,
     required this.onFolderSelected,
+    required this.searchOpen,
+    required this.query,
+    required this.onQuery,
   });
 
   final List<FavoriteFolder> folders;
@@ -862,12 +895,33 @@ class _FavoritesBody extends StatelessWidget {
   final int total;
   final String? selectedFolderId;
   final ValueChanged<String?> onFolderSelected;
+  final bool searchOpen;
+  final String query;
+  final ValueChanged<String> onQuery;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (searchOpen)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              LcbMetrics.pagePadding,
+              12,
+              LcbMetrics.pagePadding,
+              0,
+            ),
+            child: TextField(
+              autofocus: true,
+              onChanged: onQuery,
+              decoration: const InputDecoration(
+                hintText: '在收藏中查找',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(
             LcbMetrics.pagePadding,
@@ -884,9 +938,7 @@ class _FavoritesBody extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: _FavoritesGrid(
-            items: favorites.map((e) => e.toMediaItem()).toList(),
-          ),
+          child: _FavoritesGrid(entries: favorites),
         ),
       ],
     );
@@ -976,13 +1028,42 @@ class _FolderChip extends StatelessWidget {
   }
 }
 
+Future<void> _showFavoriteMenu(
+  BuildContext context,
+  FavoriteEntry entry,
+  Offset position,
+) async {
+  final store = StoreScope.of(context);
+  final picked = await showMenu<String>(
+    context: context,
+    position: RelativeRect.fromLTRB(
+      position.dx,
+      position.dy,
+      position.dx,
+      position.dy,
+    ),
+    items: const [
+      PopupMenuItem<String>(
+        value: 'remove',
+        child: Text(
+          '取消收藏',
+          style: TextStyle(color: Color(0xFFE5484D)),
+        ),
+      ),
+    ],
+  );
+  if (picked == 'remove') {
+    await store.toggleFavorite(entry);
+  }
+}
+
 /// Responsive poster grid for the favourites page, reusing the home poster
 /// card. The original shows 169px-wide vertical cards; the column count adapts
 /// to the content width the same way the home sections do.
 class _FavoritesGrid extends StatelessWidget {
-  const _FavoritesGrid({required this.items});
+  const _FavoritesGrid({required this.entries});
 
-  final List<MediaItem> items;
+  final List<FavoriteEntry> entries;
 
   @override
   Widget build(BuildContext context) {
@@ -1012,12 +1093,18 @@ class _FavoritesGrid extends StatelessWidget {
             // the Column from overflowing regardless of the test font.
             mainAxisExtent: cellWidth * 1.5 + 32,
           ),
-          itemCount: items.length,
-          itemBuilder: (_, i) => PosterCard(
-            item: items[i],
-            width: cellWidth,
-            onTap: () => LcbDetailScope.openOf(context, items[i]),
-          ),
+          itemCount: entries.length,
+          itemBuilder: (_, i) {
+            final entry = entries[i];
+            final item = entry.toMediaItem();
+            return PosterCard(
+              item: item,
+              width: cellWidth,
+              onTap: () => LcbDetailScope.openOf(context, item),
+              onMore: (position) =>
+                  _showFavoriteMenu(context, entry, position),
+            );
+          },
         );
       },
     );
@@ -1072,11 +1159,13 @@ class _EmptyHint extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.subtitle,
+    this.action,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -1104,6 +1193,7 @@ class _EmptyHint extends StatelessWidget {
             color: LcbColors.settingsQuiet,
           ),
         ),
+        if (action != null) action!,
       ],
     );
   }
