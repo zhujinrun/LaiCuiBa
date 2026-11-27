@@ -6,10 +6,19 @@
 /// shows the ad, reports a new timeline and the progress bar lands back at
 /// 00:00. The stream itself is fine — only the playlist is polluted.
 ///
-/// This filter is deliberately conservative: it only drops a segment when its
-/// URI does not share the dominant prefix of the playlist, and it drops the
-/// surrounding discontinuity markers with it so the remaining timeline stays
-/// continuous.
+/// Two splice shapes are handled, both conservatively:
+///
+///  1. A marker plus segments hosted under a different directory prefix
+///     (the LZ line of 尚公主). Drop the marker, the foreign-prefix segments,
+///     and the adjacent discontinuities.
+///  2. No marker and the ad lives in the same directory under hash-named
+///     segments (the 高清线路1 of 尚公主). Here the ad is framed by a run of
+///     discontinuities only 2-3 segments apart, while the show's own
+///     discontinuities are always >= 5 segments apart. Drop that whole run.
+///
+/// In both cases the discontinuities around a removed pod go with it: the
+/// show's TS timestamps already run on one continuous clock, and it is the
+/// discontinuity that makes mpv restart its timeline at 00:00.
 class HlsAdFilter {
   const HlsAdFilter();
 
@@ -82,6 +91,11 @@ class HlsAdFilter {
       }
     }
 
+    // Shape 2: no marker / no foreign prefix, but a tight run of
+    // discontinuities (2-3 segments apart) frames an injected pod. The show's
+    // own discontinuities are >= 5 segments apart, so this is unambiguous.
+    _removeTightDiscontinuityPods(lines, remove);
+
     // A discontinuity that sits next to a dropped segment belongs to the ad
     // pod. Keeping it would tell mpv to restart its timeline for no reason.
     for (var i = 0; i < lines.length; i++) {
@@ -103,6 +117,63 @@ class HlsAdFilter {
       }
     }
     return out.join('\n');
+  }
+
+  /// Shape 2: some CDNs splice the ad into the same directory with hash-named
+  /// segments and no marker at all. The only trace is a run of discontinuities
+  /// only 2-3 segments apart; the show's own boundaries are always >= 5
+  /// segments apart (verified on 尚公主 高清线路1: 699 segments, 106
+  /// discontinuities, two 3-disc runs at 297.88s and 1516s wrapping the
+  /// 澳门新葡京 pods). Drop such a run and everything it wraps.
+  static void _removeTightDiscontinuityPods(
+    List<String> lines,
+    Set<int> remove,
+  ) {
+    final discs = <int>[];
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith('#EXT-X-DISCONTINUITY')) discs.add(i);
+    }
+    if (discs.length < 2) return;
+
+    int gaps(int a, int b) {
+      var n = 0;
+      for (var i = a + 1; i < b; i++) {
+        if (lines[i].startsWith('#EXTINF:')) n++;
+      }
+      return n;
+    }
+
+    var i = 0;
+    while (i + 1 < discs.length) {
+      final gap = gaps(discs[i], discs[i + 1]);
+      if (gap < 1 || gap >= 5) {
+        i++;
+        continue;
+      }
+      var end = i + 1;
+      while (end + 1 < discs.length) {
+        final next = gaps(discs[end], discs[end + 1]);
+        if (next < 1 || next >= 5) break;
+        end++;
+      }
+      // Require a RUN of at least two tight gaps (3 discs). A lone short
+      // gap is left alone so an unusual-but-legit boundary is never cut.
+      if (end < i + 2) {
+        i++;
+        continue;
+      }
+      for (var d = i; d <= end; d++) {
+        remove.add(discs[d]);
+      }
+      for (var line = discs[i] + 1; line < discs[end]; line++) {
+        if (!lines[line].startsWith('#EXTINF:')) continue;
+        remove.add(line);
+        if (line + 1 < lines.length && !lines[line + 1].startsWith('#')) {
+          remove.add(line + 1);
+        }
+      }
+      i = end + 1;
+    }
   }
 
   static bool _isAdMarker(String line) {

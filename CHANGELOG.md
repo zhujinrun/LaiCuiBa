@@ -17,6 +17,12 @@ the section whose heading matches the pushed tag.
   visible on a continue-watching card also appears after opening it.
 - The player no longer shows two buffering spinners at once; only the small
   one in the control bar remains.
+- HLS ad removal now also covers the unmarked pods on 尚公主 高清线路1. That CDN
+  splices ads with no marker and hash-named segments in the same directory, so
+  the 0.1.1 marker/prefix rule missed it entirely. The cleaner now also detects
+  the tight runs of discontinuities (2-3 segments apart, versus the show's
+  normal 5+) that frame those pods, and removes the whole pod so the timeline
+  stays continuous instead of jumping back to 00:00 at 04:58.
 
 ## [0.1.1] - 2026-11-27
 

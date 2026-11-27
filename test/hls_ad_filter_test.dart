@@ -117,4 +117,88 @@ seg003.ts
       );
     },
   );
+
+  test('removes a tight-discontinuity ad pod with no marker', () {
+    // 尚公主 高清线路1 serves hash-named segments from ONE directory (so the
+    // dominant-prefix rule cannot see them) and no ad marker. The ad pod is
+    // framed by three discontinuities only 2-3 segments apart, while the
+    // show's own boundaries are 5 segments apart.
+    final buf = StringBuffer('#EXTM3U\n#EXT-X-VERSION:3\n');
+    var n = 0;
+    void seg(String name) {
+      buf.writeln('#EXTINF:4.000,');
+      buf.writeln('$name.ts?hash=$n');
+      n++;
+    }
+
+    for (var i = 0; i < 3; i++) {
+      seg('show');
+    }
+    buf.writeln('#EXT-X-DISCONTINUITY'); // ad starts (no marker)
+    seg('ad');
+    seg('ad');
+    seg('ad');
+    buf.writeln('#EXT-X-DISCONTINUITY');
+    seg('ad');
+    seg('ad');
+    buf.writeln('#EXT-X-DISCONTINUITY'); // ad ends
+    for (var i = 0; i < 5; i++) {
+      seg('show');
+    }
+    buf.writeln('#EXT-X-DISCONTINUITY'); // a real boundary (5 apart)
+    for (var i = 0; i < 5; i++) {
+      seg('show');
+    }
+
+    final cleaned = filter.clean(
+      buf.toString(),
+      source: source,
+      rewritePlaylist: rewrite,
+    );
+    final lines = cleaned.split('\n');
+    expect(lines.where((l) => l.startsWith('#EXTINF:')).length, 13);
+    expect(cleaned, isNot(contains('ad.ts')));
+    expect(cleaned, contains('show.ts'));
+    // All 3 tight discs go; only the one real boundary (5 apart) survives.
+    expect(
+      lines.where((l) => l.startsWith('#EXT-X-DISCONTINUITY')).length,
+      1,
+    );
+    // The show segment before the pod must now be directly followed by the
+    // show segment after it, so PTS stays continuous (no timeline reset).
+    final showLines = lines.where((l) => l.contains('show.ts')).toList();
+    expect(showLines.length, 13);
+  });
+
+  test('keeps normal discontinuities 5 segments apart', () {
+    const playlist = '''
+#EXTM3U
+#EXTINF:4,
+seg000.ts
+#EXT-X-DISCONTINUITY
+#EXTINF:4,
+seg001.ts
+#EXTINF:4,
+seg002.ts
+#EXTINF:4,
+seg003.ts
+#EXTINF:4,
+seg004.ts
+''';
+    final cleaned = filter.clean(
+      playlist,
+      source: source,
+      rewritePlaylist: rewrite,
+    );
+    // A single disc is not a tight run (>= 2 consecutive required), so it
+    // stays even though its neighbouring gaps are short.
+    expect(
+      cleaned.split('\n').where((l) => l.startsWith('#EXT-X-DISCONTINUITY')).length,
+      1,
+    );
+    expect(
+      cleaned.split('\n').where((l) => l.startsWith('#EXTINF:')).length,
+      5,
+    );
+  });
 }

@@ -493,6 +493,30 @@ js 宿主有两处绕不过去的工程问题，都不是「加个分支」能�
 `703 → 689` 分片、`2804.80s → 2753.28s`、两处 marker/discontinuity 全消失，
 且经过 loopback 代理拿到的 master/media 都是干净版本。
 
+##### 第二种注入形态：高清线路1（2026-11-27，用户实测）
+
+0.1.1 在另一台电脑仍中招，定位到是**同一部剧的另一条线路**：
+`尚公主` **高清线路1** 第 2 集 `svip.dyttplay1.com/.../42460_3de2f5d6/index.m3u8`
+（子列表 `3000k/hls/mixed.m3u8`），和 LZ 线路完全不同：
+
+- **没有任何广告标记**（无 `ppvod-ad-injected`），分片全是同目录 hash 命名
+  `xxx.ts?hash=...`，所以「异前缀」规则完全看不到它；
+- 广告藏在**紧密 discontinuity 簇**里：正常正片的 discontinuity 间隔恒为
+  **5 的倍数**（5/10/15/20/30/35 个分片），广告 pod 前后却是 **2-3 个分片**
+  就一个 discontinuity。全片 699 片 / 106 个 discontinuity，两个 pod 分别在
+  297.88s（5 片：夜总会→麻将→澳门新葡京）和 1516s（4 片），正是 `04:58` 那次；
+- ffprobe 佐证：正片 **25fps / 48kHz**，广告片 **30fps / 44.1kHz**；广告片
+  PTS 重置到 1.46s，而正片 PTS 跨 discontinuity 连续递增（295.36→299.36），
+  这就是「进度条回 0」的根因。
+
+`HlsAdFilter` 新增 `_removeTightDiscontinuityPods`：找到**连续 ≥2 个**、间隔
+`<5` 段的 discontinuity，连同它们包裹的分片一起删（单个短间隔不动，避免误伤
+非常规但合法的边界）。与旧规则叠加后，这条流 **699 → 690 分片 / 106 → 100
+discontinuity**，两个 pod 全清、正片保留、时间轴连续。两个 pod 都经抽帧逐片
+确认过广告/正片归属。`tool/verify_hls_hd1_live.dart` 端到端自证（master →
+loopback → media）全绿。注意 master 的子列表被重写成 `.../hls?u=...&h=<base64>`，
+定位嵌套行要用 `/hls?u=` 而非 `.m3u8` 后缀。
+
 #### 片头 / 片尾：只有用户设过才跳
 
 源站不给片头时间点（猫源的 detail、TVBox 的 `playerContent` 都只有 URL 和 header），
