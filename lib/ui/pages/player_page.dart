@@ -1335,7 +1335,8 @@ class _PlayerPageState extends State<PlayerPage> {
     final parts = <String>[
       if (_currentLabel.isNotEmpty) _currentLabel,
       if (_dw != null && _dh != null) '$_dw×$_dh',
-      if (widget.quality != null && widget.quality!.isNotEmpty) widget.quality!,
+      if (formatQualityLabel(widget.quality).isNotEmpty)
+        formatQualityLabel(widget.quality),
     ];
     return parts.join(' · ');
   }

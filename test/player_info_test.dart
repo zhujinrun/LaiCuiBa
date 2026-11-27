@@ -63,4 +63,30 @@ void main() {
       expect(formatBitrate(null), isNull);
     });
   });
+
+  group('formatQualityLabel', () {
+    test('集数标签改成原版的「共N集」', () {
+      for (final raw in [
+        '第30集',
+        '30集',
+        '全30集',
+        '第30集全',
+        '更新至第30集',
+        '更新至30集',
+      ]) {
+        expect(formatQualityLabel(raw), '共30集', reason: raw);
+      }
+    });
+
+    test('画质与语言标签保持原样', () {
+      for (final raw in ['1080P', 'TC国语', '枪版', '4K HDR']) {
+        expect(formatQualityLabel(raw), raw, reason: raw);
+      }
+    });
+
+    test('空值不会拼出分隔段', () {
+      expect(formatQualityLabel(null), '');
+      expect(formatQualityLabel('  '), '');
+    });
+  });
 }

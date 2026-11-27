@@ -73,6 +73,23 @@ String? formatResolution(int? dw, int? dh) {
   return '$dw×$dh';
 }
 
+/// 播放页顶栏副标题第三段：源 `vod_remarks` 里的集数标签改成「共N集」。
+///
+/// 猫源常把「第30集 / 全30集 / 更新至30集 / 30集」塞进 `vod_remarks`，原版在
+/// 这个地方显示总集数「共30集」，不是把标签原样抄上来。真正是画质/语言标签
+/// （1080P、TC国语、枪版）时保持原样，不能把里面的数字误当集数。
+String formatQualityLabel(String? raw) {
+  if (raw == null) return '';
+  final s = raw.trim();
+  if (s.isEmpty) return '';
+  final m =
+      RegExp(r'^第?\s*(\d{1,4})\s*集(?:全)?$|^全\s*(\d{1,4})\s*集$').firstMatch(s) ??
+      RegExp(r'^更新至\s*第?\s*(\d{1,4})\s*集$').firstMatch(s);
+  if (m == null) return s;
+  final n = m.group(1) ?? m.group(2);
+  return '共${int.parse(n!)}集';
+}
+
 /// Renders a frame rate from an mpv `estimated-vf-fps` string.
 ///
 /// mpv answers like `23.976023`, `24.000000`, `0.000000` (unknown) or the empty
