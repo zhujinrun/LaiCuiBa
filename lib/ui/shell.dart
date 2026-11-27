@@ -497,6 +497,7 @@ class _ShellState extends State<Shell> {
             danmakuBlockTop: _store.settings.danmakuBlockTop,
             danmakuBlockBottom: _store.settings.danmakuBlockBottom,
             buttonsIcon: _store.settings.playerButtons == 'icon',
+            decoderMode: _store.settings.decoderMode,
             danmakuService: _store.danmaku,
             onPrefs: (volume, rate) =>
                 _store.savePlaybackPrefs(volume: volume, rate: rate),

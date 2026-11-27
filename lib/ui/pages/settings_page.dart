@@ -267,6 +267,81 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _showKernelDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('播放内核'),
+        content: const SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _KernelRow(label: 'mpv', available: true),
+              _KernelRow(label: 'ijk', available: false),
+              _KernelRow(label: 'exo', available: false),
+              _KernelRow(label: 'mdk', available: false),
+              SizedBox(height: 8),
+              Text(
+                '当前 Windows 构建只带 mpv 内核；ijk / exo / mdk 是安卓播放内核，这里没有可切换的实现。',
+                style: TextStyle(fontSize: 11.5, color: LcbColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showKernelSettings() async {
+    final store = StoreScope.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('内核设置'),
+        content: SizedBox(
+          width: 380,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'mpv',
+                style: TextStyle(fontSize: 14, color: LcbColors.text),
+              ),
+              const SizedBox(height: 10),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('硬件解码'),
+                subtitle: const Text(
+                  '开：hwdec=auto-safe；关：hwdec=no。花屏或黑屏时关掉再播。',
+                  style: TextStyle(fontSize: 11.5),
+                ),
+                value: store.settings.decoderMode != 'software',
+                onChanged: (value) => store.updateSettings(
+                  store.settings.copyWith(
+                    decoderMode: value ? 'hardware' : 'software',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _setTmdbKey() async {
     final store = StoreScope.of(context);
     final key = await showDialog<String>(
@@ -760,21 +835,28 @@ class _SettingsPageState extends State<SettingsPage> {
               title: '播放内核',
               subtitle: 'mpv / ijk 等播放引擎',
               value: 'mpv',
-              onTap: () {},
+              onTap: _showKernelDialog,
             ),
             _Row(
               icon: CupertinoIcons.slider_horizontal_3,
               color: LcbColors.sysOrange,
               title: '内核设置',
-              subtitle: '默认内核、解码方式',
-              onTap: () {},
+              subtitle: '当前内核：mpv',
+              onTap: _showKernelSettings,
             ),
             _Row(
               icon: Icons.memory,
               color: LcbColors.sysGreen,
               title: '解码方式',
-              value: '硬件',
-              onTap: () {},
+              subtitle: 'mpv 的硬件解码，遇到花屏可切软件',
+              value: store.settings.decoderMode == 'software' ? '软件' : '硬件',
+              onTap: () => store.updateSettings(
+                store.settings.copyWith(
+                  decoderMode: store.settings.decoderMode == 'software'
+                      ? 'hardware'
+                      : 'software',
+                ),
+              ),
             ),
           ],
         ),
@@ -2360,4 +2442,35 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
       ],
     );
   }
+}
+
+
+class _KernelRow extends StatelessWidget {
+  const _KernelRow({required this.label, required this.available});
+
+  final String label;
+  final bool available;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(
+      children: [
+        SizedBox(
+          width: 80,
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 13.5, color: LcbColors.text),
+          ),
+        ),
+        Text(
+          available ? '当前内核' : '当前平台不支持',
+          style: TextStyle(
+            fontSize: 12,
+            color: available ? LcbColors.sysBlue : LcbColors.textTertiary,
+          ),
+        ),
+      ],
+    ),
+  );
 }

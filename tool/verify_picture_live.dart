@@ -57,11 +57,21 @@ Future<void> main(List<String> args) async {
     exit(1);
   }
 
+  await platform.setProperty('hwdec', 'auto-safe', waitForInitialization: false);
+  _check(
+    '硬解偏好写进 mpv',
+    await platform.getProperty('hwdec') == 'auto-safe',
+    await platform.getProperty('hwdec'),
+  );
+  await platform.setProperty('hwdec', 'no', waitForInitialization: false);
+  _check('软解偏好写进 mpv', await platform.getProperty('hwdec') == 'no');
+
   for (final (prop, value) in _props) {
     await platform.command(['set', prop, '$value']);
   }
 
   var matched = 0;
+
   for (final (prop, value) in _props) {
     final got = await platform.getProperty(prop);
     // mpv reports these as float strings ("20.000000"), so compare numerically.

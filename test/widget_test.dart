@@ -631,6 +631,16 @@ void main() {
     expect(store.settings.playerButtons, 'icon');
     expect(find.text('图标'), findsOneWidget);
 
+    // 内核切换如实说明 Windows 只有 mpv；解码方式真的写进设置。
+    await tester.tap(find.text('播放内核'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前平台不支持'), findsNWidgets(3));
+    await tester.tap(find.text('知道了'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('解码方式'));
+    await tester.pumpAndSettle();
+    expect(store.settings.decoderMode, 'software');
+
     // And the per-work shelf says how many works carry their own numbers.
     expect(find.text('1 部'), findsOneWidget);
     expect(

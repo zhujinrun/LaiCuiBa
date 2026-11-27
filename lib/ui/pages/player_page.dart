@@ -81,6 +81,7 @@ class PlayerPage extends StatefulWidget {
     this.danmakuBlockTop = false,
     this.danmakuBlockBottom = false,
     this.buttonsIcon = false,
+    this.decoderMode = 'hardware',
     this.danmakuService,
     this.lines = const [],
     this.lineIndex = 0,
@@ -193,6 +194,9 @@ class PlayerPage extends StatefulWidget {
 
   /// 原版 player_buttons：文字还是图标。
   final bool buttonsIcon;
+
+  /// 设置页选的 mpv 解码方式：hardware / software。
+  final String decoderMode;
 
   /// 取弹幕用。整个应用共用一个实例（store 持有），以便同一部剧换集时命中缓存。
   final DanmakuService? danmakuService;
@@ -477,9 +481,24 @@ class _PlayerPageState extends State<PlayerPage> {
     // A viewer who starts an episode and walks away should come back to a
     // playing episode, not a locked screen.
     _awake.hold();
+    _applyDecoder();
     _open();
     // 弹幕高亮默认关着：进播放页不发任何弹幕请求。设置里的「显示弹幕」只是
     // 允许，真正开还是关由底栏按钮决定——原版进页面不会先弹一句要 AppId。
+  }
+
+  Future<void> _applyDecoder() async {
+    final platform = _player.platform;
+    if (platform is! NativePlayer) return;
+    try {
+      await platform.setProperty(
+        'hwdec',
+        widget.decoderMode == 'software' ? 'no' : 'auto-safe',
+        waitForInitialization: false,
+      );
+    } on Object {
+      // 不支持的属性交给 mpv 自己忽略；不能因为一个解码偏好挡住播放。
+    }
   }
 
   // ---------------------------------------------------------------------------

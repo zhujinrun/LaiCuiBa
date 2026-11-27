@@ -771,6 +771,7 @@ class AppSettings {
     this.widgetProxy = const {},
     this.tmdbApiKey = '',
     this.playerButtons = 'text',
+    this.decoderMode = 'hardware',
     this.extra = const {},
   });
 
@@ -904,6 +905,9 @@ class AppSettings {
   /// 播放底栏的操作按钮显示成文字还是图标（原版 player_buttons）。
   final String playerButtons;
 
+  /// mpv 的硬解 / 软解（hwdec），只作用于当前唯一可用的 mpv 内核。
+  final String decoderMode;
+
   /// Unmodelled keys carried through unchanged.
   final Map<String, dynamic> extra;
 
@@ -956,6 +960,7 @@ class AppSettings {
     Map<String, dynamic>? widgetProxy,
     String? tmdbApiKey,
     String? playerButtons,
+    String? decoderMode,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -1006,6 +1011,7 @@ class AppSettings {
       widgetProxy: widgetProxy ?? this.widgetProxy,
       tmdbApiKey: tmdbApiKey ?? this.tmdbApiKey,
       playerButtons: playerButtons ?? this.playerButtons,
+      decoderMode: decoderMode ?? this.decoderMode,
       extra: extra,
     );
   }
@@ -1066,6 +1072,7 @@ class AppSettings {
     'widgetProxy': Map<String, dynamic>.from(widgetProxy),
     'tmdbApiKey': tmdbApiKey,
     'playerButtons': playerButtons,
+    'decoderMode': decoderMode,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -1141,6 +1148,7 @@ class AppSettings {
       widgetProxy: _readStringMap(extra.remove('widgetProxy')),
       tmdbApiKey: pop('tmdbApiKey', ''),
       playerButtons: pop('playerButtons', 'text'),
+      decoderMode: pop('decoderMode', 'hardware'),
       extra: extra,
     );
   }
