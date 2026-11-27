@@ -197,7 +197,8 @@ void main() {
       final s = AppSettings.fromJson({});
       expect(s.themeMode, 'system');
       expect(s.language, 'zh');
-      expect(s.liquidGlass, isTrue);
+      expect(s.liquidGlass, isFalse);
+      expect(s.adaptiveColor, isTrue);
       expect(s.extra, isEmpty);
     });
 

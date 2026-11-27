@@ -6,8 +6,6 @@ import 'package:flutter/material.dart';
 import '../../core/app_info.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
-import '../../models/models.dart';
-import '../../services/badge_rule.dart';
 import '../../services/danmaku/danmaku_api.dart';
 import '../../services/icon_packs.dart';
 import '../../services/store.dart';
@@ -643,7 +641,7 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: CupertinoIcons.list_bullet,
               color: LcbColors.sysOrange,
               title: '导航栏',
-              subtitle: '入口顺序、首页位置、底部行为',
+              subtitle: '入口排序、显示哪些、底栏行为',
               value: '5 个入口',
               onTap: () => _toast('侧栏固定为 首页 / 资源 / 收藏 / 历史 / 设置'),
             ),
@@ -651,14 +649,14 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: CupertinoIcons.rectangle_grid_2x2,
               color: LcbColors.sysBlue,
               title: '首页布局',
-              subtitle: '调整首页区域顺序和显示方式',
+              subtitle: '设置分类、资源和平台入口',
               onTap: () => _toast('首页布局由自定义页面控制，可在「组件」里编辑'),
             ),
             _Row(
               icon: CupertinoIcons.textformat_size,
               color: LcbColors.sysTeal,
-              title: '首页平台参数配置',
-              subtitle: '控制首页平台名显示宽度',
+              title: '首页平台字数限制',
+              subtitle: '首页顶部中间按钮最多显示的文本数',
               value: '10 字',
               onTap: () => _toast('平台名按 10 字宽度截断'),
             ),
@@ -666,7 +664,7 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: CupertinoIcons.photo_fill_on_rectangle_fill,
               color: LcbColors.sysGreen,
               title: '首页轮播海报',
-              subtitle: '顶部自动轮播的推荐海报',
+              subtitle: '关闭后首页直接展示内容分区',
               toggle: true,
               toggleValue: store.settings.homeBannerEnabled,
               onToggle: (v) => store.updateSettings(
@@ -676,8 +674,8 @@ class _SettingsPageState extends State<SettingsPage> {
             _Row(
               icon: CupertinoIcons.square_on_square,
               color: LcbColors.sysPurple,
-              title: '第二媒体桌面',
-              subtitle: '首页重复内容按不同规则展示，可在首页长按切换',
+              title: '第二媒体界面',
+              subtitle: '按住底部“媒体”往上滑到切换，或在首页往右滑',
               toggle: true,
               toggleValue: store.settings.secondHome,
               onToggle: (v) => store.updateSettings(
@@ -699,7 +697,7 @@ class _SettingsPageState extends State<SettingsPage> {
               title: '平台列表布局',
               subtitle: '搜索结果按平台分组时的展示方式',
               value: store.settings.platformListLayout == 'preset2'
-                  ? '预设两列'
+                  ? '顶部横排'
                   : '单列',
               onTap: () => store.updateSettings(
                 store.settings.copyWith(
@@ -714,7 +712,7 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: CupertinoIcons.search,
               color: LcbColors.sysGreen,
               title: '聚合搜索',
-              subtitle: '当前在没选具体平台时，同时搜索全部有资源',
+              subtitle: '当前资源是所选类型时，同时搜索该类型的全部资源',
               value: store.settings.aggregateSearch ? '开启' : '关闭',
               onTap: () => store.updateSettings(
                 store.settings.copyWith(
@@ -733,8 +731,9 @@ class _SettingsPageState extends State<SettingsPage> {
               color: LcbColors.sysIndigo,
               title: '遥控器键盘',
               subtitle:
-                  '字符输入自动切换成精简输入，支持拼音全拼输入、英文、数字；'
-                  '数字字母键盘可让输入更准确；遥控器上输入更轻松。',
+                  '开启后，点输入框会弹出应用自带的键盘，用遥控器方向键连续输入，支持拼音打中文。'
+                  '全键盘：字母直接拼音（全拼或首字母）；九宫格：按字母所在的数字键拼音，'
+                  '也能用遥控器上的数字键。适合电视上系统输入法不好用的情况。',
               value: store.settings.tvKeyboard ? '开启' : '关闭',
               onTap: () => store.updateSettings(
                 store.settings.copyWith(
@@ -869,7 +868,119 @@ class _SettingsPageState extends State<SettingsPage> {
                 store.settings.copyWith(inheritSystemProxy: v),
               ),
             ),
+            _Row(
+              icon: CupertinoIcons.chat_bubble_2,
+              color: LcbColors.sysTeal,
+              title: '弹幕源',
+              subtitle: '内置弹弹play；没有配置自己的源',
+              value: store.settings.danmakuSources.isEmpty
+                  ? '未配置'
+                  : '${store.settings.danmakuSources.length} 个',
+              onTap: () => _open('弹幕源'),
+            ),
+            _Row(
+              icon: CupertinoIcons.chat_bubble_2_fill,
+              color: LcbColors.sysBlue,
+              title: '默认显示弹幕',
+              toggle: true,
+              toggleValue: store.settings.danmakuEnabled,
+              onToggle: (v) => store.updateSettings(
+                store.settings.copyWith(danmakuEnabled: v),
+              ),
+            ),
+            _Row(
+              icon: CupertinoIcons.speedometer,
+              color: LcbColors.sysGreen,
+              title: '默认倍速',
+              value: '${store.settings.playerRate.toStringAsFixed(1)}x',
+              onTap: () => _toast('默认倍速请从播放页底栏调整'),
+            ),
+            _Row(
+              icon: CupertinoIcons.play_arrow_solid,
+              color: LcbColors.sysRed,
+              title: '长按倍速',
+              subtitle: '播放时长按画面临时用的倍速，松手恢复',
+              value: '${store.settings.longPressRate.toStringAsFixed(0)}x',
+              onTap: () => store.updateSettings(
+                store.settings.copyWith(
+                  longPressRate: store.settings.longPressRate == 2 ? 3 : 2,
+                ),
+              ),
+            ),
+            _Row(
+              icon: CupertinoIcons.captions_bubble,
+              color: LcbColors.sysOrange,
+              title: '优先字幕',
+              value: store.settings.subtitlePriority == 'follow'
+                  ? '跟随片源'
+                  : '优先外挂',
+              onTap: () => store.updateSettings(
+                store.settings.copyWith(
+                  subtitlePriority: store.settings.subtitlePriority == 'follow'
+                      ? 'external'
+                      : 'follow',
+                ),
+              ),
+            ),
+            _Row(
+              icon: CupertinoIcons.film,
+              color: LcbColors.sysPink,
+              title: '短剧预载',
+              subtitle: '当前集少于 5 分钟时，检测并缓存下一集',
+              toggle: true,
+              toggleValue: store.settings.shortDramaPreload,
+              onToggle: (v) => store.updateSettings(
+                store.settings.copyWith(shortDramaPreload: v),
+              ),
+            ),
+            _Row(
+              icon: CupertinoIcons.timer,
+              color: LcbColors.sysOrange,
+              title: '预载时长上限',
+              subtitle: '当前集和下一集都需要短于这个时间',
+              value: '${store.settings.preloadMaxMinutes} 分钟',
+              onTap: () => store.updateSettings(
+                store.settings.copyWith(
+                  preloadMaxMinutes: store.settings.preloadMaxMinutes == 5
+                      ? 10
+                      : 5,
+                ),
+              ),
+            ),
+            _Row(
+              icon: CupertinoIcons.trash,
+              color: LcbColors.sysGray,
+              title: '清理短剧预载缓存',
+              subtitle: '含源的视频临时文件；不会手动下载和内核磁盘缓存',
+              value: '0 KB',
+              onTap: () => _toast('当前没有短剧预载缓存'),
+            ),
           ],
+        ),
+        const SizedBox(height: 23),
+        const _GroupLabel('电脑快捷键'),
+        _Group(
+          rows: [
+            _Row(
+              icon: CupertinoIcons.eye_slash,
+              color: LcbColors.sysGray,
+              title: '老板键',
+              subtitle: '藏起窗口并暂停，再按一次放出来接着播',
+              value: 'Ctrl + Alt + H',
+              onTap: () => _toast('老板键由系统全局快捷键接管，当前构建未注册'),
+            ),
+            _Row(
+              icon: CupertinoIcons.rectangle_on_rectangle,
+              color: LcbColors.sysIndigo,
+              title: '摸鱼小窗快捷键',
+              subtitle: '播放页里切换角落悬浮小窗',
+              value: 'P',
+              onTap: () => _toast('小窗快捷键请在播放页用画中画按钮'),
+            ),
+          ],
+        ),
+        const _Note(
+          '按键按键盘上的位置识别，中文输入法开着也能用。老板键在任何程序里都有效（播放页开着时）。',
         ),
       ];
 
@@ -1294,7 +1405,7 @@ class _SettingsPageState extends State<SettingsPage> {
             _Row(
               icon: CupertinoIcons.rosette,
               color: LcbColors.sysPurple,
-              title: '显示媒体徽章',
+              title: '启用媒体徽章',
               subtitle: '4K、杜比视界、HDR、DTS 等规格标签',
               toggle: true,
               toggleValue: store.settings.mediaBadgesEnabled,
@@ -1303,40 +1414,36 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
             _Row(
-              icon: CupertinoIcons.rectangle_3_offgrid,
+              icon: CupertinoIcons.rectangle_on_rectangle,
               color: LcbColors.sysBlue,
-              title: '显示位置',
-              subtitle: '徽章摆在海报的哪个角',
-              value: _badgeSpotLabel(store.settings.badgeSpot),
-              onTap: () => _pickBadgeSpot(store),
+              title: '在播放器中显示',
+              toggle: true,
+              toggleValue: store.settings.badgeInPlayer,
+              onToggle: (v) => store.updateSettings(
+                store.settings.copyWith(badgeInPlayer: v),
+              ),
             ),
             _Row(
-              icon: CupertinoIcons.textformat,
-              color: LcbColors.sysGreen,
-              title: '带文字标签',
-              subtitle: '关闭后只显示 4K、DV 这类短标',
+              icon: CupertinoIcons.eye_slash,
+              color: LcbColors.sysTeal,
+              title: '随播放控件显示或隐藏',
+              subtitle: '关闭后徽章一直留在画面上',
               toggle: true,
-              toggleValue: store.settings.badgeText,
+              toggleValue: store.settings.badgeFollowControls,
               onToggle: (v) => store.updateSettings(
-                store.settings.copyWith(badgeText: v),
+                store.settings.copyWith(badgeFollowControls: v),
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 23),
-        const _GroupLabel('规格'),
-        _Group(
-          rows: [
-            for (final group in BadgeGroup.values)
-              _Row(
-                icon: _badgeGroupIcon(group),
-                color: _badgeGroupColor(group),
-                title: _badgeGroupLabel(group),
-                subtitle: _badgeGroupHint(group),
-                toggle: true,
-                toggleValue: _badgeGroupOn(store.settings, group),
-                onToggle: (v) => _setBadgeGroup(store, group, v),
+            _Row(
+              icon: CupertinoIcons.square_grid_2x2,
+              color: LcbColors.sysGreen,
+              title: '在资源卡片中显示',
+              toggle: true,
+              toggleValue: store.settings.badgeInCards,
+              onToggle: (v) => store.updateSettings(
+                store.settings.copyWith(badgeInCards: v),
               ),
+            ),
           ],
         ),
         const SizedBox(height: 23),
@@ -1345,145 +1452,47 @@ class _SettingsPageState extends State<SettingsPage> {
           rows: [
             _Row(
               icon: CupertinoIcons.rectangle_stack,
-              color: LcbColors.sysOrange,
-              title: '徽章包',
-              subtitle: '徽章的样式与图标',
-              value: '内置',
-              onTap: () => _toast('远端徽章包要联网下载，暂未接入'),
+              color: LcbColors.sysPurple,
+              title: '内置徽章',
+              subtitle: '分辨率、HDR、音频规格',
+              value: '✓',
+              onTap: () => _toast('当前使用内置徽章包'),
+            ),
+          ],
+        ),
+        const _Note('点右上角 + 用链接导入徽章包；长按导入的徽章包可以更新或删除。'),
+        const SizedBox(height: 23),
+        const _GroupLabel('效果预览'),
+        _Group(
+          rows: [
+            _Row(
+              icon: CupertinoIcons.film,
+              color: LcbColors.sysGray,
+              title: 'WEB-DL',
+              subtitle: '28.00 GB · 25.0 Mbps',
+              value: '4K HDR10 DV 4:1',
+              onTap: () {},
+            ),
+            _Row(
+              icon: CupertinoIcons.film,
+              color: LcbColors.sysGray,
+              title: 'WEB-DL',
+              subtitle: '1.00 GB · 8.0 Mbps',
+              value: '720p HDR10',
+              onTap: () {},
+            ),
+            _Row(
+              icon: CupertinoIcons.film,
+              color: LcbColors.sysGray,
+              title: 'BluRay Remux',
+              subtitle: '76.00 GB · 88.0 Mbps',
+              value: '4K HDR10 DV 4:1',
+              onTap: () {},
             ),
           ],
         ),
       ];
 
-  String _badgeSpotLabel(String spot) {
-    switch (spot) {
-      case 'rightTop':
-        return '右上角';
-      case 'leftBottom':
-        return '左下角';
-      case 'rightBottom':
-        return '右下角';
-      case 'leftTop':
-      default:
-        return '左上角';
-    }
-  }
-
-  Future<void> _pickBadgeSpot(AppStore store) async {
-    const options = <String, String>{
-      'leftTop': '左上角',
-      'rightTop': '右上角',
-      'leftBottom': '左下角',
-      'rightBottom': '右下角',
-    };
-    final picked = await showDialog<String>(
-      context: context,
-      barrierColor: const Color(0x78000000),
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          '显示位置',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final e in options.entries)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: Text(e.value),
-                trailing: store.settings.badgeSpot == e.key
-                    ? const Icon(
-                        Icons.check,
-                        color: LcbColors.primary,
-                        size: 18,
-                      )
-                    : null,
-                onTap: () => Navigator.of(ctx).pop(e.key),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (picked == null) return;
-    await store.updateSettings(store.settings.copyWith(badgeSpot: picked));
-    if (!mounted) return;
-    _toast('徽章已移到${options[picked]}');
-  }
-
-  IconData _badgeGroupIcon(BadgeGroup group) {
-    switch (group) {
-      case BadgeGroup.quality:
-        return CupertinoIcons.arrow_up_right_square_fill;
-      case BadgeGroup.hdr:
-        return CupertinoIcons.sun_max_fill;
-      case BadgeGroup.audio:
-        return CupertinoIcons.speaker_2_fill;
-      case BadgeGroup.source:
-        return CupertinoIcons.cloud_fill;
-    }
-  }
-
-  Color _badgeGroupColor(BadgeGroup group) {
-    switch (group) {
-      case BadgeGroup.quality:
-        return LcbColors.sysOrange;
-      case BadgeGroup.hdr:
-        return LcbColors.sysViolet;
-      case BadgeGroup.audio:
-        return LcbColors.sysBlue;
-      case BadgeGroup.source:
-        return LcbColors.sysGray;
-    }
-  }
-
-  String _badgeGroupLabel(BadgeGroup group) {
-    switch (group) {
-      case BadgeGroup.quality:
-        return '画质';
-      case BadgeGroup.hdr:
-        return 'HDR';
-      case BadgeGroup.audio:
-        return '音轨';
-      case BadgeGroup.source:
-        return '片源';
-    }
-  }
-
-  String _badgeGroupHint(BadgeGroup group) {
-    switch (group) {
-      case BadgeGroup.quality:
-        return '4K、8K、1080p、HEVC 等分辨率与编码';
-      case BadgeGroup.hdr:
-        return '杜比视界、HDR10、HDR10+';
-      case BadgeGroup.audio:
-        return '杜比全景声、DTS、TrueHD 等音轨';
-      case BadgeGroup.source:
-        return 'IMAX、BluRay、WEB-DL、Remux 等片源';
-    }
-  }
-
-  /// 一组规格视为「开」当且仅当组内没有任何一个 slug 被显式关掉。
-  /// （缺省即开，见 [AppSettings.badgeSpecs] 的语义。）
-  bool _badgeGroupOn(AppSettings settings, BadgeGroup group) {
-    final slugs = BadgeRule.all.where((b) => b.group == group).map((b) => b.slug);
-    return slugs.every((s) => settings.badgeSpecs[s] != false);
-  }
-
-  void _setBadgeGroup(AppStore store, BadgeGroup group, bool on) {
-    final next = Map<String, bool>.from(store.settings.badgeSpecs);
-    for (final b in BadgeRule.all.where((b) => b.group == group)) {
-      // 开 → 删掉这条「关」的标记（回到缺省开）；关 → 显式记 false。
-      if (on) {
-        next.remove(b.slug);
-      } else {
-        next[b.slug] = false;
-      }
-    }
-    store.updateSettings(store.settings.copyWith(badgeSpecs: next));
-  }
 }
 
 /// 一节说明文字。设置页里凡是要讲清「为什么这里没有开关」的地方都用它。

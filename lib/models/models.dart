@@ -751,9 +751,9 @@ class AppSettings {
     this.language = 'zh',
     this.startupStats = true,
     this.startupNotify = true,
-    this.liquidGlass = true,
+    this.liquidGlass = false,
     this.hideStatusBar = false,
-    this.adaptiveColor = false,
+    this.adaptiveColor = true,
     this.homeBannerEnabled = true,
     this.skipIntroOutro = true,
     this.introSkipMs = 0,
@@ -777,6 +777,13 @@ class AppSettings {
     this.browserUA = '',
     this.backgroundPlay = true,
     this.inheritSystemProxy = false,
+    this.longPressRate = 2.0,
+    this.subtitlePriority = 'follow',
+    this.preloadMaxMinutes = 5,
+    this.badgeInPlayer = true,
+    this.badgeFollowControls = true,
+    this.badgeInCards = true,
+
     this.playerVolume = 100,
     this.playerRate = 1.0,
     this.aspectFit = 'fit',
@@ -828,6 +835,13 @@ class AppSettings {
   final String browserUA;
   final bool backgroundPlay;
   final bool inheritSystemProxy;
+  final double longPressRate;
+  final String subtitlePriority;
+  final int preloadMaxMinutes;
+  final bool badgeInPlayer;
+  final bool badgeFollowControls;
+  final bool badgeInCards;
+
 
 
   /// 关于页的两个开关，按原版默认都是开。
@@ -994,6 +1008,12 @@ class AppSettings {
     String? browserUA,
     bool? backgroundPlay,
     bool? inheritSystemProxy,
+    double? longPressRate,
+    String? subtitlePriority,
+    int? preloadMaxMinutes,
+    bool? badgeInPlayer,
+    bool? badgeFollowControls,
+    bool? badgeInCards,
     bool? startupStats,
     bool? startupNotify,
     bool? liquidGlass,
@@ -1063,6 +1083,12 @@ class AppSettings {
       browserUA: browserUA ?? this.browserUA,
       backgroundPlay: backgroundPlay ?? this.backgroundPlay,
       inheritSystemProxy: inheritSystemProxy ?? this.inheritSystemProxy,
+      longPressRate: longPressRate ?? this.longPressRate,
+      subtitlePriority: subtitlePriority ?? this.subtitlePriority,
+      preloadMaxMinutes: preloadMaxMinutes ?? this.preloadMaxMinutes,
+      badgeInPlayer: badgeInPlayer ?? this.badgeInPlayer,
+      badgeFollowControls: badgeFollowControls ?? this.badgeFollowControls,
+      badgeInCards: badgeInCards ?? this.badgeInCards,
       startupStats: startupStats ?? this.startupStats,
       startupNotify: startupNotify ?? this.startupNotify,
       liquidGlass: liquidGlass ?? this.liquidGlass,
@@ -1136,6 +1162,12 @@ class AppSettings {
     'browserUA': browserUA,
     'backgroundPlay': backgroundPlay,
     'inheritSystemProxy': inheritSystemProxy,
+    'longPressRate': longPressRate,
+    'subtitlePriority': subtitlePriority,
+    'preloadMaxMinutes': preloadMaxMinutes,
+    'badgeInPlayer': badgeInPlayer,
+    'badgeFollowControls': badgeFollowControls,
+    'badgeInCards': badgeInCards,
     'startupStats': startupStats,
     'startupNotify': startupNotify,
     'liquidGlass': liquidGlass,
@@ -1227,11 +1259,17 @@ class AppSettings {
       browserUA: pop('browserUA', ''),
       backgroundPlay: pop('backgroundPlay', true),
       inheritSystemProxy: pop('inheritSystemProxy', false),
+      longPressRate: pop('longPressRate', 2.0),
+      subtitlePriority: pop('subtitlePriority', 'follow'),
+      preloadMaxMinutes: pop('preloadMaxMinutes', 5),
+      badgeInPlayer: pop('badgeInPlayer', true),
+      badgeFollowControls: pop('badgeFollowControls', true),
+      badgeInCards: pop('badgeInCards', true),
       startupStats: pop('startupStats', true),
       startupNotify: pop('startupNotify', true),
-      liquidGlass: pop('liquidGlass', true),
+      liquidGlass: pop('liquidGlass', false),
       hideStatusBar: pop('hideStatusBar', false),
-      adaptiveColor: pop('adaptiveColor', false),
+      adaptiveColor: pop('adaptiveColor', true),
       homeBannerEnabled: pop('homeBannerEnabled', true),
       skipIntroOutro: pop('skipIntroOutro', true),
       introSkipMs: pop('introSkipMs', 0),
