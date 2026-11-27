@@ -11,6 +11,7 @@ import '../core/theme.dart';
 import '../models/models.dart';
 import '../services/awake.dart';
 import '../services/demo_data.dart';
+import '../services/ai/subtitle_translate.dart';
 import '../services/store.dart';
 import '../services/track_choice.dart';
 import '../services/widgets/widget_center.dart';
@@ -498,6 +499,12 @@ class _ShellState extends State<Shell> {
             danmakuBlockBottom: _store.settings.danmakuBlockBottom,
             buttonsIcon: _store.settings.playerButtons == 'icon',
             decoderMode: _store.settings.decoderMode,
+            aiConfig: AiTranslationConfig(
+              baseUrl: _store.settings.aiBaseUrl,
+              model: _store.settings.aiModel,
+              apiKey: _store.settings.aiApiKey,
+              targetLang: _store.settings.aiTargetLang,
+            ),
             danmakuService: _store.danmaku,
             onPrefs: (volume, rate) =>
                 _store.savePlaybackPrefs(volume: volume, rate: rate),

@@ -21,6 +21,7 @@ void main() {
 
     expect(find.text('这一集没有内嵌字幕'), findsOneWidget);
     expect(find.text('搜索字幕网站…'), findsOneWidget);
+    expect(find.text('AI 翻译本集字幕'), findsOneWidget);
     expect(find.text('选择本地字幕文件…'), findsOneWidget);
     // 没挂字幕时不该有「取消外挂字幕」这一行。
     expect(find.text('不再使用外挂字幕'), findsNothing);
@@ -83,5 +84,20 @@ void main() {
     await tester.tap(find.text('搜索字幕网站…'));
     await tester.pump();
     expect(searched, 1);
+  });
+
+  testWidgets('AI 翻译开关只能由用户点开', (tester) async {
+    var toggled = 0;
+    await tester.pumpWidget(
+      _wrap(
+        SubtitlePanel(
+          choices: const TrackChoices(),
+          onToggleAi: () => toggled++,
+        ),
+      ),
+    );
+    await tester.tap(find.text('AI 翻译本集字幕'));
+    await tester.pump();
+    expect(toggled, 1);
   });
 }

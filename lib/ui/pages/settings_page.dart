@@ -270,6 +270,14 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _showAiTranslationSettings() async {
+    final store = StoreScope.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _AiTranslationDialog(store: store),
+    );
+  }
+
   Future<void> _showKernelDialog() async {
     await showDialog<void>(
       context: context,
@@ -989,6 +997,13 @@ class _SettingsPageState extends State<SettingsPage> {
                   '${LcbSubtitleStyle.labelOf(store.settings.subtitleSize)} '
                   '${store.settings.subtitleSize}',
               onTap: () => _pickSubtitleSize(store),
+            ),
+            _Row(
+              icon: CupertinoIcons.sparkles,
+              color: LcbColors.sysPurple,
+              title: 'AI 翻译',
+              subtitle: 'OpenAI 兼容接口；Key 只保存在本机，不进备份',
+              onTap: _showAiTranslationSettings,
             ),
             _Row(
               icon: CupertinoIcons.globe,
@@ -2483,4 +2498,115 @@ class _KernelRow extends StatelessWidget {
       ],
     ),
   );
+}
+
+
+class _AiTranslationDialog extends StatefulWidget {
+  const _AiTranslationDialog({required this.store});
+
+  final AppStore store;
+
+  @override
+  State<_AiTranslationDialog> createState() => _AiTranslationDialogState();
+}
+
+class _AiTranslationDialogState extends State<_AiTranslationDialog> {
+  late final _base = TextEditingController(
+    text: widget.store.settings.aiBaseUrl,
+  );
+  late final _model = TextEditingController(
+    text: widget.store.settings.aiModel,
+  );
+  late final _key = TextEditingController(text: widget.store.settings.aiApiKey);
+  late final _lang = TextEditingController(
+    text: widget.store.settings.aiTargetLang,
+  );
+
+  @override
+  void dispose() {
+    _base.dispose();
+    _model.dispose();
+    _key.dispose();
+    _lang.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('AI 翻译字幕'),
+      content: SizedBox(
+        width: 460,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _base,
+              decoration: const InputDecoration(
+                labelText: '接口地址',
+                hintText: 'https://api.openai.com/v1',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _model,
+              decoration: const InputDecoration(
+                labelText: '模型',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _key,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'API Key（可不填）',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _lang,
+              decoration: const InputDecoration(
+                labelText: '翻译成',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Key 只保存在本机，不进备份。内核自己画字幕时拿不到文字，AI 翻译要换成 MPV 或 Exo；本客户端用的就是 MPV。',
+              style: TextStyle(fontSize: 11.5, color: LcbColors.textSecondary),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        TextButton(
+          onPressed: () {
+            widget.store.updateSettings(
+              widget.store.settings.copyWith(
+                aiBaseUrl: _base.text.trim(),
+                aiModel: _model.text.trim(),
+                aiApiKey: _key.text.trim(),
+                aiTargetLang: _lang.text.trim().isEmpty
+                    ? '简体中文'
+                    : _lang.text.trim(),
+              ),
+            );
+            Navigator.of(context).pop();
+          },
+          child: const Text('保存'),
+        ),
+      ],
+    );
+  }
 }

@@ -773,6 +773,10 @@ class AppSettings {
     this.playerButtons = 'text',
     this.decoderMode = 'hardware',
     this.subtitleSites = const [],
+    this.aiBaseUrl = 'https://api.openai.com/v1',
+    this.aiModel = 'gpt-4o-mini',
+    this.aiApiKey = '',
+    this.aiTargetLang = '简体中文',
     this.extra = const {},
   });
 
@@ -912,6 +916,12 @@ class AppSettings {
   /// 用户自己配的字幕网站表，保持原始 JSON；语义在 services/subtitle/sites.dart。
   final List<Map<String, dynamic>> subtitleSites;
 
+  /// AI 字幕翻译：OpenAI 兼容接口，凭据只在本机、不进备份。
+  final String aiBaseUrl;
+  final String aiModel;
+  final String aiApiKey;
+  final String aiTargetLang;
+
   /// Unmodelled keys carried through unchanged.
   final Map<String, dynamic> extra;
 
@@ -966,6 +976,10 @@ class AppSettings {
     String? playerButtons,
     String? decoderMode,
     List<Map<String, dynamic>>? subtitleSites,
+    String? aiBaseUrl,
+    String? aiModel,
+    String? aiApiKey,
+    String? aiTargetLang,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -1018,6 +1032,10 @@ class AppSettings {
       playerButtons: playerButtons ?? this.playerButtons,
       decoderMode: decoderMode ?? this.decoderMode,
       subtitleSites: subtitleSites ?? this.subtitleSites,
+      aiBaseUrl: aiBaseUrl ?? this.aiBaseUrl,
+      aiModel: aiModel ?? this.aiModel,
+      aiApiKey: aiApiKey ?? this.aiApiKey,
+      aiTargetLang: aiTargetLang ?? this.aiTargetLang,
       extra: extra,
     );
   }
@@ -1082,6 +1100,10 @@ class AppSettings {
     'subtitleSites': [
       for (final site in subtitleSites) Map<String, dynamic>.from(site),
     ],
+    'aiBaseUrl': aiBaseUrl,
+    'aiModel': aiModel,
+    'aiApiKey': aiApiKey,
+    'aiTargetLang': aiTargetLang,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -1162,6 +1184,10 @@ class AppSettings {
         for (final raw in (extra.remove('subtitleSites') as List?) ?? const [])
           if (raw is Map) Map<String, dynamic>.from(raw),
       ],
+      aiBaseUrl: pop('aiBaseUrl', 'https://api.openai.com/v1'),
+      aiModel: pop('aiModel', 'gpt-4o-mini'),
+      aiApiKey: pop('aiApiKey', ''),
+      aiTargetLang: pop('aiTargetLang', '简体中文'),
       extra: extra,
     );
   }

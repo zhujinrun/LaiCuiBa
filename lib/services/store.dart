@@ -2072,6 +2072,7 @@ class AppStore extends ChangeNotifier {
     final json = _settings.toJson();
     json.remove('widgetProxy');
     json.remove('tmdbApiKey');
+    json.remove('aiApiKey');
     return json;
   }
 

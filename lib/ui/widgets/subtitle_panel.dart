@@ -19,6 +19,8 @@ class SubtitlePanel extends StatelessWidget {
     this.onPickSubtitleFile,
     this.onClearSubtitleFile,
     this.onSearchSubtitles,
+    this.aiOn = false,
+    this.onToggleAi,
   });
 
   final TrackChoices choices;
@@ -35,6 +37,10 @@ class SubtitlePanel extends StatelessWidget {
 
   /// 打开字幕网站搜索（原版「字幕网站」）。
   final VoidCallback? onSearchSubtitles;
+
+  /// AI 翻译这一集的实时字幕，开关由用户点。
+  final bool aiOn;
+  final VoidCallback? onToggleAi;
 
   @override
   Widget build(BuildContext context) {
@@ -68,6 +74,13 @@ class SubtitlePanel extends StatelessWidget {
                 onTap: () => onSubtitle?.call(t),
               ),
           ],
+          const PanelGroupHeader('AI 翻译'),
+          PanelRow(
+            label: aiOn ? 'AI 翻译已开' : 'AI 翻译本集字幕',
+            selected: aiOn,
+            detail: aiOn ? '关闭' : null,
+            onTap: onToggleAi ?? () {},
+          ),
           const PanelGroupHeader('字幕网站'),
           PanelRow(
             label: '搜索字幕网站…',

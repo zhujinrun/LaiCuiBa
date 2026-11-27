@@ -10,6 +10,7 @@ import 'package:window_manager/window_manager.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
+import '../../services/ai/subtitle_translate.dart';
 import '../../services/awake.dart';
 import '../../services/danmaku/danmaku_api.dart';
 import '../../services/danmaku/source_danmaku.dart';
@@ -85,6 +86,7 @@ class PlayerPage extends StatefulWidget {
     this.danmakuBlockBottom = false,
     this.buttonsIcon = false,
     this.decoderMode = 'hardware',
+    this.aiConfig,
     this.danmakuService,
     this.lines = const [],
     this.lineIndex = 0,
@@ -201,6 +203,9 @@ class PlayerPage extends StatefulWidget {
   /// 设置页选的 mpv 解码方式：hardware / software。
   final String decoderMode;
 
+  /// AI 字幕翻译配置；null 表示用户还没填 Key。
+  final AiTranslationConfig? aiConfig;
+
   /// 取弹幕用。整个应用共用一个实例（store 持有），以便同一部剧换集时命中缓存。
   final DanmakuService? danmakuService;
 
@@ -312,6 +317,12 @@ class _PlayerPageState extends State<PlayerPage> {
   /// `secondary-sub-text` 报出来，我们照主字幕的字号在画面上方自己画——两条
   /// 字幕走同一个渲染器，字号设置对它们才是一致的。
   String _secondaryText = '';
+
+  /// AI 翻译出来的那一行，画在画面上方；没有真实次字幕时接它的位置。
+  String _aiText = '';
+  String _aiLastSource = '';
+  bool _aiOn = false;
+  Timer? _aiTimer;
   String? _secondaryId;
   bool _secondaryNoticed = false;
 
@@ -455,8 +466,8 @@ class _PlayerPageState extends State<PlayerPage> {
       final text = _secondaryId == null
           ? ''
           : (lines.length > 1 ? lines[1] : '');
-      if (text == _secondaryText) return;
-      setState(() => _secondaryText = text);
+      if (text != _secondaryText) setState(() => _secondaryText = text);
+      if (_aiOn && lines.isNotEmpty) _scheduleAi(lines[0]);
     });
     _externalPath = widget.initialSubtitleFile;
     _trackSub = _player.stream.track.listen((t) {
@@ -757,6 +768,46 @@ class _PlayerPageState extends State<PlayerPage> {
   // ---------------------------------------------------------------------------
 
   /// 打开文件选择器，把挑中的字幕挂上去并记在这一集上。
+  void _scheduleAi(String source) {
+    final text = source.trim();
+    if (text.isEmpty || text == _aiLastSource) return;
+    _aiTimer?.cancel();
+    _aiTimer = Timer(const Duration(milliseconds: 400), () {
+      _aiLastSource = text;
+      unawaited(_translateLine(text));
+    });
+  }
+
+  Future<void> _translateLine(String text) async {
+    final config = widget.aiConfig;
+    if (config == null || !config.ready) {
+      _showNotice('请先到设置配置 AI 大模型和 API Key');
+      if (mounted) setState(() => _aiOn = false);
+      return;
+    }
+    try {
+      final translated = await AiSubtitleTranslator.translate([text], config);
+      if (!mounted) return;
+      setState(() => _aiText = translated.isEmpty ? '' : translated.first);
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      _showNotice(error.message);
+    }
+  }
+
+  void _toggleAiTranslation() {
+    final next = !_aiOn;
+    setState(() {
+      _aiOn = next;
+      if (!next) {
+        _aiTimer?.cancel();
+        _aiText = '';
+        _aiLastSource = '';
+      }
+    });
+    _showNotice(next ? 'AI 翻译已开' : 'AI 翻译已关');
+  }
+
   Future<void> _searchSubtitles() async {
     final sites = [
       for (final raw in StoreScope.of(context).settings.subtitleSites)
@@ -1243,6 +1294,7 @@ class _PlayerPageState extends State<PlayerPage> {
   void dispose() {
     _hideTimer?.cancel();
     _noticeTimer?.cancel();
+    _aiTimer?.cancel();
     _positionSub?.cancel();
     _durationSub?.cancel();
     _bufferSub?.cancel();
@@ -1312,7 +1364,7 @@ class _PlayerPageState extends State<PlayerPage> {
             ),
           // 次字幕：mpv 把它当成第二条轨，文字从 `secondary-sub-text` 报过来，
           // 这里照主字幕的字号画在画面上方，和主字幕组成双语对照。
-          if (_secondaryText.isNotEmpty)
+          if (_aiText.isNotEmpty || _secondaryText.isNotEmpty)
             Positioned(
               top: 84,
               left: 24,
@@ -1450,6 +1502,8 @@ class _PlayerPageState extends State<PlayerPage> {
                 externalSubtitleLabel: _externalLabel,
                 onPickSubtitleFile: _pickSubtitleFile,
                 onSearchSubtitles: _searchSubtitles,
+                aiOn: _aiOn,
+                onToggleAi: _toggleAiTranslation,
                 onClearSubtitleFile: _externalLabel == null
                     ? null
                     : _clearSubtitleFile,
