@@ -6,6 +6,8 @@ the section whose heading matches the pushed tag.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-27
+
 ### Added
 - Player keyboard shortcuts: arrow up/down change volume, left/right seek
   ±10 seconds, and `P` toggles the mini window. The original's boss key
