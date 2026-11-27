@@ -4,6 +4,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/store_scope.dart';
+import '../widgets/comments_dialog.dart';
+import '../widgets/detail_action_dialogs.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../widgets/media_badges.dart';
@@ -51,6 +53,8 @@ class _DetailPageState extends State<DetailPage> {
   /// Selected play line (线路) index. When the detail carries [MediaItem.playLines],
   /// the episode grid renders that line's episodes; 0 otherwise.
   int _line = 0;
+  bool _originalNames = false;
+  bool _descending = false;
 
   static const _rangeSize = 20;
 
@@ -90,6 +94,13 @@ class _DetailPageState extends State<DetailPage> {
       await store.toggleFavorite(existing.first);
       return;
     }
+    final pick = await showFavoriteFolderDialog(context, store.favoriteFolders);
+    if (pick == null) return;
+    var folderId = pick.folderId;
+    if (pick.newFolderName != null) {
+      await store.createFavoriteFolder(pick.newFolderName!);
+      folderId = store.favoriteFolders.last.id;
+    }
     await store.toggleFavorite(
       FavoriteEntry(
         key: '${store.currentSourceId ?? ''}|detail|${item.id}',
@@ -97,6 +108,7 @@ class _DetailPageState extends State<DetailPage> {
         title: item.title,
         poster: item.image ?? '',
         latest: item.latest ?? '',
+        folderId: folderId,
         addedAt: DateTime.now().millisecondsSinceEpoch,
       ),
     );
@@ -134,7 +146,15 @@ class _DetailPageState extends State<DetailPage> {
         i * _rangeSize,
     ];
     final start = _range * _rangeSize;
-    final pageItems = episodes.skip(start).take(_rangeSize).toList();
+    final ordered = [
+      for (var i = 0; i < episodes.length; i++) i,
+    ];
+    if (_descending) ordered.sort((a, b) => b.compareTo(a));
+    final pageIndices = ordered.skip(start).take(_rangeSize).toList();
+    final pageItems = [
+      for (final i in pageIndices)
+        _originalNames ? '${item.title} S01E${i + 1}' : episodes[i],
+    ];
 
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
@@ -148,6 +168,10 @@ class _DetailPageState extends State<DetailPage> {
               favorite: _isFavorite,
               onFavorite: _toggleFavorite,
               onPlay: _onPlayPrimary,
+              onPlatform: () => showPlatformDialog(context, item.title),
+              onDownload: () => showDownloadDialog(context, episodes),
+              onFollow: () => showFollowDialog(context, item.title),
+              onComments: () => showCommentsDialog(context),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(
@@ -168,6 +192,16 @@ class _DetailPageState extends State<DetailPage> {
                       lineNames: [for (final l in lines) l.name],
                       selectedLine: _line,
                       onSelectLine: _onSelectLine,
+                      onPlatform: () => showPlatformDialog(context, item.title),
+                      originalNames: _originalNames,
+                      onOriginalNames: () =>
+                          setState(() => _originalNames = !_originalNames),
+                      descending: _descending,
+                      onDescending: () =>
+                          setState(() => _descending = !_descending),
+                      onLocate: () => setState(
+                        () => _range = _rangeOf(widget.episodeIndex),
+                      ),
                       // The real site the record came from; the original shows
                       // the same chip, only there it is `「直」荐片` because its
                       // home feed was drawn from that site.
@@ -179,6 +213,7 @@ class _DetailPageState extends State<DetailPage> {
                     const SizedBox(height: 10),
                     _EpisodeGrid(
                       labels: pageItems,
+                      indices: pageIndices,
                       current: widget.episodeIndex,
                       offset: start,
                       onEpisode: _onPlayEpisode,
@@ -221,6 +256,10 @@ class _Hero extends StatelessWidget {
     required this.favorite,
     required this.onFavorite,
     required this.onPlay,
+    required this.onPlatform,
+    required this.onDownload,
+    required this.onFollow,
+    required this.onComments,
   });
 
   final MediaItem item;
@@ -228,6 +267,10 @@ class _Hero extends StatelessWidget {
   final bool favorite;
   final VoidCallback onFavorite;
   final VoidCallback onPlay;
+  final VoidCallback onPlatform;
+  final VoidCallback onDownload;
+  final VoidCallback onFollow;
+  final VoidCallback onComments;
 
   @override
   Widget build(BuildContext context) {
@@ -316,6 +359,10 @@ class _Hero extends StatelessWidget {
                       favorite: favorite,
                       onFavorite: onFavorite,
                       onPlay: onPlay,
+                      onPlatform: onPlatform,
+                      onDownload: onDownload,
+                      onFollow: onFollow,
+                      onComments: onComments,
                     ),
                   ],
                 ),
@@ -426,12 +473,20 @@ class _ActionRow extends StatelessWidget {
     required this.favorite,
     required this.onFavorite,
     required this.onPlay,
+    required this.onPlatform,
+    required this.onDownload,
+    required this.onFollow,
+    required this.onComments,
   });
 
   final String resumeLabel;
   final bool favorite;
   final VoidCallback onFavorite;
   final VoidCallback onPlay;
+  final VoidCallback onPlatform;
+  final VoidCallback onDownload;
+  final VoidCallback onFollow;
+  final VoidCallback onComments;
 
   @override
   Widget build(BuildContext context) {
@@ -444,9 +499,17 @@ class _ActionRow extends StatelessWidget {
           onTap: onPlay,
         ),
         const SizedBox(width: 13),
-        const _PillButton(label: '换平台', icon: CupertinoIcons.shuffle),
+        _PillButton(
+          label: '换平台',
+          icon: CupertinoIcons.shuffle,
+          onTap: onPlatform,
+        ),
         const SizedBox(width: 13),
-        const _PillButton(label: '下载', icon: CupertinoIcons.arrow_down_to_line),
+        _PillButton(
+          label: '下载',
+          icon: CupertinoIcons.arrow_down_to_line,
+          onTap: onDownload,
+        ),
         const SizedBox(width: 13),
         _PillButton(
           label: '收藏',
@@ -454,9 +517,13 @@ class _ActionRow extends StatelessWidget {
           onTap: onFavorite,
         ),
         const SizedBox(width: 13),
-        const _PillButton(label: '追更', icon: CupertinoIcons.book),
+        _PillButton(label: '追更', icon: CupertinoIcons.book, onTap: onFollow),
         const SizedBox(width: 13),
-        const _PillButton(label: '评论', icon: CupertinoIcons.chat_bubble_2),
+        _PillButton(
+          label: '评论',
+          icon: CupertinoIcons.chat_bubble_2,
+          onTap: onComments,
+        ),
       ],
     );
   }
@@ -560,6 +627,12 @@ class _EpisodeHeader extends StatelessWidget {
     required this.lineNames,
     required this.selectedLine,
     required this.onSelectLine,
+    required this.onPlatform,
+    required this.originalNames,
+    required this.onOriginalNames,
+    required this.descending,
+    required this.onDescending,
+    required this.onLocate,
   });
 
   final List<int> ranges;
@@ -580,6 +653,13 @@ class _EpisodeHeader extends StatelessWidget {
   /// Invoked with the newly selected line index.
   final ValueChanged<int> onSelectLine;
 
+  final VoidCallback onPlatform;
+  final bool originalNames;
+  final VoidCallback onOriginalNames;
+  final bool descending;
+  final VoidCallback onDescending;
+  final VoidCallback onLocate;
+
   static const _pageSize = 20;
 
   @override
@@ -597,6 +677,7 @@ class _EpisodeHeader extends StatelessWidget {
                 label: siteLabel,
                 icon: CupertinoIcons.layers,
                 caret: true,
+                onTap: onPlatform,
               ),
               const SizedBox(width: 6),
               _LineChip(
@@ -605,17 +686,25 @@ class _EpisodeHeader extends StatelessWidget {
                 onSelectLine: onSelectLine,
               ),
               const SizedBox(width: 6),
-              const _FilterChip(
+              _FilterChip(
                 label: '原集名',
                 icon: CupertinoIcons.arrow_right_arrow_left,
+                selected: originalNames,
+                onTap: onOriginalNames,
               ),
               const SizedBox(width: 6),
-              const _FilterChip(
-                label: '正序',
+              _FilterChip(
+                label: descending ? '倒序' : '正序',
                 icon: CupertinoIcons.arrow_up_arrow_down,
+                selected: descending,
+                onTap: onDescending,
               ),
               const SizedBox(width: 6),
-              const _FilterChip(label: '定位', icon: CupertinoIcons.scope),
+              _FilterChip(
+                label: '定位',
+                icon: CupertinoIcons.scope,
+                onTap: onLocate,
+              ),
               const SizedBox(width: 17),
               Text(
                 '共 $total 集',
@@ -634,7 +723,9 @@ class _EpisodeHeader extends StatelessWidget {
               for (final (i, start) in ranges.indexed) ...[
                 if (i > 0) const SizedBox(width: 14),
                 _RangePill(
-                  label: '${start + 1}-${(start + _pageSize).clamp(0, total)}',
+                  label: descending
+                      ? '${(start + _pageSize).clamp(0, total)}-${start + 1}'
+                      : '${start + 1}-${(start + _pageSize).clamp(0, total)}',
                   selected: i == selectedRange,
                   onTap: () => onRange(i),
                 ),
@@ -693,9 +784,11 @@ class _EpisodeGrid extends StatelessWidget {
     required this.current,
     required this.offset,
     required this.onEpisode,
+    this.indices,
   });
 
   final List<String> labels;
+  final List<int>? indices;
   final int? current;
 
   /// Index of [labels]' first entry within the full episode list.
@@ -722,10 +815,12 @@ class _EpisodeGrid extends StatelessWidget {
           children: [
             for (final (i, label) in labels.indexed)
               _EpisodeChip(
+                key: ValueKey('episode-chip-${indices?[i] ?? i + offset}'),
                 label: label,
                 width: width,
-                selected: current != null && current == offset + i,
-                onTap: () => onEpisode(offset + i),
+                selected: current != null &&
+                    current == (indices?[i] ?? i + offset),
+                onTap: () => onEpisode(indices?[i] ?? i + offset),
               ),
           ],
         );
@@ -736,6 +831,7 @@ class _EpisodeGrid extends StatelessWidget {
 
 class _EpisodeChip extends StatefulWidget {
   const _EpisodeChip({
+    super.key,
     required this.label,
     required this.width,
     required this.selected,
@@ -1005,38 +1101,48 @@ class _FilterChip extends StatelessWidget {
     required this.label,
     required this.icon,
     this.caret = false,
+    this.selected = false,
+    this.onTap,
   });
 
   final String label;
   final IconData icon;
   final bool caret;
+  final bool selected;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 32,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-        color: LcbColors.searchFill,
-        borderRadius: BorderRadius.circular(9),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 13, color: LcbColors.primaryDim),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 12.5, color: LcbColors.text),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap ?? () {},
+        child: Container(
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: selected ? LcbColors.primaryDim : LcbColors.searchFill,
+            borderRadius: BorderRadius.circular(9),
           ),
-          if (caret) ...[
-            const SizedBox(width: 3),
-            const Icon(
-              CupertinoIcons.chevron_compact_down,
-              size: 12,
-              color: LcbColors.textSecondary,
-            ),
-          ],
-        ],
+          child: Row(
+            children: [
+              Icon(icon, size: 13, color: LcbColors.primaryDim),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: const TextStyle(fontSize: 12.5, color: LcbColors.text),
+              ),
+              if (caret) ...[
+                const SizedBox(width: 3),
+                const Icon(
+                  CupertinoIcons.chevron_compact_down,
+                  size: 12,
+                  color: LcbColors.textSecondary,
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
