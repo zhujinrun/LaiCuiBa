@@ -34,7 +34,8 @@ void main() {
       find.byKey(const ValueKey('playback-error-raw')),
       findsOneWidget,
     );
-    // 没有下一集就不摆一个按不动的按钮。
+    // 没有别的线路就不摆一个按不动的按钮，也不再摆「下一集」。
+    expect(find.text('切换线路'), findsNothing);
     expect(find.text('下一集'), findsNothing);
 
     await tester.tap(find.text('重试'));
@@ -42,21 +43,21 @@ void main() {
     expect(retried, 1);
   });
 
-  testWidgets('重试中按钮不重复触发，有下一集时给出口', (tester) async {
+  testWidgets('重试中按钮不重复触发，有别的线路时给切换出口', (tester) async {
     tester.view.physicalSize = const Size(1280, 720);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
     var retried = 0;
-    var nexted = 0;
+    var switched = 0;
     await tester.pumpWidget(
       _wrap(
         PlaybackErrorOverlay(
           raw: '404 Not Found',
           retrying: true,
           onRetry: () => retried++,
-          onNext: () => nexted++,
+          onSwitchLine: () => switched++,
         ),
       ),
     );
@@ -66,8 +67,9 @@ void main() {
     await tester.pump();
     expect(retried, 0);
 
-    await tester.tap(find.text('下一集'));
+    expect(find.text('下一集'), findsNothing);
+    await tester.tap(find.text('切换线路'));
     await tester.pump();
-    expect(nexted, 1);
+    expect(switched, 1);
   });
 }

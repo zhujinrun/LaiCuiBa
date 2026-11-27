@@ -1315,15 +1315,20 @@ class _PlayerPageState extends State<PlayerPage> {
             ),
           ),
           // 打不开的时候把原因和能做的动作摆在画面中间；控制条仍在上面一层，
-          // 所以「返回」和「下一集」都还能用。
+          // 所以「返回」和「切换线路」都还能用。
           if (_openError != null)
             Positioned.fill(
               child: PlaybackErrorOverlay(
                 raw: _openError!,
                 retrying: _retrying,
                 onRetry: _retryOpen,
-                onNext: _hasNext
-                    ? () => widget.onEpisode!(widget.episodeIndex! + 1)
+                onSwitchLine: widget.lines.length > 1 &&
+                        TrackPanel.worthShowing(
+                          choices: _choices,
+                          lines: widget.lines,
+                          onLine: widget.onLine == null ? null : _switchLine,
+                        )
+                    ? _toggleTrackPanel
                     : null,
               ),
             ),

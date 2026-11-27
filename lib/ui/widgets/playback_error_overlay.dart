@@ -7,13 +7,13 @@ import '../../services/player/playback_failure.dart';
 ///
 /// 播放页原来只把失败 `debugPrint` 掉：视频区一片黑，和正在加载没有区别。这里
 /// 把三件事摆出来——发生了什么（一句人话）、播放器原话（grey，给能看懂的人）、
-/// 以及能做的动作（重试 / 下一集）。
+/// 以及能做的动作（重试 / 切换线路）。线路失效时下一集也播不了，别摆那个按钮。
 class PlaybackErrorOverlay extends StatelessWidget {
   const PlaybackErrorOverlay({
     super.key,
     required this.raw,
     required this.onRetry,
-    this.onNext,
+    this.onSwitchLine,
     this.retrying = false,
   });
 
@@ -22,8 +22,8 @@ class PlaybackErrorOverlay extends StatelessWidget {
 
   final VoidCallback onRetry;
 
-  /// 有下一集才显示，没有就不摆一个按不动的按钮。
-  final VoidCallback? onNext;
+  /// 有别的线路才显示，没有就不摆一个按不动的按钮。
+  final VoidCallback? onSwitchLine;
 
   /// 重试请求已经发出、还没结果：按钮改成「正在重试…」并禁掉重复点击。
   final bool retrying;
@@ -86,9 +86,13 @@ class PlaybackErrorOverlay extends StatelessWidget {
                     filled: true,
                     onTap: retrying ? null : onRetry,
                   ),
-                  if (onNext != null) ...[
+                  if (onSwitchLine != null) ...[
                     const SizedBox(width: 10),
-                    _Action(label: '下一集', filled: false, onTap: onNext),
+                    _Action(
+                      label: '切换线路',
+                      filled: false,
+                      onTap: onSwitchLine,
+                    ),
                   ],
                 ],
               ),
