@@ -9,6 +9,7 @@ import '../widgets/detail_action_dialogs.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../widgets/media_badges.dart';
+import '../widgets/poster_art.dart';
 
 /// 详情页 — 影片详情（hero + 选集 + 演员阵容 + 分类）。
 ///
@@ -291,7 +292,9 @@ class _Hero extends StatelessWidget {
       height: 386,
       child: Stack(
         children: [
-          Positioned.fill(child: _Backdrop(image: item.image)),
+          Positioned.fill(
+            child: _Backdrop(image: item.image, seed: item.posterSeed),
+          ),
           Positioned(
             left: LcbMetrics.pagePadding,
             top: 35,
@@ -303,12 +306,10 @@ class _Hero extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    Image.asset(
-                      item.image ?? '',
+                    PosterArt(
+                      seed: item.posterSeed,
+                      image: item.image,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const ColoredBox(
-                        color: Color(0xFF2B2B2E),
-                      ),
                     ),
                     MediaBadgeRow(
                       item: item,
@@ -390,9 +391,10 @@ class _Hero extends StatelessWidget {
 
 /// The blurred cover with the bottom fade to white.
 class _Backdrop extends StatelessWidget {
-  const _Backdrop({required this.image});
+  const _Backdrop({required this.image, required this.seed});
 
   final String? image;
+  final int seed;
 
   @override
   Widget build(BuildContext context) {
@@ -403,7 +405,12 @@ class _Backdrop extends StatelessWidget {
           if (image != null && image!.isNotEmpty)
             ImageFiltered(
               imageFilter: ui.ImageFilter.blur(sigmaX: 40, sigmaY: 40),
-              child: Image.asset(image!, fit: BoxFit.cover),
+              child: PosterArt(
+                seed: seed,
+                image: image,
+                fit: BoxFit.cover,
+                plain: false,
+              ),
             )
           else
             const ColoredBox(color: Color(0xFF2B2B2E)),

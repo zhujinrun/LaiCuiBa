@@ -8,7 +8,6 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../core/store_scope.dart';
-import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../services/ai/subtitle_translate.dart';
 import '../../services/cast/dlna.dart';
@@ -1482,10 +1481,6 @@ class _PlayerPageState extends State<PlayerPage> {
               ),
             ),
           ),
-          if (_buffering)
-            const Center(
-              child: CircularProgressIndicator(color: LcbColors.primary),
-            ),
           // 弹幕压在画面上、控制条之下：开关关掉或者没要到时这一层根本不存在，
           // 不留一个透明的空壳在上面对着手势层捣乱。
           if (_danmakuOn && _danmaku.isNotEmpty)

@@ -6,6 +6,12 @@ the section whose heading matches the pushed tag.
 
 ## [Unreleased]
 
+### Fixed
+- Detail pages render the source's `vod_pic` as a network image, so a cover
+  visible on a continue-watching card also appears after opening it.
+- The player no longer shows two buffering spinners at once; only the small
+  one in the control bar remains.
+
 ## [0.1.1] - 2026-11-27
 
 ### Fixed
