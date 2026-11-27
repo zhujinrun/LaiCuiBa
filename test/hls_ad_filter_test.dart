@@ -170,6 +170,82 @@ seg003.ts
     expect(showLines.length, 13);
   });
 
+  test('removes an isolated short pod between long show stretches', () {
+    // 尚公主 FF line: hash-named segments in one directory, no marker, and
+    // only 5 discontinuities. The ad pods (5 and 4 segments) are isolated
+    // between long show stretches, unlike a regular boundary pattern.
+    final buf = StringBuffer('#EXTM3U\n#EXT-X-VERSION:3\n');
+    var n = 0;
+    void seg(String name) {
+      buf.writeln('#EXTINF:4.000,');
+      buf.writeln('$name.ts?hash=${n++}');
+    }
+
+    for (var i = 0; i < 20; i++) {
+      seg('show');
+    }
+    buf.writeln('#EXT-X-DISCONTINUITY');
+    for (var i = 0; i < 5; i++) {
+      seg('ad');
+    }
+    buf.writeln('#EXT-X-DISCONTINUITY');
+    for (var i = 0; i < 20; i++) {
+      seg('show');
+    }
+    buf.writeln('#EXT-X-DISCONTINUITY');
+    for (var i = 0; i < 4; i++) {
+      seg('ad');
+    }
+    buf.writeln('#EXT-X-DISCONTINUITY');
+
+    final cleaned = filter.clean(
+      buf.toString(),
+      source: source,
+      rewritePlaylist: rewrite,
+    );
+    final lines = cleaned.split('\n');
+    expect(lines.where((l) => l.startsWith('#EXTINF:')).length, 40);
+    expect(cleaned, isNot(contains('ad.ts')));
+    expect(cleaned, contains('show.ts'));
+    // Only the two show boundaries survive; both ad gaps go with their discs.
+    expect(
+      lines.where((l) => l.startsWith('#EXT-X-DISCONTINUITY')).length,
+      0,
+    );
+  });
+
+  test('keeps regularly spaced short gaps (no long neighbours)', () {
+    // 尚公主 RY line has 116 discontinuities exactly 6 segments apart. Every
+    // gap is short, so none is "isolated between long stretches" and the whole
+    // regular pattern must survive untouched.
+    final buf = StringBuffer('#EXTM3U\n#EXT-X-VERSION:3\n');
+    var n = 0;
+    void seg(String name) {
+      buf.writeln('#EXTINF:4.000,');
+      buf.writeln('$name.ts?hash=${n++}');
+    }
+
+    for (var block = 0; block < 5; block++) {
+      buf.writeln('#EXT-X-DISCONTINUITY');
+      for (var i = 0; i < 6; i++) {
+        seg('show');
+      }
+    }
+
+    final cleaned = filter.clean(
+      buf.toString(),
+      source: source,
+      rewritePlaylist: rewrite,
+    );
+    final lines = cleaned.split('\n');
+    expect(lines.where((l) => l.startsWith('#EXTINF:')).length, 30);
+    expect(
+      lines.where((l) => l.startsWith('#EXT-X-DISCONTINUITY')).length,
+      5,
+    );
+    expect(cleaned, isNot(contains('ad.ts')));
+  });
+
   test('keeps normal discontinuities 5 segments apart', () {
     const playlist = '''
 #EXTM3U

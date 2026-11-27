@@ -23,6 +23,12 @@ the section whose heading matches the pushed tag.
   the tight runs of discontinuities (2-3 segments apart, versus the show's
   normal 5+) that frame those pods, and removes the whole pod so the timeline
   stays continuous instead of jumping back to 00:00 at 04:58.
+- HLS ad removal also covers the FF line's third splice shape: a single short
+  ad pod (4-5 segments) isolated between much longer show stretches, again with
+  no marker and hash-named segments. The cleaner now drops a short 2-8 segment
+  discontinuity gap only when both neighbours are long (≥20 segments), so the
+  regular 6-segment gaps on the RY line and the LZ line's 7/7/420 pattern are
+  left untouched. Verified 699 → 690 segments with both 澳门新葡京 pods gone.
 
 ## [0.1.1] - 2026-11-27
 

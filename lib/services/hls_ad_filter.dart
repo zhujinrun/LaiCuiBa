@@ -15,8 +15,13 @@
 ///     segments (the 高清线路1 of 尚公主). Here the ad is framed by a run of
 ///     discontinuities only 2-3 segments apart, while the show's own
 ///     discontinuities are always >= 5 segments apart. Drop that whole run.
+///  3. No marker, hash-named segments, and only a few discontinuities, but one
+///     short gap of 2-8 segments isolated between much longer show stretches
+///     (the FF line of 尚公主: gaps 89 / 5 / 330 / 4 segments). The regular
+///     lines are safe: RY has 116 gaps of exactly 6 and LZ's gaps are 7/7/420,
+///     none of which has the required long neighbours on both sides.
 ///
-/// In both cases the discontinuities around a removed pod go with it: the
+/// In every case the discontinuities around a removed pod go with it: the
 /// show's TS timestamps already run on one continuous clock, and it is the
 /// discontinuity that makes mpv restart its timeline at 00:00.
 class HlsAdFilter {
@@ -96,6 +101,10 @@ class HlsAdFilter {
     // own discontinuities are >= 5 segments apart, so this is unambiguous.
     _removeTightDiscontinuityPods(lines, remove);
 
+    // Shape 3: a single short gap isolated between long show stretches, with
+    // no marker and no foreign prefix to identify the ad by.
+    _removeIsolatedShortPods(lines, remove);
+
     // A discontinuity that sits next to a dropped segment belongs to the ad
     // pod. Keeping it would tell mpv to restart its timeline for no reason.
     for (var i = 0; i < lines.length; i++) {
@@ -173,6 +182,57 @@ class HlsAdFilter {
         }
       }
       i = end + 1;
+    }
+  }
+
+  /// Shape 3: some CDNs splice the ad as one short run of hash-named segments
+  /// and only two discontinuities around it, so there is no tight run of
+  /// markers like shape 2. The give-away is that the short gap is isolated:
+  /// both neighbours (the show before and after) are >= 20 segments long.
+  ///
+  /// Verified against 尚公主: FF has gaps [89, 5, 330, 4] -> both pods found;
+  /// RY has 115 gaps of exactly 6 (no long neighbour), LZ has [7, 7, 420]
+  /// (the short gaps touch each other), HD1 has mostly 5 with tight runs already
+  /// handled by shape 2 -> none of them match. A pod at the very end (no right
+  /// neighbour) is still caught as long as its left neighbour is long.
+  static void _removeIsolatedShortPods(
+    List<String> lines,
+    Set<int> remove,
+  ) {
+    final discs = <int>[];
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith('#EXT-X-DISCONTINUITY')) discs.add(i);
+    }
+    if (discs.length < 2) return;
+
+    final gaps = <int>[];
+    for (var i = 0; i + 1 < discs.length; i++) {
+      var n = 0;
+      for (var line = discs[i] + 1; line < discs[i + 1]; line++) {
+        if (lines[line].startsWith('#EXTINF:')) n++;
+      }
+      gaps.add(n);
+    }
+
+    for (var i = 0; i < gaps.length; i++) {
+      final gap = gaps[i];
+      if (gap < 2 || gap > 8) continue;
+      final neighbours = <int>[];
+      if (i > 0) neighbours.add(gaps[i - 1]);
+      if (i + 1 < gaps.length) neighbours.add(gaps[i + 1]);
+      if (neighbours.isEmpty || neighbours.any((n) => n < 20)) continue;
+
+      // This gap is an ad pod: drop both framing discontinuities and every
+      // segment between them. The show's own PTS then runs continuously.
+      remove.add(discs[i]);
+      remove.add(discs[i + 1]);
+      for (var line = discs[i] + 1; line < discs[i + 1]; line++) {
+        if (!lines[line].startsWith('#EXTINF:')) continue;
+        remove.add(line);
+        if (line + 1 < lines.length && !lines[line + 1].startsWith('#')) {
+          remove.add(line + 1);
+        }
+      }
     }
   }
 
