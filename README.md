@@ -5,9 +5,9 @@ stay close to BieCuiLe 1.0.6 (Windows) in look and feel while fixing the
 playback defects that the original cannot escape.
 
 > LaiCuiBa is an independent project. It shares no code with the original —
-> that build is a Flutter AOT snapshot and cannot be decompiled. It reuses the
-> upstream `libmpv` binary and the OFL-licensed title typeface; Node / Python
-> runtimes are assembled from matching local installations.
+> that build is a Flutter AOT snapshot and cannot be decompiled. It uses the
+> `libmpv` shipped by `media_kit_libs_video` and the OFL-licensed title typeface;
+> Node / Python runtimes are assembled from matching local installations.
 
 ## Requirements
 

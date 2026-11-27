@@ -640,18 +640,21 @@ TV 端焦点导航（原版 `ui/tv/*` 共 9 个文件）、Android 适配、AI �
 | mpv | **v0.41.0-1421-ga687796d9** | `libmpv-2.dll` PE 版本资源 |
 | 打包版本 | 1.0.3+4 | `BieCuiLe.exe` 版本资源（包号 1.0.6，作者未同步） |
 
-**Node / Python 从本机版本管理器组装，mpv 仍复用原版包**：运行时二进制不进 git，
+**Node / Python 从本机版本管理器组装；mpv 使用 media_kit 自带库**：运行时二进制不进 git，
 `tool/sync_runtime.sh` 会自动找 Node 18.x（本机 nvm 的 `v18.20.8`）和 CPython 3.11.x
 （本机 pvm 的 `v3.11.9`），也可通过 `LAI_CUI_BA_NODE` / `LAI_CUI_BA_PYTHON` 覆盖。
 
 ```
 /d/Program/nvm/installs/v18.20.8/node.exe         67MB  Node 18.20.8
 /d/Program/pvm/v3.11.9/                            portable 副本 78MB
-BieCuiLe-1.0.6-windows-x64/libmpv-2.dll          101MB  mpv 0.41.0
+media_kit_libs_video 自带 libmpv-2.dll            29.7MB  2023-09-24 build
 ```
 
-Phase 2 做猫源宿主时把 `node/` 整体内嵌；Phase 3 让 `media_kit` 指向原版
-`libmpv-2.dll`，而不是它自带的那份。这样源站兼容性和解码行为都与原版同源。
+上表里的原版 mpv `v0.41.0`（101MB）只是逆向记录，**当前应用没有复用**：2026-11-20
+用户定调「不强求复用原版 mpv 0.41.0，media_kit 自带版稳定就沿用」，`main.dart`
+的 `MediaKit.ensureInitialized()` 不传 `libmpv`，所以用插件自带的稳定库。
+`tool/verify_*_live.dart` 里指向 `build/windows/x64/runner/Debug/libmpv-2.dll`
+是自证脚本直连构建产物里的那份库，不等于原版库。
 
 ## 七、开发
 
