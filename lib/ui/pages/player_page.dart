@@ -469,11 +469,8 @@ class _PlayerPageState extends State<PlayerPage> {
     // playing episode, not a locked screen.
     _awake.hold();
     _open();
-    if (widget.danmakuEnabled) {
-      _danmakuOn = true;
-      // 弹幕和视频是两条独立的路：视频先开，弹幕在后台去要，谁先到都不影响谁。
-      unawaited(_loadDanmaku());
-    }
+    // 弹幕高亮默认关着：进播放页不发任何弹幕请求。设置里的「显示弹幕」只是
+    // 允许，真正开还是关由底栏按钮决定——原版进页面不会先弹一句要 AppId。
   }
 
   // ---------------------------------------------------------------------------
@@ -491,6 +488,7 @@ class _PlayerPageState extends State<PlayerPage> {
   /// 去弹幕源要这一集的弹幕。失败也要留一句话，不能只是"什么都没发生"。
   Future<void> _loadDanmaku() async {
     if (_danmakuLoading) return;
+    if (danmakuSourcesNeedCredentials(widget.danmakuSources)) return;
     final service = widget.danmakuService;
     if (service == null) {
       setState(() => _danmakuNote = '弹幕服务没有初始化');
@@ -524,6 +522,14 @@ class _PlayerPageState extends State<PlayerPage> {
 
   void _toggleDanmaku() {
     final next = !_danmakuOn;
+    if (next && danmakuSourcesNeedCredentials(widget.danmakuSources)) {
+      // 用户主动想开才说一次；没读到配置就直接拦住，不发注定 401 的请求。
+      _showNotice(
+        '弹弹play 要求 AppId/AppSecret：到 dandanplay 开发者后台申请，'
+        '填到「设置 → 弹幕源」后再开',
+      );
+      return;
+    }
     setState(() => _danmakuOn = next);
     if (!next) {
       _showNotice('弹幕已关');

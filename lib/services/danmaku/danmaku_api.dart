@@ -93,6 +93,12 @@ class DanmakuSource {
 
   bool get isBuiltin => id == builtin.id;
 
+  /// 官方接口必须签名；自建的 dandanplay 兼容服务不需要 AppId/AppSecret。
+  bool get needsCredentials => baseUrl.trim().isEmpty
+      ? isBuiltin
+      : Uri.tryParse(baseUrl)?.host.toLowerCase() ==
+          Uri.parse(officialBase).host.toLowerCase();
+
   DanmakuSource copyWith({
     String? name,
     String? baseUrl,
@@ -137,6 +143,16 @@ class DanmakuSource {
 
   static String stripTrailingSlash(String url) =>
       url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+}
+
+/// 所有启用的源都是「必须签名却没填凭据」时，点弹幕只能去要 401。
+/// 这时候不要发请求，也不要在进播放页时挂提示——等用户主动点开再说。
+bool danmakuSourcesNeedCredentials(Iterable<DanmakuSource> sources) {
+  final enabled = sources.where((source) => source.enabled).toList();
+  if (enabled.isEmpty) return true;
+  return enabled.every(
+    (source) => source.needsCredentials && !source.hasCredentials,
+  );
 }
 
 /// dandanplay 的签名：`base64(sha256(appId + timestamp + path + appSecret))`。

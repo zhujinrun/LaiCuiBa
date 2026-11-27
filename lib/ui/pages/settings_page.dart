@@ -955,7 +955,7 @@ class _SettingsPageState extends State<SettingsPage> {
             icon: CupertinoIcons.chat_bubble_2_fill,
             color: LcbColors.sysTeal,
             title: '显示弹幕',
-            subtitle: '关掉之后播放页不再向弹幕源发请求',
+            subtitle: '总开关；关掉后弹幕按钮也不再向弹幕源发请求。每次进播放页仍默认关闭',
             toggle: true,
             toggleValue: store.settings.danmakuEnabled,
             onToggle: (v) => store.updateSettings(
@@ -1009,7 +1009,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
       const _Note(
         '弹弹play 官方接口要 AppId/AppSecret（到它的开发者后台申请后填进弹幕源）；'
-        '自建的同构服务器一般不用。没有凭据时官方源会回 401，播放页会把这句话原样告诉你。',
+        '自建的同构服务器一般不用。没填凭据时进播放页不会提示，也不发请求；只有主动点开弹幕才会问你填。',
       ),
     ];
   }
