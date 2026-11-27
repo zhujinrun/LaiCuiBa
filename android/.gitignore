@@ -1,8 +1,7 @@
-gradle-wrapper.jar
+# The Gradle wrapper is committed on purpose: CI builds Android without a
+# locally generated wrapper.
 /.gradle
 /captures/
-/gradlew
-/gradlew.bat
 /local.properties
 GeneratedPluginRegistrant.java
 

@@ -105,7 +105,9 @@ CHANGELOG.md            发布正文来源（Keep a Changelog 格式）
 
 - `shared_preferences_windows` 会给 key 自动加 `flutter.` 前缀；store 里的 key 常量必须写裸 key
   （`history` / `favorites` / `favoriteFolders` / `sources` / `settings`），落盘才与原版一致。
-  本机数据文件：`C://Users//lxy//AppData//Roaming//LaiCuiBa//LaiCuiBa//shared_preferences.json`。
+  本机数据文件：`C:/Users/lxy/AppData/Roaming/LaiCuiBa/LaiCuiBa/shared_preferences.json`。
+- Android 工程跟随 Flutter 3.44.9 模板：Gradle 9.1.0 / AGP 9.0.1 / Kotlin 2.3.20、Kotlin DSL
+  （`*.gradle.kts`）。旧的 Gradle 8.3 + AGP 8.1 Groovy 配置会在 CI 里直接失败，不要回退。
 - 夹具开关 `lcbDemoCatalogue` / `lcbSeedSampleUserData` 一律 false；没有真实源就空态或失败态，
   不回落 demo。
 - 收藏是独立结构 `flutter.favorites` + `flutter.favoriteFolders`，不合并进 history。

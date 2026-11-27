@@ -25,7 +25,7 @@ Future<void> main() async {
 
   final flutterVersion = await _flutterVersion();
   if (flutterVersion == null) {
-    problems.add('Flutter: could not run `flutter --version` (not on PATH?)');
+    problems.add('Flutter: could not determine the active version');
   } else if (flutterVersion != _expectedFlutter) {
     problems.add('Flutter: expected $_expectedFlutter, got $flutterVersion');
   }
@@ -45,22 +45,43 @@ Future<void> main() async {
   exitCode = 1;
 }
 
+/// Official Flutter releases report `flutterVersion` in --machine output,
+/// while the locally pinned checkout reports `frameworkVersion`. Accept both,
+/// and fall back to plain `flutter --version` text if --machine is unavailable.
 Future<String?> _flutterVersion() async {
-  // On Windows the SDK ships `flutter.bat`, which only resolves through a
-  // shell. Using `runInShell` keeps one code path for all platforms.
   final executable = Platform.isWindows ? 'flutter.bat' : 'flutter';
+  final runInShell = Platform.isWindows;
+
   try {
     final result = await Process.run(
       executable,
-      ['--version', '--machine'],
-      runInShell: true,
+      const ['--version', '--machine'],
+      runInShell: runInShell,
+    );
+    if (result.exitCode == 0) {
+      final decoded =
+          jsonDecode(result.stdout as String) as Map<String, dynamic>;
+      final version = decoded['flutterVersion'] ?? decoded['frameworkVersion'];
+      if (version != null) return version.toString();
+    }
+  } on ProcessException {
+    // Fall through to the text form.
+  } on FormatException {
+    // Fall through to the text form.
+  }
+
+  try {
+    final result = await Process.run(
+      executable,
+      const ['--version'],
+      runInShell: runInShell,
     );
     if (result.exitCode != 0) return null;
-    final decoded = jsonDecode(result.stdout as String) as Map<String, dynamic>;
-    return decoded['frameworkVersion'] as String?;
+    final match = RegExp(r'Flutter\s+(\d+\.\d+\.\d+)').firstMatch(
+      result.stdout as String,
+    );
+    return match?.group(1);
   } on ProcessException {
-    return null;
-  } on FormatException {
     return null;
   }
 }
