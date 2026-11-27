@@ -501,7 +501,7 @@ class _ActionRow extends StatelessWidget {
         const SizedBox(width: 13),
         _PillButton(
           label: '换平台',
-          icon: CupertinoIcons.shuffle,
+          icon: CupertinoIcons.search,
           onTap: onPlatform,
         ),
         const SizedBox(width: 13),
@@ -517,7 +517,11 @@ class _ActionRow extends StatelessWidget {
           onTap: onFavorite,
         ),
         const SizedBox(width: 13),
-        _PillButton(label: '追更', icon: CupertinoIcons.book, onTap: onFollow),
+        _PillButton(
+          label: '追更',
+          icon: CupertinoIcons.calendar,
+          onTap: onFollow,
+        ),
         const SizedBox(width: 13),
         _PillButton(
           label: '评论',
