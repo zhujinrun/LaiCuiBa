@@ -57,10 +57,10 @@ void main() {
   testWidgets('底栏的按钮就是原版那一排：倍速 字幕 弹幕 比例 画面 信息 选集', (tester) async {
     await tester.pumpWidget(_wrap(_bar()));
 
-    for (final label in ['倍速', '字幕', '弹幕', '比例', '画面', '信息', '选集']) {
+    for (final label in ['倍速', '字幕', '弹幕', '比例', '画面', '信息', '投屏', '选集']) {
       expect(find.text(label), findsOneWidget, reason: '缺了「$label」');
     }
-    // 没有可换的线路/画质/音轨时，「轨道」不该占位（原版没有这个按钮）。
+    // 原版底栏没有自创的「轨道」，那一排是完整文字。
     expect(find.text('轨道'), findsNothing);
   });
 
@@ -112,11 +112,6 @@ void main() {
     expect(opened, 1);
   });
 
-  testWidgets('真的有多条线路时才补一个「轨道」按钮', (tester) async {
-    await tester.pumpWidget(_wrap(_bar(onTracks: () {})));
-    expect(find.text('轨道'), findsOneWidget);
-  });
-
   testWidgets('只有一集时不摆「选集」', (tester) async {
     await tester.pumpWidget(_wrap(_bar(episodeCount: 1)));
     expect(find.text('选集'), findsNothing);
@@ -124,7 +119,7 @@ void main() {
 
   testWidgets('操作按钮可以换成图标，功能一个不少', (tester) async {
     await tester.pumpWidget(_wrap(_bar(iconMode: true)));
-    for (final label in ['倍速', '字幕', '弹幕', '比例', '画面', '信息', '选集']) {
+    for (final label in ['倍速', '字幕', '弹幕', '比例', '画面', '信息', '投屏', '选集']) {
       expect(find.text(label), findsNothing, reason: '图标模式不该再写「$label」');
     }
     expect(find.byIcon(Icons.speed), findsOneWidget);
@@ -133,6 +128,7 @@ void main() {
     expect(find.byIcon(Icons.aspect_ratio), findsOneWidget);
     expect(find.byIcon(Icons.tune), findsOneWidget);
     expect(find.byIcon(Icons.info_outline), findsOneWidget);
+    expect(find.byIcon(Icons.cast), findsOneWidget);
     expect(find.byIcon(Icons.list), findsOneWidget);
   });
 }

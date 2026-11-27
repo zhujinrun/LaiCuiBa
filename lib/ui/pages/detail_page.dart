@@ -215,6 +215,25 @@ class _DetailPageState extends State<DetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const SizedBox(height: 30),
+                  const _SectionTitle('片头片尾'),
+                  const SizedBox(height: 12),
+                  _SkipRow(
+                    intro: _skipLabel(
+                      StoreScope.of(context)
+                          .skipRuleFor(item.title)
+                          .intro.inMilliseconds,
+                    ),
+                    outro: _skipLabel(
+                      StoreScope.of(context)
+                          .skipRuleFor(item.title)
+                          .outro.inMilliseconds,
+                    ),
+                    own: StoreScope.of(context)
+                        .skipOverrideFor(item.title)
+                        .isNotEmpty,
+                    onTap: _openSkipSettings,
+                  ),
                   if (episodes.isNotEmpty) ...[
                     _EpisodeHeader(
                       ranges: ranges,
@@ -252,25 +271,6 @@ class _DetailPageState extends State<DetailPage> {
                     const SizedBox(height: 16),
                     _CategoryRow(categories: item.categories),
                   ],
-                  const SizedBox(height: 30),
-                  const _SectionTitle('片头片尾'),
-                  const SizedBox(height: 12),
-                  _SkipRow(
-                    intro: _skipLabel(
-                      StoreScope.of(context)
-                          .skipRuleFor(item.title)
-                          .intro.inMilliseconds,
-                    ),
-                    outro: _skipLabel(
-                      StoreScope.of(context)
-                          .skipRuleFor(item.title)
-                          .outro.inMilliseconds,
-                    ),
-                    own: StoreScope.of(context)
-                        .skipOverrideFor(item.title)
-                        .isNotEmpty,
-                    onTap: _openSkipSettings,
-                  ),
                   const SizedBox(height: 40),
                 ],
               ),

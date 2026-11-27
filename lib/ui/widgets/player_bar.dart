@@ -54,6 +54,8 @@ class PlayerBar extends StatelessWidget {
     this.onPrev,
     this.onBack10,
     this.onForward10,
+    this.onCast,
+    this.casting = false,
     this.iconMode = false,
   });
 
@@ -107,6 +109,10 @@ class PlayerBar extends StatelessWidget {
 
   final VoidCallback? onBack10;
   final VoidCallback? onForward10;
+
+  /// 原版底栏在「信息」和「选集」之间有「投屏」。
+  final VoidCallback? onCast;
+  final bool casting;
 
   /// 原版 player_buttons：操作按钮显示成图标而不是文字。
   final bool iconMode;
@@ -286,17 +292,6 @@ class PlayerBar extends StatelessWidget {
                                 onTap: onDanmaku,
                                 iconMode: iconMode,
                               ),
-                              if (onTracks != null) ...[
-                                const SizedBox(width: 4),
-                                _BarButton(
-                                  key: const ValueKey('player-tracks'),
-                                  label: '轨道',
-                                  icon: Icons.swap_horiz,
-                                  active: tracksOpen,
-                                  onTap: onTracks!,
-                                iconMode: iconMode,
-                                ),
-                              ],
                               const SizedBox(width: 4),
                               _BarButton(
                                 key: const ValueKey('player-aspect'),
@@ -322,6 +317,15 @@ class PlayerBar extends StatelessWidget {
                                 icon: Icons.info_outline,
                                 active: infoOpen,
                                 onTap: onInfo,
+                                iconMode: iconMode,
+                              ),
+                              const SizedBox(width: 4),
+                              _BarButton(
+                                key: const ValueKey('player-cast'),
+                                label: '投屏',
+                                icon: Icons.cast,
+                                active: casting,
+                                onTap: onCast ?? () {},
                                 iconMode: iconMode,
                               ),
                               // 选集：40 集的剧靠两个箭头点过去不现实。

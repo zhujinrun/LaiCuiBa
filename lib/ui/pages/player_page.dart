@@ -1588,6 +1588,13 @@ class _PlayerPageState extends State<PlayerPage> {
                 casting: _castDevice != null,
                 onCast: _cast,
                 onStopCast: _stopCast,
+                onTracks: TrackPanel.worthShowing(
+                  choices: _choices,
+                  lines: widget.lines,
+                  onLine: widget.onLine == null ? null : _switchLine,
+                )
+                    ? _toggleTrackPanel
+                    : null,
               ),
             ),
           if (_panel == _PlayerPanel.episodes)
@@ -1646,6 +1653,8 @@ class _PlayerPageState extends State<PlayerPage> {
             episodesOpen: _panel == _PlayerPanel.episodes,
             episodeCount: widget.episodes.length,
             onSkipPanel: _toggleSkipPanel,
+            onCast: _cast,
+            casting: _castDevice != null,
             onBack10: _duration > Duration.zero
                 ? () => _nudge(const Duration(seconds: -10))
                 : null,

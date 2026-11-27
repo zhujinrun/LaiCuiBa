@@ -21,6 +21,7 @@ class PicturePanel extends StatelessWidget {
     this.casting = false,
     this.onCast,
     this.onStopCast,
+    this.onTracks,
   });
 
   final PictureAdjust adjust;
@@ -35,6 +36,7 @@ class PicturePanel extends StatelessWidget {
   final bool casting;
   final VoidCallback? onCast;
   final VoidCallback? onStopCast;
+  final VoidCallback? onTracks;
 
   @override
   Widget build(BuildContext context) {
@@ -71,6 +73,14 @@ class PicturePanel extends StatelessWidget {
           ),
           if (!adjust.isNeutral)
             _ResetRow(onTap: () => onAdjust(PictureAdjust.none)),
+          if (onTracks != null) ...[
+            const PanelGroupHeader('线路与轨道'),
+            PanelRow(
+              label: '切换线路 / 画质 / 音轨',
+              selected: false,
+              onTap: onTracks!,
+            ),
+          ],
           const PanelGroupHeader('窗口'),
           PanelRow(
             label: '全屏（F）',
