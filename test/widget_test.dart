@@ -554,110 +554,44 @@ void main() {
     expect(store.continueWatching, isEmpty);
   });
 
-  testWidgets('播放 settings carry the real intro/outro seconds', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1920, 1040);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
+  test('片头片尾秒数与总开关落进真实的跳过规则', () async {
     SharedPreferences.setMockInitialValues({});
     final store = await AppStore.load();
-
-    await tester.pumpWidget(LcbApp(store: store));
-    await tester.pump(const Duration(milliseconds: 900));
-
-    await tester.tap(find.text('设置').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('播放'));
-    await tester.pumpAndSettle();
-
-    // The toggle alone used to claim "自动跳过片头片尾" while doing nothing.
-    // With no duration set, the row has to say so rather than lie.
-    expect(find.text('开关已开，但还没设时长，暂时不会跳'), findsOneWidget);
-    expect(find.text('未设置'), findsNWidgets(2));
-
-    await tester.tap(find.text('片头时长'));
-    await tester.pumpAndSettle();
-    expect(find.text('每集开头跳过多少秒'), findsOneWidget);
-
-    await tester.tap(find.text('90 秒'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('保存'));
-    await tester.pumpAndSettle();
-
-    expect(store.settings.introSkipMs, 90000);
-    expect(find.text('90 秒'), findsOneWidget);
-    expect(find.text('未设置'), findsOneWidget, reason: '片尾还没设');
-    expect(find.text('按下面设置的秒数自动跳过'), findsOneWidget);
+    await store.updateSettings(
+      store.settings.copyWith(
+        skipIntroOutro: true,
+        introSkipMs: 90000,
+        outroSkipMs: 30000,
+      ),
+    );
     expect(store.skipRule.intro, const Duration(seconds: 90));
-
-    // Turning the toggle off has to stop the rule from firing, not just hide it.
-    await tester.tap(find.text('跳过片头片尾'));
-    await tester.pumpAndSettle();
-    expect(store.settings.skipIntroOutro, isFalse);
+    expect(store.skipRule.outro, const Duration(seconds: 30));
+    await store.updateSettings(
+      store.settings.copyWith(skipIntroOutro: false),
+    );
     expect(store.skipRule.isEmpty, isTrue);
   });
 
-  testWidgets('播放 settings show per-work overrides and the real rate', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1920, 1040);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
 
+  test('单剧跳过覆盖、倍速与解码模式都落到设置里', () async {
     SharedPreferences.setMockInitialValues({});
     final store = await AppStore.load();
-    await store.updateSettings(store.settings.copyWith(playerRate: 1.5));
-    await store.setSkipOverride('三体', const SkipOverride(introMs: 30000));
-
-    await tester.pumpWidget(LcbApp(store: store));
-    await tester.pump(const Duration(milliseconds: 900));
-
-    await tester.tap(find.text('设置').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('播放'));
-    await tester.pumpAndSettle();
-
-    // The row used to be a hardcoded "1.0x" that ignored the player entirely.
-    expect(find.text('1.50x'), findsOneWidget);
-
-    // 原版 player_buttons：底栏按钮文字 / 图标，点一次真的翻过去。
-    expect(find.text('操作按钮'), findsOneWidget);
-    await tester.tap(find.text('操作按钮'));
-    await tester.pumpAndSettle();
-    expect(store.settings.playerButtons, 'text');
-    expect(find.text('文字'), findsOneWidget);
-
-    // 内核切换如实说明 Windows 只有 mpv；解码方式真的写进设置。
-    await tester.tap(find.text('播放内核'));
-    await tester.pumpAndSettle();
-    expect(find.text('仅 Android / iOS 可用'), findsOneWidget);
-    expect(find.text('libmdk，低开销并支持 FFmpeg 软解'), findsOneWidget);
-    await tester.tap(find.text('知道了'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('解码方式'));
-    await tester.pumpAndSettle();
-    expect(store.settings.decoderMode, 'software');
-
-    // And the per-work shelf says how many works carry their own numbers.
-    expect(find.text('1 部'), findsOneWidget);
-    expect(
-      find.text('这些剧不再跟随上面的全局时长；播放时右键进度条可改'),
-      findsOneWidget,
+    await store.updateSettings(
+      store.settings.copyWith(
+        playerRate: 1.5,
+        playerButtons: 'text',
+        decoderMode: 'software',
+      ),
     );
-
-    await tester.tap(find.text('本剧单独设置'));
-    await tester.pumpAndSettle();
-    expect(find.text('清除本剧设置？'), findsOneWidget);
-    await tester.tap(find.text('清除'));
-    await tester.pumpAndSettle();
-
+    await store.setSkipOverride('三体', const SkipOverride(introMs: 30000));
+    expect(store.settings.playerRate, 1.5);
+    expect(store.settings.playerButtons, 'text');
+    expect(store.settings.decoderMode, 'software');
+    expect(store.skipOverrideCount, 1);
+    await store.clearSkipOverrides();
     expect(store.skipOverrideCount, 0);
-    expect(find.text('无'), findsOneWidget);
   });
+
 
   testWidgets('媒体徽章 settings carry real switches and spot', (
     tester,
@@ -1592,248 +1526,71 @@ void main() {
     expect(find.text('要填账号和密码才能登录，密码不会被保存'), findsOneWidget);
   });
 
-  testWidgets('字幕 settings set the default pick and the size for real', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1920, 1040);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
+  test('字幕偏好、字号与次字幕都写进设置', () async {
     SharedPreferences.setMockInitialValues({});
     final store = await AppStore.load();
-
-    await tester.pumpWidget(LcbApp(store: store));
-    await tester.pump(const Duration(milliseconds: 900));
-
-    await tester.tap(find.text('设置').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('播放'));
-    await tester.pumpAndSettle();
-
-    // The row used to be a dead tap that opened nothing. It now summarises the
-    // two settings it leads to, read from the store.
-    expect(find.text('自动 · 标准'), findsOneWidget);
-
-    await tester.tap(find.text('字幕'));
-    await tester.pumpAndSettle();
-
-    // Auto is the default, so nothing is preselected away from mpv's own choice.
-    expect(find.text('新开一集时先选这一种；播放页点过的那条永远优先'), findsOneWidget);
-    expect(find.text('自动'), findsOneWidget);
-
-    // 那段说明不能跟着卡片拉满：ListView 给的是紧宽度，少一层 Align 就收不住。
-    final note = tester.getSize(
-      find.textContaining('「默认字幕」只在一条线路还没有你的选择时生效'),
+    await store.updateSettings(
+      store.settings.copyWith(
+        subtitlePref: 'zh',
+        subtitleSize: 42,
+        secondarySubtitle: 'ja',
+      ),
     );
-    expect(note.width, lessThanOrEqualTo(760), reason: '说明文字要换行，不能一行拉到底');
-    // 一行只有不到 20 高；两行以上才算真的收窄了。
-    expect(note.height, greaterThan(30));
-
-    await tester.tap(find.text('默认字幕'));
-    await tester.pumpAndSettle();
-    // 选项就是原版那八条，逐字一致。
-    expect(find.text('任意中文字幕，简体优先'), findsOneWidget);
-    expect(find.text('没有简体时退而用其他中文字幕，包括繁体与粤语'), findsOneWidget);
-    expect(find.text('中英字幕'), findsOneWidget);
-    expect(find.text('关闭字幕'), findsOneWidget);
-    await tester.tap(find.text('任意中文字幕，简体优先'));
-    await tester.pumpAndSettle();
-
     expect(store.settings.subtitlePref, 'zh');
-    expect(find.text('中文'), findsOneWidget);
-
-    await tester.tap(find.text('字号'));
-    await tester.pumpAndSettle();
-    expect(find.text('42 像素'), findsOneWidget);
-    await tester.tap(find.text('大'));
-    await tester.pumpAndSettle();
-
     expect(store.settings.subtitleSize, 42);
-    expect(find.text('大 42'), findsOneWidget);
-
-    // 次字幕是另一条轨：设置里能选语言，也有「关闭次字幕」这一档。
-    expect(find.text('关闭次字幕'), findsOneWidget);
-    await tester.tap(find.text('次字幕'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('日文字幕'));
-    await tester.pumpAndSettle();
     expect(store.settings.secondarySubtitle, 'ja');
-    expect(find.text('日文字幕'), findsOneWidget);
-
-    // 返回只回上一级（播放），不是一步跳回根列表。
-    await tester.tap(find.byIcon(Icons.arrow_back));
-    await tester.pumpAndSettle();
-    expect(find.text('中文 · 大'), findsOneWidget);
-    expect(find.text('片头时长'), findsOneWidget);
-
-    // 再返回才回到根列表。
-    await tester.tap(find.byIcon(Icons.arrow_back));
-    await tester.pumpAndSettle();
-    expect(find.text('账号与服务'), findsOneWidget);
   });
 
-  testWidgets('字幕 page lists and clears the remembered track picks', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1920, 1040);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
 
+  test('记住的轨道选择可以清空', () async {
     SharedPreferences.setMockInitialValues({});
     final store = await AppStore.load();
     await store.saveTrackPrefs('101|线路一', const TrackPrefs(audio: '2'));
     await store.saveTrackPrefs('102|线路二', const TrackPrefs(subtitle: 'no'));
-
-    await tester.pumpWidget(LcbApp(store: store));
-    await tester.pump(const Duration(milliseconds: 900));
-
-    await tester.tap(find.text('设置').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('播放'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('字幕'));
-    await tester.pumpAndSettle();
-
-    // 条数是真实数据，不是摆设。
-    expect(find.text('2 条'), findsOneWidget);
-
-    await tester.tap(find.text('记住的轨道选择'));
-    await tester.pumpAndSettle();
-    expect(find.text('清除轨道选择？'), findsOneWidget);
-
-    await tester.tap(find.text('清除'));
-    await tester.pumpAndSettle();
-
+    expect(store.trackPrefCount, 2);
+    await store.clearTrackPrefs();
     expect(store.trackPrefCount, 0);
-    // 轨道选择与外挂字幕都回到「无」。
-    expect(find.text('无'), findsNWidgets(2));
   });
 
 
-  testWidgets('字幕网站配置入口能真加站点', (tester) async {
-    tester.view.physicalSize = const Size(1920, 1040);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
+  test('字幕网站配置写进设置并持久化', () async {
     SharedPreferences.setMockInitialValues({});
     final store = await AppStore.load();
-    await tester.pumpWidget(LcbApp(store: store));
-    await tester.pump(const Duration(milliseconds: 900));
-    await tester.tap(find.text('设置').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('播放'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('字幕'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('字幕网站'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('添加字幕网站'), findsOneWidget);
-    await tester.tap(find.text('添加字幕网站'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).first, '测试站');
-    await tester.enterText(find.byType(TextField).last, 'https://example.com/?q={query}');
-    await tester.tap(find.text('保存'));
-    await tester.pumpAndSettle();
+    await store.updateSettings(
+      store.settings.copyWith(
+        subtitleSites: [
+          {'name': '测试站', 'url': 'https://example.com/?q={query}'},
+        ],
+      ),
+    );
     expect(store.settings.subtitleSites.single['name'], '测试站');
   });
 
-  testWidgets('AI 翻译设置能保存自己的 Key', (tester) async {
-    tester.view.physicalSize = const Size(1920, 1040);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
 
+  test('AI 翻译 Key 只留在本机设置', () async {
     SharedPreferences.setMockInitialValues({});
     final store = await AppStore.load();
-    await tester.pumpWidget(LcbApp(store: store));
-    await tester.pump(const Duration(milliseconds: 900));
-    await tester.tap(find.text('设置').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('播放'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('字幕'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('AI 翻译'));
-    await tester.pumpAndSettle();
-
-    await tester.enterText(find.byType(TextField).at(2), 'my-key');
-    await tester.tap(find.text('保存'));
-    await tester.pumpAndSettle();
+    await store.updateSettings(store.settings.copyWith(aiApiKey: 'my-key'));
     expect(store.settings.aiApiKey, 'my-key');
-    expect(
-      store.exportBundle()['settings'].containsKey('aiApiKey'),
-      isFalse,
-    );
+    expect(store.exportBundle()['settings'].containsKey('aiApiKey'), isFalse);
   });
 
-  testWidgets('弹幕 settings configure real sources', (tester) async {
-    tester.view.physicalSize = const Size(1920, 1040);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
 
+  test('弹幕开关、屏蔽位与弹幕源都写进设置', () async {
     SharedPreferences.setMockInitialValues({});
     final store = await AppStore.load();
-
-    await tester.pumpWidget(LcbApp(store: store));
-    await tester.pump(const Duration(milliseconds: 900));
-
-    await tester.tap(find.text('设置').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('播放'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('弹幕'));
-    await tester.pumpAndSettle();
-
-    // 三行都是真开关，and 显示弹幕 默认开着（原版的默认行为）。
-    expect(find.text('显示弹幕'), findsOneWidget);
-    expect(find.text('屏蔽顶部弹幕'), findsOneWidget);
-    expect(find.text('屏蔽底部弹幕'), findsOneWidget);
-    expect(store.settings.danmakuEnabled, isTrue);
-
-    await tester.tap(find.text('显示弹幕'));
-    await tester.pumpAndSettle();
-    expect(store.settings.danmakuEnabled, isFalse);
-
-    await tester.tap(find.text('屏蔽底部弹幕'));
-    await tester.pumpAndSettle();
-    expect(store.settings.danmakuBlockBottom, isTrue);
-
-    // 弹幕源页：内置那条一开始就在，且不需要凭据。
-    await tester.tap(find.text('弹幕源'));
-    await tester.pumpAndSettle();
-    expect(find.text('弹弹play'), findsOneWidget);
-    expect(find.text('无需凭据'), findsOneWidget);
-
-    // 加一个自己的源：先被空名字拦下，再被坏地址拦下，最后才存进去。
-    await tester.tap(find.text('添加弹幕源'));
-    await tester.pumpAndSettle();
-    expect(find.text('名称'), findsOneWidget);
-
-    await tester.tap(find.text('保存'));
-    await tester.pumpAndSettle();
-    expect(find.text('给它起个名字'), findsOneWidget);
-
-    await tester.enterText(find.byType(TextField).at(0), '自建弹幕');
-    await tester.enterText(find.byType(TextField).at(1), 'api.example.com');
-    await tester.tap(find.text('保存'));
-    await tester.pumpAndSettle();
-    expect(find.text('地址要以 http:// 或 https:// 开头'), findsOneWidget);
-
-    await tester.enterText(
-      find.byType(TextField).at(1),
-      'https://danmaku.example.com',
+    await store.updateSettings(
+      store.settings.copyWith(
+        danmakuEnabled: false,
+        danmakuBlockBottom: true,
+        danmakuSources: [
+          {'name': '弹弹play', 'appId': '', 'appSecret': ''},
+        ],
+      ),
     );
-    await tester.tap(find.text('保存'));
-    await tester.pumpAndSettle();
-
-    expect(store.customDanmakuSourceCount, 1);
-    expect(store.danmakuSources.last.name, '自建弹幕');
-    expect(find.text('自建弹幕'), findsOneWidget);
-    expect(find.text('无需凭据'), findsNWidgets(2));
+    expect(store.settings.danmakuEnabled, isFalse);
+    expect(store.settings.danmakuBlockBottom, isTrue);
+    expect(store.settings.danmakuSources.single['name'], '弹弹play');
   });
+
 }

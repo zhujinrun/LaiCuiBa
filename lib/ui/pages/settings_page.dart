@@ -50,7 +50,7 @@ class _SettingsPageState extends State<SettingsPage> {
   void _open(String sub) {
     _parents.add(_sub);
     setState(() => _sub = sub);
-    LcbPageHeaderScope.of(context).push(sub, _back);
+    LcbPageHeaderScope.of(context).push(sub, _back, showSearch: false);
   }
 
   void _back() {
@@ -60,7 +60,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (parent == null) {
       LcbPageHeaderScope.of(context).reset(_title);
     } else {
-      LcbPageHeaderScope.of(context).push(parent, _back);
+      LcbPageHeaderScope.of(context).push(parent, _back, showSearch: false);
     }
   }
 
@@ -507,126 +507,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// The toggle's subtitle tells the truth about what will happen: an unset
   /// duration means nothing is skipped even with the switch on.
-  String _skipRuleHint(AppStore store) {
-    if (!store.settings.skipIntroOutro) return '已关闭';
-    final intro = store.settings.introSkipMs;
-    final outro = store.settings.outroSkipMs;
-    if (intro <= 0 && outro <= 0) return '开关已开，但还没设时长，暂时不会跳';
-    return '按下面设置的秒数自动跳过';
-  }
-
-  String _skipLabel(int ms) => ms <= 0 ? '未设置' : '${ms ~/ 1000} 秒';
-
-  /// Sets one of the two durations. Zero means "not set" and is how the viewer
-  /// clears a value they no longer want.
-  Future<void> _editSkip(AppStore store, {required bool intro}) async {
-    final currentMs = intro
-        ? store.settings.introSkipMs
-        : store.settings.outroSkipMs;
-    final seconds = await showDialog<int>(
-      context: context,
-      barrierColor: const Color(0x78000000),
-      builder: (_) => _SecondsDialog(
-        title: intro ? '片头时长' : '片尾时长',
-        hint: intro ? '每集开头跳过多少秒' : '离结尾多少秒算看完',
-        seconds: currentMs ~/ 1000,
-      ),
-    );
-    if (seconds == null) return;
-    await store.updateSettings(
-      intro
-          ? store.settings.copyWith(introSkipMs: seconds * 1000)
-          : store.settings.copyWith(outroSkipMs: seconds * 1000),
-    );
-    if (!mounted) return;
-    final what = intro ? '片头' : '片尾';
-    _toast(seconds == 0 ? '已清除$what时长' : '$what已设为 $seconds 秒');
-  }
-
-  /// Drops every per-work intro/outro override, so all works fall back to the
-  /// global durations above. Confirmed first: a viewer who tuned five shows
-  /// should not lose that to one mis-tap.
-  Future<void> _clearSkipOverrides(AppStore store) async {
-    final count = store.skipOverrideCount;
-    if (count == 0) {
-      _toast('还没有哪部剧单独设过片头片尾');
-      return;
-    }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierColor: const Color(0x78000000),
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          '清除本剧设置？',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-        ),
-        content: Text(
-          '共 $count 部剧的单独时长，清除后全部回到上面的全局值。',
-          style: const TextStyle(fontSize: 13.5, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('清除', style: TextStyle(color: LcbColors.sysRed)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    await store.clearSkipOverrides();
-    if (!mounted) return;
-    _toast('已清除 $count 部剧的单独设置');
-  }
-
-  /// 倍速写的是和播放页同一个字段，所以这里读到的就是上次退出时的速度，
-  /// 不会出现"设置页说 1.0x、播起来是 1.5x"。
-  String _rateLabel(double rate) => '${rate.toStringAsFixed(2)}x';
-
-  Future<void> _editRate(AppStore store) async {
-    const rates = <double>[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
-    final picked = await showDialog<double>(
-      context: context,
-      barrierColor: const Color(0x78000000),
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          '默认倍速',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final r in rates)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: Text(_rateLabel(r)),
-                trailing: (store.settings.playerRate - r).abs() < 0.001
-                    ? const Icon(
-                        Icons.check,
-                        color: LcbColors.primary,
-                        size: 18,
-                      )
-                    : null,
-                onTap: () => Navigator.of(ctx).pop(r),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (picked == null) return;
-    await store.updateSettings(store.settings.copyWith(playerRate: picked));
-    if (!mounted) return;
-    _toast('默认倍速已设为 ${_rateLabel(picked)}');
-  }
-
   /// Empties the watch history after a confirmation, so the row's count, the
   /// history page and the home rail all drop to zero together.
   Future<void> _clearHistory(AppStore store) async {
@@ -757,12 +637,34 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// 首页与导航 — home carousel, home categories and the navigation bar.
   List<Widget> _homeNavRows(AppStore store) => [
-        const _GroupLabel('首页'),
         _Group(
           rows: [
             _Row(
+              icon: CupertinoIcons.list_bullet,
+              color: LcbColors.sysOrange,
+              title: '导航栏',
+              subtitle: '入口顺序、首页位置、底部行为',
+              value: '5 个入口',
+              onTap: () => _toast('侧栏固定为 首页 / 资源 / 收藏 / 历史 / 设置'),
+            ),
+            _Row(
+              icon: CupertinoIcons.rectangle_grid_2x2,
+              color: LcbColors.sysBlue,
+              title: '首页布局',
+              subtitle: '调整首页区域顺序和显示方式',
+              onTap: () => _toast('首页布局由自定义页面控制，可在「组件」里编辑'),
+            ),
+            _Row(
+              icon: CupertinoIcons.textformat_size,
+              color: LcbColors.sysTeal,
+              title: '首页平台参数配置',
+              subtitle: '控制首页平台名显示宽度',
+              value: '10 字',
+              onTap: () => _toast('平台名按 10 字宽度截断'),
+            ),
+            _Row(
               icon: CupertinoIcons.photo_fill_on_rectangle_fill,
-              color: LcbColors.sysIndigo,
+              color: LcbColors.sysGreen,
               title: '首页轮播海报',
               subtitle: '顶部自动轮播的推荐海报',
               toggle: true,
@@ -772,24 +674,10 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
             _Row(
-              icon: CupertinoIcons.square_grid_2x2_fill,
-              color: LcbColors.sysOrange,
-              title: '首页分类',
-              subtitle: '电影、电视剧、动漫、综艺等分区',
-              onTap: () {},
-            ),
-            _Row(
-              icon: CupertinoIcons.rectangle_grid_2x2,
-              color: LcbColors.sysTeal,
-              title: '自定义页面',
-              subtitle: '新建页面，用组件区域拼出首页',
-              onTap: () => _open('自定义页面'),
-            ),
-            _Row(
-              icon: CupertinoIcons.clock_fill,
-              color: LcbColors.sysGreen,
-              title: '继续观看',
-              subtitle: '首页显示上次播放到一半的内容',
+              icon: CupertinoIcons.square_on_square,
+              color: LcbColors.sysPurple,
+              title: '第二媒体桌面',
+              subtitle: '首页重复内容按不同规则展示，可在首页长按切换',
               toggle: true,
               toggleValue: store.settings.secondHome,
               onToggle: (v) => store.updateSettings(
@@ -798,94 +686,86 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ],
         ),
-        const SizedBox(height: 23),
-        const _GroupLabel('导航'),
+      ];
+
+  /// 搜索与输入 — platform layout, aggregate search and the remote keyboard.
+  List<Widget> _searchInputRows(AppStore store) => [
+        const _GroupLabel('搜索'),
         _Group(
           rows: [
             _Row(
-              icon: CupertinoIcons.list_bullet,
+              icon: CupertinoIcons.rectangle_grid_2x2,
               color: LcbColors.sysBlue,
-              title: '导航栏',
-              subtitle: '侧栏分组与入口的显示',
-              onTap: () {},
+              title: '平台列表布局',
+              subtitle: '搜索结果按平台分组时的展示方式',
+              value: store.settings.platformListLayout == 'preset2'
+                  ? '预设两列'
+                  : '单列',
+              onTap: () => store.updateSettings(
+                store.settings.copyWith(
+                  platformListLayout:
+                      store.settings.platformListLayout == 'preset2'
+                      ? 'single'
+                      : 'preset2',
+                ),
+              ),
             ),
             _Row(
-              icon: CupertinoIcons.tv_fill,
-              color: LcbColors.sysPurple,
-              title: '电视模式',
-              subtitle: '顶部导航、遥控器方向键操作',
-              toggle: true,
-              toggleValue: store.settings.tvClassicUi,
-              onToggle: (v) => store.updateSettings(
-                store.settings.copyWith(tvClassicUi: v),
+              icon: CupertinoIcons.search,
+              color: LcbColors.sysGreen,
+              title: '聚合搜索',
+              subtitle: '当前在没选具体平台时，同时搜索全部有资源',
+              value: store.settings.aggregateSearch ? '开启' : '关闭',
+              onTap: () => store.updateSettings(
+                store.settings.copyWith(
+                  aggregateSearch: !store.settings.aggregateSearch,
+                ),
               ),
             ),
           ],
         ),
-      ];
-
-  /// 搜索与输入 — combined search, search history and the remote keyboard.
-  List<Widget> _searchInputRows(AppStore store) => [
+        const SizedBox(height: 23),
+        const _GroupLabel('输入'),
         _Group(
           rows: [
-            const _Row(
-              icon: CupertinoIcons.doc_text_search,
-              color: LcbColors.sysBlue,
-              title: '聚合搜索',
-              subtitle: '同时在所有源里搜索',
-              toggle: true,
-              toggleOn: true,
-            ),
-            const _Row(
-              icon: CupertinoIcons.clock,
-              color: LcbColors.sysIndigo,
-              title: '搜索历史',
-              subtitle: '记住输入过的关键词',
-              toggle: true,
-              toggleOn: true,
-            ),
             _Row(
               icon: CupertinoIcons.keyboard,
-              color: LcbColors.sysGreen,
+              color: LcbColors.sysIndigo,
               title: '遥控器键盘',
-              subtitle: 'TV 模式下的输入方式',
-              toggle: true,
-              toggleValue: store.settings.tvKeyboard,
-              onToggle: (v) => store.updateSettings(
-                store.settings.copyWith(tvKeyboard: v),
+              subtitle:
+                  '字符输入自动切换成精简输入，支持拼音全拼输入、英文、数字；'
+                  '数字字母键盘可让输入更准确；遥控器上输入更轻松。',
+              value: store.settings.tvKeyboard ? '开启' : '关闭',
+              onTap: () => store.updateSettings(
+                store.settings.copyWith(
+                  tvKeyboard: !store.settings.tvKeyboard,
+                ),
               ),
             ),
           ],
         ),
       ];
 
-  /// 播放 — kernel, decode mode, speed, subtitles, danmaku and short-drama
-  /// preload. All structural; the actual engine wiring lands in Phase 3.
   List<Widget> _playbackRows(AppStore store) => [
-        const _GroupLabel('内核'),
+        const _GroupLabel('播放器内核'),
         _Group(
           rows: [
             _Row(
               icon: CupertinoIcons.play_rectangle_fill,
-              color: LcbColors.sysIndigo,
-              title: '播放内核',
-              subtitle: 'mpv / ijk 等播放引擎',
-              value: 'mpv',
+              color: LcbColors.sysGreen,
+              title: '默认内核',
+              subtitle: 'MPV、IJK、EXO 等播放内核',
+              value: 'MPV',
               onTap: _showKernelDialog,
             ),
             _Row(
-              icon: CupertinoIcons.slider_horizontal_3,
-              color: LcbColors.sysOrange,
-              title: '内核设置',
-              subtitle: '当前内核：mpv',
-              onTap: _showKernelSettings,
-            ),
-            _Row(
-              icon: Icons.memory,
-              color: LcbColors.sysGreen,
-              title: '解码方式',
-              subtitle: 'mpv 的硬件解码，遇到花屏可切软件',
-              value: store.settings.decoderMode == 'software' ? '软件' : '硬件',
+              icon: CupertinoIcons.person_crop_square_fill,
+              color: LcbColors.sysBlue,
+              title: '默认解码',
+              subtitle: '当前内核的硬件解码方式',
+              value: store.settings.decoderMode == 'software'
+                  ? '软件解码'
+                  : '硬件解码',
               onTap: () => store.updateSettings(
                 store.settings.copyWith(
                   decoderMode: store.settings.decoderMode == 'software'
@@ -894,113 +774,105 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 23),
-        const _GroupLabel('播放'),
-        _Group(
-          rows: [
             _Row(
-              icon: CupertinoIcons.ellipsis_circle,
-              color: LcbColors.sysPurple,
-              title: '操作按钮',
-              subtitle: '倍速、字幕、弹幕、内核这些操作按钮显示成文字还是图标',
-              value: store.settings.playerButtons == 'icon' ? '图标' : '文字',
-              onTap: () => store.updateSettings(
-                store.settings.copyWith(
-                  playerButtons: store.settings.playerButtons == 'icon'
-                      ? 'text'
-                      : 'icon',
-                ),
+              icon: CupertinoIcons.slider_horizontal_3,
+              color: LcbColors.sysOrange,
+              title: '内置设置',
+              subtitle: '当前内核的画质、硬解、缓存与日志设置',
+              onTap: _showKernelSettings,
+            ),
+            _Row(
+              icon: CupertinoIcons.arrow_2_squarepath,
+              color: LcbColors.sysTeal,
+              title: '播放失败自动切换内核',
+              subtitle: '打开内核的自动切换，下一集仍以默认内核播放',
+              toggle: true,
+              toggleValue: store.settings.autoSwitchKernel,
+              onToggle: (v) => store.updateSettings(
+                store.settings.copyWith(autoSwitchKernel: v),
               ),
             ),
             _Row(
               icon: CupertinoIcons.arrow_right_arrow_left,
-              color: LcbColors.sysBlue,
-              title: '跳过片头片尾',
-              subtitle: _skipRuleHint(store),
+              color: LcbColors.sysGreen,
+              title: '播放失败自动切换线路/来源',
+              subtitle: '视频打不开时按顺序尝试下一个线路或来源',
               toggle: true,
-              toggleValue: store.settings.skipIntroOutro,
+              toggleValue: store.settings.autoSwitchSource,
               onToggle: (v) => store.updateSettings(
-                store.settings.copyWith(skipIntroOutro: v),
+                store.settings.copyWith(autoSwitchSource: v),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 23),
+        const _GroupLabel('播放设置'),
+        _Group(
+          rows: [
+            _Row(
+              icon: CupertinoIcons.rectangle_grid_1x2,
+              color: LcbColors.sysPurple,
+              title: '直播切换样式',
+              subtitle: '频道切换时的提示样式',
+              value: store.settings.liveSwitchStyle == 'text' ? '文字' : '图标',
+              onTap: () => store.updateSettings(
+                store.settings.copyWith(
+                  liveSwitchStyle: store.settings.liveSwitchStyle == 'text'
+                      ? 'icon'
+                      : 'text',
+                ),
               ),
             ),
             _Row(
-              icon: CupertinoIcons.timer,
+              icon: CupertinoIcons.rectangle_on_rectangle,
               color: LcbColors.sysTeal,
-              title: '片头时长',
-              subtitle: '每集开头自动跳过这么长',
-              value: _skipLabel(store.settings.introSkipMs),
-              onTap: () => _editSkip(store, intro: true),
+              title: '韩国版视频布局',
+              subtitle: '另外用两种架构显示，上线后还是这样显示',
+              value: store.settings.koreanVideoLayout ? '开启' : '关闭',
+              onTap: () => store.updateSettings(
+                store.settings.copyWith(
+                  koreanVideoLayout: !store.settings.koreanVideoLayout,
+                ),
+              ),
             ),
             _Row(
-              icon: CupertinoIcons.time_solid,
-              color: LcbColors.sysTeal,
-              title: '片尾时长',
-              subtitle: '离结尾这么近就算看完，接着下一集',
-              value: _skipLabel(store.settings.outroSkipMs),
-              onTap: () => _editSkip(store, intro: false),
+              icon: CupertinoIcons.globe,
+              color: LcbColors.sysBlue,
+              title: '浏览器 UA',
+              subtitle:
+                  '默认（与运行平台匹配）；有的资源要求特定标识才给视频播放地址',
+              value: store.settings.browserUA.isEmpty
+                  ? '默认（与运行平台匹配）'
+                  : store.settings.browserUA,
+              onTap: () => _toast('浏览器 UA 尚未提供编辑入口'),
             ),
             _Row(
-              icon: CupertinoIcons.collections,
-              color: LcbColors.sysOrange,
-              title: '本剧单独设置',
-              subtitle: store.skipOverrideCount == 0
-                  ? '播放时右键进度条，可以给单部剧另设一组'
-                  : '这些剧不再跟随上面的全局时长；播放时右键进度条可改',
-              value: store.skipOverrideCount == 0
-                  ? '无'
-                  : '${store.skipOverrideCount} 部',
-              onTap: () => _clearSkipOverrides(store),
-            ),
-            _Row(
-              icon: CupertinoIcons.speedometer,
-              color: LcbColors.sysPurple,
-              title: '默认倍速',
-              subtitle: '播放页改过的倍速也会记在这里',
-              value: _rateLabel(store.settings.playerRate),
-              onTap: () => _editRate(store),
-            ),
-            _Row(
-              icon: CupertinoIcons.captions_bubble,
-              color: LcbColors.sysPink,
-              title: '字幕',
-              subtitle: '新开一集默认选哪一条、字多大',
-              value:
-                  '${_subtitlePrefLabel(store.settings.subtitlePref)} · '
-                  '${LcbSubtitleStyle.labelOf(store.settings.subtitleSize)}',
-              onTap: () => _open('字幕'),
-            ),
-            _Row(
-              icon: CupertinoIcons.chat_bubble_2,
-              color: LcbColors.sysTeal,
-              title: '弹幕',
-              subtitle: '按片名和集数自动匹配；关掉就不问源',
-              value: store.settings.danmakuEnabled
-                  ? '开 · ${store.danmakuSources.length} 个源'
-                  : '关',
-              onTap: () => _open('弹幕'),
-            ),
-            _Row(
-              icon: CupertinoIcons.film,
-              color: LcbColors.sysGray,
-              title: '短剧预载',
-              subtitle: '提前加载下一集',
+              icon: CupertinoIcons.play_circle,
+              color: LcbColors.sysGreen,
+              title: '后台播放',
+              subtitle: '熄屏或切换到别的应用以后继续播放，可在通知栏控制',
               toggle: true,
-              toggleValue: store.settings.shortDramaPreload,
+              toggleValue: store.settings.backgroundPlay,
               onToggle: (v) => store.updateSettings(
-                store.settings.copyWith(shortDramaPreload: v),
+                store.settings.copyWith(backgroundPlay: v),
+              ),
+            ),
+            _Row(
+              icon: CupertinoIcons.settings,
+              color: LcbColors.sysGray,
+              title: '继承显示系统代理',
+              subtitle:
+                  '只对打开更新、配置页面与网页资源生效；自动启动播放打开网页时避免重复设置',
+              toggle: true,
+              toggleValue: store.settings.inheritSystemProxy,
+              onToggle: (v) => store.updateSettings(
+                store.settings.copyWith(inheritSystemProxy: v),
               ),
             ),
           ],
         ),
       ];
 
-  /// 字幕 — 新开一集时先选哪条、字多大，以及清掉记住的轨道选择。
-  ///
-  /// 这两项都真的作用在播放页上：偏好由 `SubtitlePref.pick` 在轨道到齐后
-  /// 执行，字号直接进 `Video` 的 `subtitleViewConfiguration`（media_kit 把字幕
-  /// 画成 Flutter 文本，所以改完不用重开文件）。
   List<Widget> _subtitleRows(AppStore store) => [
         const _GroupLabel('默认'),
         _Group(
@@ -1709,7 +1581,6 @@ class _Row extends StatefulWidget {
     this.value,
     this.dot,
     this.toggle,
-    this.toggleOn = false,
     this.toggleValue,
     this.onToggle,
     this.onTap,
@@ -1724,10 +1595,6 @@ class _Row extends StatefulWidget {
 
   /// Non-null renders a switch instead of the chevron.
   final bool? toggle;
-
-  /// Initial switch position when [toggle] is non-null and [toggleValue] is
-  /// null (uncontrolled).
-  final bool toggleOn;
 
   /// When non-null the switch is controlled: it shows this value and flips it
   /// via [onToggle] instead of keeping local state.
@@ -1744,17 +1611,11 @@ class _Row extends StatefulWidget {
 
 class _RowState extends State<_Row> {
   bool _hover = false;
-  late bool _on = widget.toggleOn;
-
-  bool get _isOn => widget.toggleValue ?? _on;
+  bool get _isOn => widget.toggleValue ?? false;
 
   void _handleTap() {
     if (widget.toggle != null) {
-      if (widget.onToggle != null) {
-        widget.onToggle!(!_isOn);
-      } else {
-        setState(() => _on = !_on);
-      }
+      widget.onToggle?.call(!_isOn);
     } else {
       widget.onTap?.call();
     }

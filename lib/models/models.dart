@@ -768,6 +768,15 @@ class AppSettings {
     this.navBehavior = 'always',
     this.tvClassicUi = false,
     this.tvKeyboard = false,
+    this.platformListLayout = 'preset2',
+    this.aggregateSearch = false,
+    this.autoSwitchKernel = false,
+    this.autoSwitchSource = false,
+    this.liveSwitchStyle = 'text',
+    this.koreanVideoLayout = false,
+    this.browserUA = '',
+    this.backgroundPlay = true,
+    this.inheritSystemProxy = false,
     this.playerVolume = 100,
     this.playerRate = 1.0,
     this.aspectFit = 'fit',
@@ -810,6 +819,16 @@ class AppSettings {
   final int customAccent;
   final double fontScale;
   final String language;
+  final String platformListLayout;
+  final bool aggregateSearch;
+  final bool autoSwitchKernel;
+  final bool autoSwitchSource;
+  final String liveSwitchStyle;
+  final bool koreanVideoLayout;
+  final String browserUA;
+  final bool backgroundPlay;
+  final bool inheritSystemProxy;
+
 
   /// 关于页的两个开关，按原版默认都是开。
   final bool startupStats;
@@ -966,6 +985,15 @@ class AppSettings {
     int? customAccent,
     double? fontScale,
     String? language,
+    String? platformListLayout,
+    bool? aggregateSearch,
+    bool? autoSwitchKernel,
+    bool? autoSwitchSource,
+    String? liveSwitchStyle,
+    bool? koreanVideoLayout,
+    String? browserUA,
+    bool? backgroundPlay,
+    bool? inheritSystemProxy,
     bool? startupStats,
     bool? startupNotify,
     bool? liquidGlass,
@@ -1026,6 +1054,15 @@ class AppSettings {
       customAccent: customAccent ?? this.customAccent,
       fontScale: fontScale ?? this.fontScale,
       language: language ?? this.language,
+      platformListLayout: platformListLayout ?? this.platformListLayout,
+      aggregateSearch: aggregateSearch ?? this.aggregateSearch,
+      autoSwitchKernel: autoSwitchKernel ?? this.autoSwitchKernel,
+      autoSwitchSource: autoSwitchSource ?? this.autoSwitchSource,
+      liveSwitchStyle: liveSwitchStyle ?? this.liveSwitchStyle,
+      koreanVideoLayout: koreanVideoLayout ?? this.koreanVideoLayout,
+      browserUA: browserUA ?? this.browserUA,
+      backgroundPlay: backgroundPlay ?? this.backgroundPlay,
+      inheritSystemProxy: inheritSystemProxy ?? this.inheritSystemProxy,
       startupStats: startupStats ?? this.startupStats,
       startupNotify: startupNotify ?? this.startupNotify,
       liquidGlass: liquidGlass ?? this.liquidGlass,
@@ -1090,6 +1127,15 @@ class AppSettings {
     'customAccent': customAccent,
     'fontScale': fontScale,
     'language': language,
+    'platformListLayout': platformListLayout,
+    'aggregateSearch': aggregateSearch,
+    'autoSwitchKernel': autoSwitchKernel,
+    'autoSwitchSource': autoSwitchSource,
+    'liveSwitchStyle': liveSwitchStyle,
+    'koreanVideoLayout': koreanVideoLayout,
+    'browserUA': browserUA,
+    'backgroundPlay': backgroundPlay,
+    'inheritSystemProxy': inheritSystemProxy,
     'startupStats': startupStats,
     'startupNotify': startupNotify,
     'liquidGlass': liquidGlass,
@@ -1172,6 +1218,15 @@ class AppSettings {
       customAccent: pop('customAccent', 0),
       fontScale: pop('fontScale', 1.0),
       language: pop('language', 'zh'),
+      platformListLayout: pop('platformListLayout', 'preset2'),
+      aggregateSearch: pop('aggregateSearch', false),
+      autoSwitchKernel: pop('autoSwitchKernel', false),
+      autoSwitchSource: pop('autoSwitchSource', false),
+      liveSwitchStyle: pop('liveSwitchStyle', 'text'),
+      koreanVideoLayout: pop('koreanVideoLayout', false),
+      browserUA: pop('browserUA', ''),
+      backgroundPlay: pop('backgroundPlay', true),
+      inheritSystemProxy: pop('inheritSystemProxy', false),
       startupStats: pop('startupStats', true),
       startupNotify: pop('startupNotify', true),
       liquidGlass: pop('liquidGlass', true),

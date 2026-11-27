@@ -1112,12 +1112,67 @@ class _HeaderContent extends StatelessWidget {
                 color: LcbColors.text,
               ),
             ),
-            const SizedBox(width: 18),
-            _HeaderGlyph(icon: CupertinoIcons.search, onTap: () {}),
+            if (header.onBack != null) ...[
+              if (header.title == '组件') ...[
+                const SizedBox(width: 18),
+                _HeaderGlyph(
+                  icon: CupertinoIcons.pencil,
+                  onTap: () => _showSettingsHint(context, '编辑组件', '页面编辑与组件仓库请在这个页面里操作。'),
+                ),
+                const SizedBox(width: 18),
+                _HeaderGlyph(
+                  icon: CupertinoIcons.question_circle,
+                  onTap: () => _showSettingsHint(
+                    context,
+                    '组件说明',
+                    '组件运行在沙箱里，可以读取数据源；这里不展示未经核实的说明文字。',
+                  ),
+                ),
+                const SizedBox(width: 18),
+                _HeaderGlyph(
+                  icon: CupertinoIcons.plus,
+                  onTap: () => _showSettingsHint(context, '新建页面', '请在这个页面底部点「新建页面」。'),
+                ),
+              ] else if (header.title == '媒体徽章') ...[
+                const SizedBox(width: 18),
+                _HeaderGlyph(
+                  icon: CupertinoIcons.plus,
+                  onTap: () => _showSettingsHint(
+                    context,
+                    '添加徽章包',
+                    '当前只有内置徽章包；没有可导入的第三方徽章包。',
+                  ),
+                ),
+              ],
+            ] else ...[
+              const SizedBox(width: 18),
+              _HeaderGlyph(
+                icon: CupertinoIcons.search,
+                onTap: onOpenSearch,
+              ),
+            ],
           ],
         );
     }
   }
+
+  Future<void> _showSettingsHint(
+    BuildContext context,
+    String title,
+    String message,
+  ) => showDialog<void>(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: Text(title),
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('知道了'),
+        ),
+      ],
+    ),
+  );
 }
 
 class _BackButton extends StatefulWidget {

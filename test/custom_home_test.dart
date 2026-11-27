@@ -32,9 +32,7 @@ void main() {
 
     await tester.tap(find.text('设置').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('首页与导航'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('自定义页面'));
+    await tester.tap(find.text('组件'));
     await tester.pumpAndSettle();
 
     expect(find.text('我的页面'), findsOneWidget);
@@ -58,9 +56,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 900));
     await tester.tap(find.text('设置').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('首页与导航'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('自定义页面'));
+    await tester.tap(find.text('组件'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('新建页面'));
     await tester.pumpAndSettle();
