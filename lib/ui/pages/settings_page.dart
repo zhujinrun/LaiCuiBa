@@ -15,6 +15,7 @@ import '../../services/track_choice.dart';
 import '../page_header.dart';
 import '../custom/widgets_settings_page.dart';
 import '../widgets/backup_dialog.dart';
+import '../widgets/kernel_dialog.dart';
 import '../widgets/subtitle_sites_settings.dart';
 import '../widgets/subtitle_style.dart';
 
@@ -278,37 +279,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Future<void> _showKernelDialog() async {
-    await showDialog<void>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('播放内核'),
-        content: const SizedBox(
-          width: 360,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _KernelRow(label: 'mpv', available: true),
-              _KernelRow(label: 'ijk', available: false),
-              _KernelRow(label: 'exo', available: false),
-              _KernelRow(label: 'mdk', available: false),
-              SizedBox(height: 8),
-              Text(
-                '当前 Windows 构建只带 mpv 内核；ijk / exo / mdk 是安卓播放内核，这里没有可切换的实现。',
-                style: TextStyle(fontSize: 11.5, color: LcbColors.textSecondary),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('知道了'),
-          ),
-        ],
-      ),
-    );
-  }
+  Future<void> _showKernelDialog() async => showKernelDialog(context);
 
   Future<void> _showKernelSettings() async {
     final store = StoreScope.of(context);
@@ -2467,37 +2438,6 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
       ],
     );
   }
-}
-
-
-class _KernelRow extends StatelessWidget {
-  const _KernelRow({required this.label, required this.available});
-
-  final String label;
-  final bool available;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 5),
-    child: Row(
-      children: [
-        SizedBox(
-          width: 80,
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 13.5, color: LcbColors.text),
-          ),
-        ),
-        Text(
-          available ? '当前内核' : '当前平台不支持',
-          style: TextStyle(
-            fontSize: 12,
-            color: available ? LcbColors.sysBlue : LcbColors.textTertiary,
-          ),
-        ),
-      ],
-    ),
-  );
 }
 
 

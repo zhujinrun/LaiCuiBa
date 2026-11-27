@@ -634,7 +634,8 @@ void main() {
     // 内核切换如实说明 Windows 只有 mpv；解码方式真的写进设置。
     await tester.tap(find.text('播放内核'));
     await tester.pumpAndSettle();
-    expect(find.text('当前平台不支持'), findsNWidgets(3));
+    expect(find.text('仅 Android / iOS 可用'), findsOneWidget);
+    expect(find.text('libmdk，低开销并支持 FFmpeg 软解'), findsOneWidget);
     await tester.tap(find.text('知道了'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('解码方式'));

@@ -26,6 +26,8 @@ import '../../services/track_choice.dart';
 import '../../services/track_map.dart';
 import '../widgets/skip_panel.dart';
 import '../widgets/cast_sheet.dart';
+import '../widgets/comments_dialog.dart';
+import '../widgets/kernel_dialog.dart';
 import '../widgets/subtitle_search_dialog.dart';
 import '../widgets/subtitle_style.dart';
 import '../widgets/track_panel.dart';
@@ -88,6 +90,9 @@ class PlayerPage extends StatefulWidget {
     this.danmakuBlockBottom = false,
     this.buttonsIcon = false,
     this.decoderMode = 'hardware',
+    this.onDecoderModeChanged,
+    this.onIntroEnd,
+    this.onOutroLength,
     this.aiConfig,
     this.danmakuService,
     this.lines = const [],
@@ -204,6 +209,9 @@ class PlayerPage extends StatefulWidget {
 
   /// 设置页选的 mpv 解码方式：hardware / software。
   final String decoderMode;
+  final ValueChanged<String>? onDecoderModeChanged;
+  final ValueChanged<Duration>? onIntroEnd;
+  final ValueChanged<Duration>? onOutroLength;
 
   /// AI 字幕翻译配置；null 表示用户还没填 Key。
   final AiTranslationConfig? aiConfig;
@@ -396,6 +404,7 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _fullScreen = false;
   bool _miniWindow = false;
   bool _maximized = false;
+  late String _decoderMode;
   DlnaDevice? _castDevice;
   Rect? _savedBounds;
 
@@ -408,6 +417,7 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void initState() {
     super.initState();
+    _decoderMode = widget.decoderMode;
     windowManager.isMaximized().then((value) {
       if (mounted) setState(() => _maximized = value);
     });
@@ -513,12 +523,44 @@ class _PlayerPageState extends State<PlayerPage> {
     try {
       await platform.setProperty(
         'hwdec',
-        widget.decoderMode == 'software' ? 'no' : 'auto-safe',
+        _decoderMode == 'software' ? 'no' : 'auto-safe',
       );
     } on Object {
       // 不支持的属性交给 mpv 自己忽略；不能因为一个解码偏好挡住播放。
     }
   }
+
+  /// 原版顶栏闪电：当场切硬解/软解，不弹面板。
+  void _toggleDecoder() {
+    final next = _decoderMode == 'software' ? 'hardware' : 'software';
+    setState(() => _decoderMode = next);
+    widget.onDecoderModeChanged?.call(next);
+    unawaited(_applyDecoder());
+    _showNotice(next == 'software' ? '硬解已关：软件解码' : '硬解已开：硬件解码');
+  }
+
+  /// 原版顶栏 |<：把当前播放点设为片头结束，全集共用。
+  void _setIntroEnd() {
+    if (_duration <= Duration.zero || _position <= Duration.zero) {
+      _showNotice('还没有可设置的片头位置');
+      return;
+    }
+    widget.onIntroEnd?.call(_position);
+    _showNotice('片头：以后每集跳过到 ${_mmss(_position)}');
+  }
+
+  /// 原版顶栏 >|：把当前剩余时长设为片尾长度，全集共用。
+  void _setOutroLength() {
+    final remaining = _duration - _position;
+    if (remaining <= Duration.zero) {
+      _showNotice('已经没有片尾可设置');
+      return;
+    }
+    widget.onOutroLength?.call(remaining);
+    _showNotice('片尾：以后每集提前 ${remaining.inSeconds} 秒结束');
+  }
+
+  void _showComments() => showCommentsDialog(context);
 
   // ---------------------------------------------------------------------------
   // Danmaku (弹幕)
@@ -1487,20 +1529,13 @@ class _PlayerPageState extends State<PlayerPage> {
               subtitle: _subtitleLine,
               onClose: widget.onClose,
               visible: chromeVisible,
-              decoderMode: widget.decoderMode,
-              rate: _rate,
-              rateOpen: _panel == _PlayerPanel.rate,
-              onRatePanel: _toggleRatePanel,
-              danmakuOn: _danmakuOn,
-              onDanmaku: _toggleDanmaku,
-              hasPrev: widget.episodeIndex != null && widget.episodeIndex! > 0,
-              hasNext: _hasNext,
-              onPrev: (widget.episodeIndex != null && widget.episodeIndex! > 0)
-                  ? () => widget.onEpisode!(widget.episodeIndex! - 1)
-                  : null,
-              onNext: _hasNext
-                  ? () => widget.onEpisode!(widget.episodeIndex! + 1)
-                  : null,
+              onKernel: () => showKernelDialog(context),
+              hardware: _decoderMode != 'software',
+              onToggleHardware: _toggleDecoder,
+              onIntro: _setIntroEnd,
+              onSkipSettings: _toggleSkipPanel,
+              onOutro: _setOutroLength,
+              onComments: _showComments,
               maximized: _maximized,
             ),
           ),
@@ -1707,21 +1742,21 @@ class _PlayerPageState extends State<PlayerPage> {
 /// all the way up underneath it.
 /// 原版顶栏：左边是返回箭头 + 标题 + 「第N集 · 分辨率 · 画质」，右边是
 /// `MPV ⚡ |< >> >| 💬` 加窗口按钮。整条只在控制条显示时出现。
+/// 原版顶栏六项，实测自 BieCuiLe 播放窗口：
+/// `MPV`(播放内核) / 闪电(硬解开关) / |<(把当前点设为片头结束) /
+/// 紫色 >>(自动跳过片头片尾设置) / >|(把当前剩余设为片尾长度) / 评论抽屉。
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.title,
     required this.onClose,
     required this.visible,
-    required this.decoderMode,
-    required this.rate,
-    required this.rateOpen,
-    required this.onRatePanel,
-    required this.danmakuOn,
-    required this.onDanmaku,
-    required this.hasPrev,
-    required this.hasNext,
-    required this.onPrev,
-    required this.onNext,
+    required this.onKernel,
+    required this.hardware,
+    required this.onToggleHardware,
+    required this.onIntro,
+    required this.onSkipSettings,
+    required this.onOutro,
+    required this.onComments,
     required this.maximized,
     this.subtitle,
   });
@@ -1730,16 +1765,13 @@ class _TopBar extends StatelessWidget {
   final String? subtitle;
   final VoidCallback? onClose;
   final bool visible;
-  final String decoderMode;
-  final double rate;
-  final bool rateOpen;
-  final VoidCallback onRatePanel;
-  final bool danmakuOn;
-  final VoidCallback onDanmaku;
-  final bool hasPrev;
-  final bool hasNext;
-  final VoidCallback? onPrev;
-  final VoidCallback? onNext;
+  final VoidCallback onKernel;
+  final bool hardware;
+  final VoidCallback onToggleHardware;
+  final VoidCallback onIntro;
+  final VoidCallback onSkipSettings;
+  final VoidCallback onOutro;
+  final VoidCallback onComments;
   final bool maximized;
 
   @override
@@ -1759,7 +1791,7 @@ class _TopBar extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 520),
+                constraints: const BoxConstraints(maxWidth: 480),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1799,61 +1831,51 @@ class _TopBar extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text(
-                      'MPV',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                        shadows: [
-                          Shadow(color: Color(0x99000000), blurRadius: 4),
-                        ],
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onKernel,
+                      child: const Text(
+                        'MPV',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          shadows: [
+                            Shadow(color: Color(0x99000000), blurRadius: 4),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(width: 14),
                     _TopIcon(
-                      icon: Icons.bolt,
-                      tooltip: decoderMode == 'software'
-                          ? '软件解码'
-                          : '硬件解码',
-                      color: decoderMode == 'software'
-                          ? const Color(0xFFAAAAAA)
-                          : Colors.white,
-                      onTap: () {},
+                      icon: hardware ? Icons.bolt : Icons.offline_bolt,
+                      tooltip: hardware ? '硬解已开，点击关闭' : '硬解已关，点击开启',
+                      onTap: onToggleHardware,
                     ),
-                    if (hasPrev && onPrev != null) ...[
-                      const SizedBox(width: 10),
-                      _TopIcon(
-                        icon: Icons.skip_previous,
-                        tooltip: '上一集',
-                        onTap: onPrev!,
-                      ),
-                    ],
+                    const SizedBox(width: 10),
+                    _TopIcon(
+                      icon: Icons.skip_previous,
+                      tooltip: '片头：把当前点设为片头结束',
+                      onTap: onIntro,
+                    ),
                     const SizedBox(width: 10),
                     _TopIcon(
                       icon: Icons.fast_forward,
-                      tooltip: rateOpen || rate != 1.0
-                          ? '倍速 ${rate.toStringAsFixed(2)}x'
-                          : '倍速',
-                      color: rateOpen || rate != 1.0
-                          ? const Color(0xFFC8B6FF)
-                          : Colors.white,
-                      onTap: onRatePanel,
+                      tooltip: '自动跳过片头片尾',
+                      color: const Color(0xFFC8B6FF),
+                      onTap: onSkipSettings,
                     ),
-                    if (hasNext && onNext != null) ...[
-                      const SizedBox(width: 10),
-                      _TopIcon(
-                        icon: Icons.skip_next,
-                        tooltip: '下一集',
-                        onTap: onNext!,
-                      ),
-                    ],
                     const SizedBox(width: 10),
                     _TopIcon(
-                      icon: Icons.chat_bubble_outline,
-                      tooltip: danmakuOn ? '关闭弹幕' : '打开弹幕',
-                      color: danmakuOn ? const Color(0xFFC8B6FF) : Colors.white,
-                      onTap: onDanmaku,
+                      icon: Icons.skip_next,
+                      tooltip: '片尾：把当前剩余设为片尾长度',
+                      onTap: onOutro,
+                    ),
+                    const SizedBox(width: 10),
+                    _TopIcon(
+                      icon: Icons.chat_bubble,
+                      tooltip: '评论',
+                      onTap: onComments,
                     ),
                     const SizedBox(width: 14),
                     _SmallWinButton(
@@ -1974,13 +1996,11 @@ class _SmallWinButtonState extends State<_SmallWinButton> {
             width: 38,
             height: 30,
             color: _hover
-                ? (widget.danger ? const Color(0xFFE81123) : const Color(0x33FFFFFF))
+                ? (widget.danger
+                    ? const Color(0xFFE81123)
+                    : const Color(0x33FFFFFF))
                 : Colors.transparent,
-            child: Icon(
-              widget.icon,
-              size: 14,
-              color: Colors.white,
-            ),
+            child: Icon(widget.icon, size: 14, color: Colors.white),
           ),
         ),
       ),
@@ -2022,3 +2042,9 @@ class _BackArrowState extends State<_BackArrow> {
 
 /// The dark bottom strip: seek bar, play/pause, time, step controls, rate and
 /// volume.
+
+String _mmss(Duration d) {
+  final m = d.inMinutes % 60;
+  final s = d.inSeconds % 60;
+  return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+}
