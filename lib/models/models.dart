@@ -749,6 +749,8 @@ class AppSettings {
     this.customAccent = 0,
     this.fontScale = 1.0,
     this.language = 'zh',
+    this.startupStats = true,
+    this.startupNotify = true,
     this.liquidGlass = true,
     this.hideStatusBar = false,
     this.adaptiveColor = false,
@@ -808,6 +810,10 @@ class AppSettings {
   final int customAccent;
   final double fontScale;
   final String language;
+
+  /// 关于页的两个开关，按原版默认都是开。
+  final bool startupStats;
+  final bool startupNotify;
   final bool liquidGlass;
   final bool hideStatusBar;
   final bool adaptiveColor;
@@ -960,6 +966,8 @@ class AppSettings {
     int? customAccent,
     double? fontScale,
     String? language,
+    bool? startupStats,
+    bool? startupNotify,
     bool? liquidGlass,
     bool? hideStatusBar,
     bool? adaptiveColor,
@@ -1018,6 +1026,8 @@ class AppSettings {
       customAccent: customAccent ?? this.customAccent,
       fontScale: fontScale ?? this.fontScale,
       language: language ?? this.language,
+      startupStats: startupStats ?? this.startupStats,
+      startupNotify: startupNotify ?? this.startupNotify,
       liquidGlass: liquidGlass ?? this.liquidGlass,
       hideStatusBar: hideStatusBar ?? this.hideStatusBar,
       adaptiveColor: adaptiveColor ?? this.adaptiveColor,
@@ -1080,6 +1090,8 @@ class AppSettings {
     'customAccent': customAccent,
     'fontScale': fontScale,
     'language': language,
+    'startupStats': startupStats,
+    'startupNotify': startupNotify,
     'liquidGlass': liquidGlass,
     'hideStatusBar': hideStatusBar,
     'adaptiveColor': adaptiveColor,
@@ -1160,6 +1172,8 @@ class AppSettings {
       customAccent: pop('customAccent', 0),
       fontScale: pop('fontScale', 1.0),
       language: pop('language', 'zh'),
+      startupStats: pop('startupStats', true),
+      startupNotify: pop('startupNotify', true),
       liquidGlass: pop('liquidGlass', true),
       hideStatusBar: pop('hideStatusBar', false),
       adaptiveColor: pop('adaptiveColor', false),

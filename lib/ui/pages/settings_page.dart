@@ -12,6 +12,7 @@ import '../../services/danmaku/danmaku_api.dart';
 import '../../services/icon_packs.dart';
 import '../../services/store.dart';
 import '../../services/track_choice.dart';
+import '../../services/widgets/widget_center.dart';
 import '../page_header.dart';
 import '../custom/widgets_settings_page.dart';
 import '../widgets/backup_dialog.dart';
@@ -65,20 +66,23 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return ScrollConfiguration(
-      behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-      child: ListView(
-        padding: EdgeInsets.fromLTRB(
-          LcbMetrics.settingsPaddingLeft,
-          // Sub-pages have no group label, so they need the label's height as
-          // extra top padding to keep the first card in the same place.
-          _sub != null ? 35 : 8,
-          LcbMetrics.settingsPaddingRight,
-          40,
+    final store = StoreScope.of(context);
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) => ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context)
+            .copyWith(scrollbars: false),
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(
+            LcbMetrics.settingsPaddingLeft,
+            // Sub-pages have no group label, so they need the label's height as
+            // extra top padding to keep the first card in the same place.
+            _sub != null ? 35 : 8,
+            LcbMetrics.settingsPaddingRight,
+            40,
+          ),
+          children: _sub != null ? _subRows(_sub!, store) : _rootRows(store),
         ),
-        children: _sub != null
-            ? _subRows(_sub!, StoreScope.of(context))
-            : _rootRows(StoreScope.of(context)),
       ),
     );
   }
@@ -88,7 +92,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _Group(
           rows: [
             _Row(
-              icon: CupertinoIcons.paintbrush_fill,
+              icon: CupertinoIcons.wand_stars,
               color: LcbColors.sysIndigo,
               title: '外观',
               subtitle: '深浅色、强调色、液态玻璃、状态栏',
@@ -107,8 +111,8 @@ class _SettingsPageState extends State<SettingsPage> {
               color: LcbColors.sysGreen,
               title: '组件',
               subtitle: '导入组件仓库，搭建自定义首页页面',
-              value: '4 个仓库',
-              onTap: () {},
+              value: '${WidgetCenter.repos(store).length} 个仓库',
+              onTap: () => _open('组件'),
             ),
             _Row(
               icon: CupertinoIcons.search,
@@ -121,7 +125,7 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: CupertinoIcons.play_rectangle_fill,
               color: LcbColors.sysPink,
               title: '播放',
-              subtitle: '手势、弹幕、倍速、字幕、短片预载',
+              subtitle: '手势、弹幕、倍速、字幕、短剧预载',
               onTap: () => _open('播放'),
             ),
             _Row(
@@ -144,7 +148,7 @@ class _SettingsPageState extends State<SettingsPage> {
               title: '账号管理',
               subtitle: 'TMDB、服务代理、Trakt、Bangumi、豆瓣',
               value: '未登录',
-              onTap: () {},
+              onTap: () => _open('账号管理'),
             ),
             _Row(
               icon: CupertinoIcons.sparkles,
@@ -152,28 +156,28 @@ class _SettingsPageState extends State<SettingsPage> {
               title: 'AI 大模型',
               subtitle: '集名净化、Py 源安全检测、字幕翻译',
               value: '未配置',
-              onTap: () {},
+              onTap: () => _open('AI 大模型'),
             ),
             _Row(
-              icon: CupertinoIcons.device_phone_portrait,
+              icon: CupertinoIcons.tv_fill,
               color: LcbColors.sysGreen,
-              title: 'TV友好功能',
+              title: 'TVBox 功能',
               subtitle: '扫码输入、扫码控制、同步配置、网页端',
-              onTap: () {},
+              onTap: () => _open('TVBox 功能'),
             ),
             _Row(
-              icon: CupertinoIcons.link,
+              icon: CupertinoIcons.tag_fill,
               color: LcbColors.sysOrange,
               title: '推送识别',
               subtitle: '打开分享、剪贴板或其他设备推来的链接',
-              onTap: () {},
+              onTap: () => _open('推送识别'),
             ),
             _Row(
-              icon: Icons.public,
-              color: LcbColors.primaryDim,
+              icon: CupertinoIcons.link,
+              color: LcbColors.sysPurple,
               title: '猫源配置与网盘登录',
               subtitle: '打开源的配置网页，扫码登录网盘',
-              onTap: () {},
+              onTap: () => _open('猫源配置与网盘登录'),
             ),
           ],
         ),
@@ -201,36 +205,42 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: CupertinoIcons.doc_text_fill,
               color: LcbColors.sysIndigo,
               title: '用户协议',
-              onTap: () {},
+              onTap: () => _open('用户协议'),
             ),
-            const _Row(
+            _Row(
               icon: CupertinoIcons.chart_bar_alt_fill,
               color: LcbColors.sysGreen,
               title: '匿名启动统计',
               subtitle: '启动时只报一个随机安装编号、版本和平台，用来统计每天、每月有多少人在用',
               toggle: true,
-              toggleOn: true,
+              toggleValue: store.settings.startupStats,
+              onToggle: (value) => store.updateSettings(
+                store.settings.copyWith(startupStats: value),
+              ),
             ),
-            const _Row(
+            _Row(
               icon: CupertinoIcons.bell_circle_fill,
               color: LcbColors.sysOrange,
               title: '启动时弹出通知',
               subtitle: '关闭后启动时不再弹窗（包括更新提示），通知仍可在“历史通知”里查看',
               toggle: true,
-              toggleOn: true,
+              toggleValue: store.settings.startupNotify,
+              onToggle: (value) => store.updateSettings(
+                store.settings.copyWith(startupNotify: value),
+              ),
             ),
             _Row(
               icon: CupertinoIcons.bell_solid,
               color: LcbColors.sysRed,
               title: '历史通知',
-              onTap: () {},
+              onTap: () => _open('历史通知'),
             ),
             _Row(
               icon: CupertinoIcons.chat_bubble_2_fill,
               color: LcbColors.sysSky,
               title: '联系我们',
               subtitle: 'QQ 群 1081010521 · 点击加群，长按复制群号',
-              onTap: () {},
+              onTap: () => _open('联系我们'),
             ),
           ],
         ),
@@ -258,6 +268,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return _danmakuRows(store);
       case '弹幕源':
         return _danmakuSourceRows(store);
+      case '组件':
+        return const [CustomPagesSettings()];
       case '媒体徽章':
         return _badgeRows(store);
       case '数据与存储':
@@ -266,10 +278,52 @@ class _SettingsPageState extends State<SettingsPage> {
         return const [_IconPacksSection()];
       case '自定义页面':
         return const [CustomPagesSettings()];
+      case '账号管理':
+        return _infoRows(
+          '账号管理',
+          'TMDB API Key 在「搜索与输入 → TMDB」里填写；Trakt / Bangumi / 豆瓣 账号与接口尚未接入，不显示未经验证的登录状态。',
+        );
+      case 'AI 大模型':
+        return _infoRows(
+          'AI 大模型',
+          '集名净化、Py 源安全检测与字幕翻译需要真实模型接口；当前未配置，不调用也不编造结果。',
+        );
+      case 'TVBox 功能':
+        return _infoRows(
+          'TVBox 功能',
+          '扫码输入、扫码控制、同步配置与网页端依赖网关服务；当前没有已连接的设备。',
+        );
+      case '推送识别':
+        return _infoRows(
+          '推送识别',
+          '打开分享、剪贴板或其他设备推来的链接需要系统分享与设备发现权限；当前未接入。',
+        );
+      case '猫源配置与网盘登录':
+        return _infoRows(
+          '猫源配置与网盘登录',
+          '源的配置网页由当前猫源提供；没有可用的配置地址时不打开空白页。',
+        );
+      case '用户协议':
+        return _infoRows('用户协议', '当前构建没有捆绑用户协议文本，不显示占位内容。');
+      case '历史通知':
+        return _infoRows('历史通知', '还没有收到过通知；原版会在这里列出更新与追更提醒。');
+      case '联系我们':
+        return _infoRows(
+          '联系我们',
+          'QQ 群 1081010521 · 点击加群，长按复制号码。当前构建不自动拉起 QQ。',
+        );
       default:
         return const [];
     }
   }
+
+  List<Widget> _infoRows(String title, String note) => [
+    _Group(
+      rows: [
+        _Row(icon: CupertinoIcons.info_circle, color: LcbColors.sysBlue, title: title, subtitle: note),
+      ],
+    ),
+  ];
 
   Future<void> _showAiTranslationSettings() async {
     final store = StoreScope.of(context);
