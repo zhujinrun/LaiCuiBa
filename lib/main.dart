@@ -110,6 +110,11 @@ class LcbApp extends StatelessWidget {
         title: LcbAppInfo.name,
         debugShowCheckedModeBanner: false,
         theme: buildBclTheme(),
+        // Windows 的 AXTree 桥在热重启/视频输出尺寸变化时会对已移除的语义节点
+        // 反复报错。这个客户端没有读屏语义需求，整个 Navigator（含对话框）都
+        // 不进语义树；播放页自己也包了一层，双保险。
+        builder: (context, child) =>
+            ExcludeSemantics(child: child ?? const SizedBox.shrink()),
         home: const Shell(),
       ),
     );
