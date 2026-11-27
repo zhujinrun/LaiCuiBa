@@ -2,14 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
 
-/// 播放页右下角的选集面板。
-///
-/// 底栏原本只有「上一集 / 下一集」两个箭头：看 40 集的剧想跳到第 30 集，只能
-/// 点 29 次。原版播放页的底栏里有一个「选集」，这里补上同一件事。
-///
-/// 面板只负责「显示并回报一个下标」：集名是源给的（可能是「第12集」「12」或者
-/// 干脆是文件名的片段），切换由播放页交给上层，和详情页选集的出口一致。
-class EpisodePanel extends StatelessWidget {
+/// 播放页右下角的选集抽屉。原版是逐行列表，顶栏带排序与搜索；
+/// 这里保留同样的出口，集名仍是源给的原样（只截断过长文本）。
+class EpisodePanel extends StatefulWidget {
   const EpisodePanel({
     super.key,
     required this.episodes,
@@ -19,19 +14,41 @@ class EpisodePanel extends StatelessWidget {
   });
 
   final List<String> episodes;
-
-  /// 正在播的那一集；-1 表示不知道（比如一个没有集号的作品）。
   final int currentIndex;
-
   final ValueChanged<int> onPick;
-
-  /// 面板标题，详情页那边叫「选集」，播放页沿用同一个词。
   final String title;
+
+  @override
+  State<EpisodePanel> createState() => _EpisodePanelState();
+}
+
+class _EpisodePanelState extends State<EpisodePanel> {
+  String _query = '';
+  bool _descending = false;
+  bool _searching = false;
+
+  String _labelOf(int index) {
+    final raw = widget.episodes[index].trim();
+    if (raw.isEmpty) return '${index + 1}';
+    return raw.length > 12 ? raw.substring(0, 12) : raw;
+  }
+
+  List<int> _visible() {
+    final indices = [
+      for (var i = 0; i < widget.episodes.length; i++) i,
+    ];
+    if (_descending) indices.sort((a, b) => b.compareTo(a));
+    if (_query.isEmpty) return indices;
+    return indices
+        .where((i) => _labelOf(i).contains(_query))
+        .toList();
+  }
 
   @override
   Widget build(BuildContext context) {
     final screen = MediaQuery.maybeOf(context)?.size.height ?? 720;
     final maxHeight = (screen - 220).clamp(200.0, 560.0);
+    final visible = _visible();
     return Container(
       width: 372,
       constraints: BoxConstraints(maxHeight: maxHeight),
@@ -50,14 +67,14 @@ class EpisodePanel extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 12, 8),
+            padding: const EdgeInsets.fromLTRB(14, 10, 8, 6),
             child: Row(
               children: [
                 Text(
-                  title,
+                  widget.title,
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -66,49 +83,86 @@ class EpisodePanel extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  '共 ${episodes.length} 集',
+                  '共 ${widget.episodes.length} 集',
                   style: const TextStyle(
                     fontSize: 11.5,
                     color: Color(0x8CFFFFFF),
                   ),
                 ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () =>
+                      setState(() => _descending = !_descending),
+                  child: Text(_descending ? '倒序' : '正序'),
+                ),
+                IconButton(
+                  onPressed: () => setState(() {
+                    _searching = !_searching;
+                    if (!_searching) _query = '';
+                  }),
+                  icon: Icon(
+                    _searching ? Icons.search_off : Icons.search,
+                    size: 16,
+                  ),
+                  color: LcbColors.textSecondary,
+                  splashRadius: 18,
+                  tooltip: '搜索剧集',
+                ),
               ],
             ),
           ),
-          Flexible(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (var i = 0; i < episodes.length; i++)
-                    _EpisodeChip(
-                      key: ValueKey('episode-chip-$i'),
-                      label: _labelOf(i),
-                      current: i == currentIndex,
-                      onTap: i == currentIndex ? null : () => onPick(i),
-                    ),
-                ],
+          if (_searching)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: TextField(
+                autofocus: true,
+                onChanged: (value) =>
+                    setState(() => _query = value.trim()),
+                decoration: const InputDecoration(
+                  hintText: '搜索剧集',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
+          Flexible(
+            child: visible.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(
+                      child: Text(
+                        '没有匹配的剧集',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: LcbColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    itemCount: visible.length,
+                    itemBuilder: (_, position) {
+                      final index = visible[position];
+                      return _EpisodeRow(
+                        key: ValueKey('episode-chip-$index'),
+                        label: _labelOf(index),
+                        current: index == widget.currentIndex,
+                        onTap: index == widget.currentIndex
+                            ? null
+                            : () => widget.onPick(index),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
     );
   }
-
-  /// 源给的集名可能只是「12」，也可能是一条完整标题；两种都要能认出来，所以
-  /// 只做「太长的截断」，不重排内容。
-  String _labelOf(int index) {
-    final raw = episodes[index].trim();
-    if (raw.isEmpty) return '${index + 1}';
-    return raw.length > 12 ? raw.substring(0, 12) : raw;
-  }
 }
 
-class _EpisodeChip extends StatefulWidget {
-  const _EpisodeChip({
+class _EpisodeRow extends StatefulWidget {
+  const _EpisodeRow({
     super.key,
     required this.label,
     required this.current,
@@ -120,44 +174,54 @@ class _EpisodeChip extends StatefulWidget {
   final VoidCallback? onTap;
 
   @override
-  State<_EpisodeChip> createState() => _EpisodeChipState();
+  State<_EpisodeRow> createState() => _EpisodeRowState();
 }
 
-class _EpisodeChipState extends State<_EpisodeChip> {
+class _EpisodeRowState extends State<_EpisodeRow> {
   bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
-    final current = widget.current;
-    final bg = current
-        ? LcbColors.primaryDim
+    final bg = widget.current
+        ? const Color(0x33C8B6FF)
         : _hover
         ? const Color(0x2EFFFFFF)
         : const Color(0x14FFFFFF);
     return MouseRegion(
-      cursor: current ? SystemMouseCursors.basic : SystemMouseCursors.click,
+      cursor: widget.current ? SystemMouseCursors.basic : SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap,
         child: Container(
-          width: 64,
-          height: 32,
-          alignment: Alignment.center,
+          height: 38,
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(8),
+            border: widget.current
+                ? Border.all(color: const Color(0xFFC8B6FF))
+                : null,
           ),
-          child: Text(
-            widget.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: current ? FontWeight.w600 : FontWeight.w400,
-              color: current ? Colors.white : const Color(0xE6FFFFFF),
-            ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  widget.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: widget.current ? FontWeight.w600 : FontWeight.w400,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              if (widget.current)
+                const Icon(Icons.check, size: 15, color: Color(0xFFC8B6FF)),
+            ],
           ),
         ),
       ),

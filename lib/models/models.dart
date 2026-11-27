@@ -750,6 +750,7 @@ class AppSettings {
     this.aspectFit = 'fit',
     this.pictureAdjust = const {},
     this.playerInfoFields = '',
+    this.infoPositions = const {},
     this.miniProgress = false,
     this.subtitlePref = 'auto',
     this.subtitleSize = 32,
@@ -834,6 +835,9 @@ class AppSettings {
   /// `bitrate`），逗号分隔、按此顺序排列。空串 = 不显示浮层。语义在
   /// `services/player_info.dart` 的 `PlayerInfoField`，模型层只存短码串。
   final String playerInfoFields;
+
+  /// 信息显示面板里每项的角标位置：off / topLeft / topRight / bottomLeft / bottomRight。
+  final Map<String, String> infoPositions;
 
   /// 播放页最底下的「迷你进度条」：一条常驻细线（蓝=已播、浅蓝=已缓冲），
   /// 不随操作菜单隐藏。原版在设置里叫「迷你进度条」。
@@ -953,6 +957,7 @@ class AppSettings {
     String? aspectFit,
     Map<String, int>? pictureAdjust,
     String? playerInfoFields,
+    Map<String, String>? infoPositions,
     bool? miniProgress,
     String? subtitlePref,
     int? subtitleSize,
@@ -1009,6 +1014,7 @@ class AppSettings {
       aspectFit: aspectFit ?? this.aspectFit,
       pictureAdjust: pictureAdjust ?? this.pictureAdjust,
       playerInfoFields: playerInfoFields ?? this.playerInfoFields,
+      infoPositions: infoPositions ?? this.infoPositions,
       miniProgress: miniProgress ?? this.miniProgress,
       subtitlePref: subtitlePref ?? this.subtitlePref,
       subtitleSize: subtitleSize ?? this.subtitleSize,
@@ -1069,6 +1075,7 @@ class AppSettings {
     'aspectFit': aspectFit,
     'pictureAdjust': pictureAdjust,
     'playerInfoFields': playerInfoFields,
+    'infoPositions': infoPositions,
     'miniProgress': miniProgress,
     'subtitlePref': subtitlePref,
     'subtitleSize': subtitleSize,
@@ -1147,6 +1154,7 @@ class AppSettings {
       aspectFit: pop('aspectFit', 'fit'),
       pictureAdjust: _readIntMap(extra.remove('pictureAdjust')),
       playerInfoFields: pop('playerInfoFields', ''),
+      infoPositions: _readStringMap(extra.remove('infoPositions')),
       miniProgress: pop('miniProgress', false),
       subtitlePref: _readSubtitlePref(extra.remove('subtitlePref')),
       subtitleSize: _readSubtitleSize(extra.remove('subtitleSize')),

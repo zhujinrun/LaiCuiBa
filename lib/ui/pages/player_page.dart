@@ -27,6 +27,7 @@ import '../../services/track_map.dart';
 import '../widgets/skip_panel.dart';
 import '../widgets/cast_sheet.dart';
 import '../widgets/danmaku_panel.dart';
+import '../widgets/info_panel.dart';
 import '../widgets/comments_dialog.dart';
 import '../widgets/kernel_dialog.dart';
 import '../widgets/subtitle_search_dialog.dart';
@@ -81,6 +82,9 @@ class PlayerPage extends StatefulWidget {
     this.onPictureAdjust,
     this.infoFields = const [],
     this.miniProgress = false,
+    this.infoPositions = const {},
+    this.onInfoPositionsChanged,
+    this.onMiniProgressChanged,
     this.subtitlePref = SubtitlePref.auto,
     this.subtitleSize = LcbSubtitleStyle.standard,
     this.secondarySubtitle = SecondarySubtitle.off,
@@ -184,6 +188,9 @@ class PlayerPage extends StatefulWidget {
   /// 画面最底下的「迷你进度条」：常驻细线（蓝=已播、浅蓝=已缓冲），不随
   /// 操作菜单隐藏。
   final bool miniProgress;
+  final Map<String, String> infoPositions;
+  final ValueChanged<Map<String, String>>? onInfoPositionsChanged;
+  final ValueChanged<bool>? onMiniProgressChanged;
 
   /// 设置页里的默认字幕：新开一集时先按它挑一条。这部作品已经记住过一条
   /// （包括「关闭」）时以记住的为准，偏好不插手。
@@ -282,6 +289,7 @@ enum _PlayerPanel {
   rate,
   subtitle,
   danmaku,
+  info,
   tracks,
   skip,
   aspect,
@@ -364,7 +372,6 @@ class _PlayerPageState extends State<PlayerPage> {
   _PlayerPanel? _panel;
 
   /// 常驻信息浮层的开关。字段由设置页决定；这里只管这一场看不看。
-  late bool _infoVisible = widget.infoFields.isNotEmpty;
 
   /// 画面比例与调节的当前值。比例从 widget 进来，调节滑一下改一下（同时下发
   /// mpv 属性 + 通知上层持久化），不额外存一份会漂移的状态。
@@ -392,7 +399,6 @@ class _PlayerPageState extends State<PlayerPage> {
   int? _dw;
   int? _dh;
   String? _fps;
-  String? _bitrate;
   bool _infoProbed = false;
 
   /// The tail cut-off already fired for this session, so the episode counts as
@@ -1028,7 +1034,7 @@ class _PlayerPageState extends State<PlayerPage> {
       return;
     }
     _savedBounds = await windowManager.getBounds();
-    await windowManager.setSize(const Size(440, 280));
+    await windowManager.setSize(const Size(480, 270));
     await windowManager.setAlwaysOnTop(true);
     if (mounted) setState(() => _miniWindow = true);
   }
@@ -1101,13 +1107,7 @@ class _PlayerPageState extends State<PlayerPage> {
     setState(() => _panel = null);
   }
 
-  void _toggleInfo() {
-    _hideTimer?.cancel();
-    setState(() {
-      _controlsVisible = true;
-      _infoVisible = !_infoVisible;
-    });
-  }
+  void _toggleInfoPanel() => _togglePanel(_PlayerPanel.info);
 
   /// ±10 秒。时长还没报上来时不给落点，所以按钮本身就是灰的（调用方传 null）。
   void _nudge(Duration delta) {
@@ -1178,7 +1178,6 @@ class _PlayerPageState extends State<PlayerPage> {
     unawaited(() async {
       for (final (prop, set) in [
         ('estimated-vf-fps', (String v) => _fps = v),
-        ('video-bitrate', (String v) => _bitrate = v),
       ]) {
         try {
           final v = await platform.getProperty(prop);
@@ -1341,17 +1340,47 @@ class _PlayerPageState extends State<PlayerPage> {
     return parts.join(' · ');
   }
 
-  /// 常驻信息浮层：一行小字，每项「分辨率 1920×1080」，没拿到的值显示 `--`。
-  Widget _buildInfoOverlay() {
-    final facts = widget.infoFields.map((f) {
-      final value = switch (f) {
-        PlayerInfoField.resolution => formatResolution(_dw, _dh),
-        PlayerInfoField.frameRate => formatFrameRate(_fps),
-        PlayerInfoField.bitrate => formatBitrate(_bitrate),
+  /// 按原版「信息显示」的角标位置渲染：每一项可以独立钉在四个角。
+  List<PlayerInfoFact> _factsFor(String spot) {
+    final facts = <PlayerInfoFact>[];
+    for (final entry in widget.infoPositions.entries) {
+      if (entry.value != spot) continue;
+      final label = switch (entry.key) {
+        'battery' => '电量',
+        'clock' => '当前时间',
+        'frameRate' => '视频帧率',
+        'resolution' => '分辨率',
+        'progress' => '播放进度',
+        'speed' => '网速',
+        _ => '',
       };
-      return PlayerInfoFact(f.label, value);
-    }).toList();
-    return PlayerInfoOverlay(facts: facts);
+      if (label.isEmpty) continue;
+      final now = DateTime.now();
+      final value = switch (entry.key) {
+        'clock' => '${now.hour.toString().padLeft(2, '0')}:'
+            '${now.minute.toString().padLeft(2, '0')}',
+        'frameRate' => formatFrameRate(_fps),
+        'resolution' => formatResolution(_dw, _dh),
+        'progress' => '${_mmss(_position)} / ${_mmss(_duration)}',
+        _ => null, // 桌面没有电量/网速读数，显示 -- 而不是编造。
+      };
+      facts.add(PlayerInfoFact(label, value));
+    }
+    return facts;
+  }
+
+  Widget _infoCorner(String spot) {
+    final facts = _factsFor(spot);
+    if (facts.isEmpty) return const SizedBox.shrink();
+    final left = spot == 'topLeft' || spot == 'bottomLeft';
+    final top = spot == 'topLeft' || spot == 'topRight';
+    return Positioned(
+      top: top ? 76 : null,
+      bottom: top ? null : 110,
+      left: left ? 24 : null,
+      right: left ? null : 24,
+      child: IgnorePointer(child: PlayerInfoOverlay(facts: facts)),
+    );
   }
 
   /// The caller may hand in a different skip rule mid-session (the viewer set
@@ -1495,6 +1524,8 @@ class _PlayerPageState extends State<PlayerPage> {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: _toggleControls,
+                // 原版小窗是双击画面还原；这里照办，不用再回面板找入口。
+                onDoubleTap: _miniWindow ? _toggleMiniWindow : null,
               ),
             ),
           ),
@@ -1562,12 +1593,12 @@ class _PlayerPageState extends State<PlayerPage> {
           // 常驻信息浮层：选中的信息钉在画面右上角，不随操作菜单隐藏（原版
           // 「信息显示」）。控制条消失时它还在，所以放在 _TopBar 之后、不受
           // visible 约束。
-          if (_infoVisible && widget.infoFields.isNotEmpty)
-            Positioned(
-              top: 76,
-              right: 24,
-              child: IgnorePointer(child: _buildInfoOverlay()),
-            ),
+          ...[
+            _infoCorner('topLeft'),
+            _infoCorner('topRight'),
+            _infoCorner('bottomLeft'),
+            _infoCorner('bottomRight'),
+          ],
           // 迷你进度条：画面最底下一根细线，蓝色=已播、浅蓝=已缓冲，常驻。
           if (widget.miniProgress)
             Positioned(
@@ -1613,6 +1644,19 @@ class _PlayerPageState extends State<PlayerPage> {
                 onClearSubtitleFile: _externalLabel == null
                     ? null
                     : _clearSubtitleFile,
+              ),
+            ),
+          if (_panel == _PlayerPanel.info)
+            Positioned(
+              right: 20,
+              bottom: 132,
+              child: InfoPanel(
+                positions: widget.infoPositions,
+                onChanged: (value) =>
+                    widget.onInfoPositionsChanged?.call(value),
+                miniProgress: widget.miniProgress,
+                onMiniProgress: (value) =>
+                    widget.onMiniProgressChanged?.call(value),
               ),
             ),
           if (_panel == _PlayerPanel.danmaku)
@@ -1750,8 +1794,8 @@ class _PlayerPageState extends State<PlayerPage> {
             aspectOpen: _panel == _PlayerPanel.aspect,
             onPicture: _togglePicturePanel,
             pictureOpen: _panel == _PlayerPanel.picture,
-            onInfo: _toggleInfo,
-            infoOpen: _infoVisible,
+            onInfo: _toggleInfoPanel,
+            infoOpen: _panel == _PlayerPanel.info,
             onEpisodes: _toggleEpisodePanel,
             episodesOpen: _panel == _PlayerPanel.episodes,
             episodeCount: widget.episodes.length,
