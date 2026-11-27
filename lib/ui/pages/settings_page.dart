@@ -965,9 +965,9 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: CupertinoIcons.eye_slash,
               color: LcbColors.sysGray,
               title: '老板键',
-              subtitle: '藏起窗口并暂停，再按一次放出来接着播',
+              subtitle: '暂停并收起窗口；回到应用后点播放继续',
               value: 'Ctrl + Alt + H',
-              onTap: () => _toast('老板键由系统全局快捷键接管，当前构建未注册'),
+              onTap: () => _toast('播放时按 Ctrl+Alt+H；当前为应用内快捷键'),
             ),
             _Row(
               icon: CupertinoIcons.rectangle_on_rectangle,
@@ -975,12 +975,12 @@ class _SettingsPageState extends State<SettingsPage> {
               title: '摸鱼小窗快捷键',
               subtitle: '播放页里切换角落悬浮小窗',
               value: 'P',
-              onTap: () => _toast('小窗快捷键请在播放页用画中画按钮'),
+              onTap: () => _toast('播放时按 P 切换小窗，也可点底栏画中画'),
             ),
           ],
         ),
         const _Note(
-          '按键按键盘上的位置识别，中文输入法开着也能用。老板键在任何程序里都有效（播放页开着时）。',
+          '按键按键盘上的位置识别，中文输入法开着也能用。当前构建老板键只在应用有焦点时生效。',
         ),
       ];
 

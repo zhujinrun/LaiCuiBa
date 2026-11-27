@@ -18,6 +18,8 @@ import '../../services/hls_clean_proxy.dart';
 import '../../services/playback_clock.dart';
 import '../../services/picture.dart';
 import '../../services/player_info.dart';
+import '../../services/player/boss_key.dart';
+import '../../services/player/keyboard_shortcuts.dart';
 import '../../services/player/subtitle_file.dart';
 import '../../services/player/volume_step.dart';
 import '../../services/skip_rule.dart';
@@ -115,6 +117,7 @@ class PlayerPage extends StatefulWidget {
     this.onOutro,
     this.onSubtitleFile,
     this.awake,
+    this.bossKey,
   });
 
   /// Title shown in the top bar.
@@ -277,6 +280,10 @@ class PlayerPage extends StatefulWidget {
   /// end with the lock released. Null falls back to a private one.
   final Awake? awake;
 
+  /// Ctrl+Alt+H signal from the shell. When it fires the player pauses before
+  /// the shell minimizes the window, so coming back never auto-plays.
+  final BossKeyNotifier? bossKey;
+
   @override
   State<PlayerPage> createState() => _PlayerPageState();
 }
@@ -330,6 +337,7 @@ class _PlayerPageState extends State<PlayerPage> {
   StreamSubscription<Track>? _trackSub;
   StreamSubscription<List<String>>? _subtitleSub;
   StreamSubscription<String>? _errorSub;
+  VoidCallback? _bossListener;
 
   /// media_kit's track objects, indexed by mpv's track id, plus the options the
   /// panel renders — one mapping serves both, see [MappedTracks].
@@ -530,6 +538,13 @@ class _PlayerPageState extends State<PlayerPage> {
       // 主字幕变了，次字幕要重新核一遍——不能和主字幕用同一条轨。
       _applySecondary();
     });
+
+    // 老板键：shell 发信号时先停住再让它最小化，回来保持暂停。
+    final boss = widget.bossKey;
+    if (boss != null) {
+      _bossListener = () => _player.pause();
+      boss.addListener(_bossListener!);
+    }
 
     // A viewer who starts an episode and walks away should come back to a
     // playing episode, not a locked screen.
@@ -1318,6 +1333,28 @@ class _PlayerPageState extends State<PlayerPage> {
     if (_controlsVisible) _scheduleHide();
   }
 
+  /// 键盘动作和滚轮 / 底栏按钮共用同一套实现，避免两处音量或落点算法分叉。
+  /// 上箭头对应滚轮上滚（dy<0），所以传 -5；±10 秒直接走 [`_nudge`]。
+  void _runShortcut(PlayerShortcut shortcut) {
+    switch (shortcut) {
+      case PlayerShortcut.volumeUp:
+        _nudgeVolume(-5);
+      case PlayerShortcut.volumeDown:
+        _nudgeVolume(5);
+      case PlayerShortcut.seekBack:
+        _nudge(const Duration(seconds: -10));
+      case PlayerShortcut.seekForward:
+        _nudge(const Duration(seconds: 10));
+      case PlayerShortcut.miniWindow:
+        _toggleMiniWindow();
+    }
+  }
+
+  Map<ShortcutActivator, VoidCallback> get _shortcutBindings => {
+    for (final entry in playerShortcutBindings.entries)
+      entry.key: () => _runShortcut(entry.value),
+  };
+
   void _togglePlay() {
     if (_playing) {
       _player.pause();
@@ -1425,6 +1462,9 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   void dispose() {
+    if (_bossListener != null) {
+      widget.bossKey?.removeListener(_bossListener!);
+    }
     _hideTimer?.cancel();
     _noticeTimer?.cancel();
     _aiTimer?.cancel();
@@ -1466,8 +1506,15 @@ class _PlayerPageState extends State<PlayerPage> {
     // 用户就只剩下「重试 / 下一集」，连返回都摸不到。失败时把常驻控件
     // 钉回来，等下一集真正开了（duration 到了会清掉 _openError）再恢复自动隐藏。
     final chromeVisible = _controlsVisible || _openError != null;
-    return Scaffold(
-      backgroundColor: Colors.black,
+    // 播放页盖在 shell 之上，焦点必须落在这里，方向键才不会被 shell 的
+    // Ctrl+K / Esc 绑定吃掉。autofocus 只在首次进入时抢一次，之后焦点随着
+    // 面板里的输入框自然转移，打字时不会误触音量。
+    return Focus(
+      autofocus: true,
+      child: CallbackShortcuts(
+        bindings: _shortcutBindings,
+        child: Scaffold(
+          backgroundColor: Colors.black,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -1822,6 +1869,8 @@ class _PlayerPageState extends State<PlayerPage> {
                 : null,
           ),
         ],
+      ),
+        ),
       ),
     );
   }

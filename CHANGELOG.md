@@ -6,6 +6,12 @@ the section whose heading matches the pushed tag.
 
 ## [Unreleased]
 
+### Added
+- Player keyboard shortcuts: arrow up/down change volume, left/right seek
+  ±10 seconds, and `P` toggles the mini window. The original's boss key
+  (`Ctrl+Alt+H`) pauses and minimizes the window, with an in-app fallback
+  instead of a system-wide hotkey.
+
 ### Fixed
 - Detail pages render the source's `vod_pic` as a network image, so a cover
   visible on a continue-watching card also appears after opening it.

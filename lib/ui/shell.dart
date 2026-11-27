@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
+import 'package:window_manager/window_manager.dart';
 
 import '../core/detail_nav.dart';
 import '../core/nav.dart';
@@ -10,6 +11,8 @@ import '../core/store_scope.dart';
 import '../core/theme.dart';
 import '../models/models.dart';
 import '../services/awake.dart';
+import '../services/player/boss_key.dart';
+import '../services/player/keyboard_shortcuts.dart' as shortcuts;
 import '../services/demo_data.dart';
 import '../services/ai/subtitle_translate.dart';
 import '../services/store.dart';
@@ -78,6 +81,11 @@ class _ShellState extends State<Shell> {
   /// two independent guards would release the lock the new one just took.
   final Awake _awake = SystemAwake();
 
+  /// Ctrl+Alt+H tells the player to pause, then the shell minimizes. One bus
+  /// for the whole shell because the player is mounted above it, outside its
+  /// shortcut scope, and only reaches the shell through callbacks.
+  final BossKeyNotifier _bossKey = BossKeyNotifier();
+
   static const _titles = {
     LcbPage.home: '首页',
     LcbPage.resources: '资源',
@@ -97,7 +105,15 @@ class _ShellState extends State<Shell> {
     _header.dispose();
     _search.dispose();
     _resources.dispose();
+    _bossKey.dispose();
     super.dispose();
+  }
+
+  /// 老板键：应用内热键，先让播放器停住，再最小化窗口。回来时点任务栏图标，
+  /// 播放页保持暂停，由用户点播放继续——窗口藏起来后收不到第二次按键。
+  void _triggerBossKey() {
+    _bossKey.fire();
+    windowManager.minimize();
   }
 
   void _select(LcbPage page) {
@@ -456,6 +472,7 @@ class _ShellState extends State<Shell> {
         if (player != null)
           PlayerPage(
             key: ValueKey('player-${player.url}-${player.lineIndex}'),
+            bossKey: _bossKey,
             title: player.title,
             subtitle: player.subtitle,
             quality: player.item.tag,
@@ -569,6 +586,8 @@ class _ShellState extends State<Shell> {
                       const SingleActivator(
                         LogicalKeyboardKey.escape,
                       ): _closeSearch,
+                      // 原版「老板键」：当前是应用内热键，藏窗后靠点任务栏恢复。
+                      shortcuts.bossKeyActivator: _triggerBossKey,
                     },
                     child: Focus(
                       autofocus: true,
