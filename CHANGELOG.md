@@ -6,6 +6,10 @@ the section whose heading matches the pushed tag.
 
 ## [Unreleased]
 
+### Fixed
+- HLS mid-roll ad pods are removed before mpv sees the playlist, so an injected
+  ad no longer changes the timeline and sends the progress bar back to 00:00.
+
 ## [0.1.0] - 2026-11-27
 
 ### Fixed

@@ -468,6 +468,31 @@ js 宿主有两处绕不过去的工程问题，都不是「加个分支」能�
 复核落点：落点与目标相差超过 8 秒才补发一次（同一个目标重复 seek 是无害的，但会造成一次肉眼可见的抖动，
 所以只有确实没落地才发）。落点核对没通过（例如贴片把基准带跑偏）时退回片头，而不是把人丢在广告里。
 
+#### 已落地：HLS 中插广告清洗（2026-11-27）
+
+`PlaybackClock` 只保证**广告结束后不要把人丢在片头**，广告本身仍会播完。实测
+`尚公主` 第 1 集 LZ 线路：`v.lzcdn27.com/.../2000k/hls/index.m3u8` 里明写
+`# ppvod-ad-injected v1`，紧接一对 `#EXT-X-DISCONTINUITY` 插入 7 个来自
+`/20261003/84_9109598f/` 的 TS 分片（25.76 秒），分别落在该集 **300.400s**
+和 **2007.000s**；原播放列表 703 片 / 2804.80s，正是界面上的 `46:44`。
+广告段结束时 mpv 重新报告时间轴，`PlaybackClock` 检测到漂移并退回 0，所以
+`05:00` 之后进度条回到 `00:00`。
+
+现在 `lib/services/hls_ad_filter.dart` + `lib/services/hls_clean_proxy.dart`
+在**播放页开流之前**加了一层 loopback 清洗：
+
+- `PlayerPage._open()` 把 HLS URL 包成 `http://127.0.0.1:<port>/hls?u=...&h=...`；
+  非 HLS 地址原样交给 mpv；
+- 代理用原 header 抓播放列表：master 里的子列表改写成同一个清洗端点，
+  media 列表删掉广告标记、两段 discontinuity 和**不属于主流 URI 前缀**的分片；
+- 剩下的分片改成绝对地址，由 mpv 直接拿原 header 去取，不额外代理每个 TS；
+- 原 URL/header 仍显示在播放器信息里，清洗只发生在网络层。
+
+`test/hls_ad_filter_test.dart` 覆盖注入 pod、嵌套 master 与普通 discontinuity
+不被误删；`tool/verify_hls_ad_live.dart` 直接打线上地址自证：
+`703 → 689` 分片、`2804.80s → 2753.28s`、两处 marker/discontinuity 全消失，
+且经过 loopback 代理拿到的 master/media 都是干净版本。
+
 #### 片头 / 片尾：只有用户设过才跳
 
 源站不给片头时间点（猫源的 detail、TVBox 的 `playerContent` 都只有 URL 和 header），
@@ -619,8 +644,10 @@ TV 端焦点导航（原版 `ui/tv/*` 共 9 个文件）、Android 适配、AI �
 
 2. **广告段污染时间轴**：源站把贴片广告塞进同一条流，广告段的时间轴被写入
    `_lastPosition`，切正片时 `_tryRecover → _resumeAt(脏位置)`，导致从片头起播。
-   → 对策：恢复位置只认持久化的 `history.durationMs` 校验过的时间点；
+   → 对策一：恢复位置只认持久化的 `history.durationMs` 校验过的时间点；
    检测到时长突变（±20% 以上）时丢弃当前位置，改从历史位置恢复。**已实现**（Phase 3）。
+   → 对策二：中插广告在进 mpv **之前**从 HLS 播放列表里剔除，时间轴根本不发生
+   跳变。`HlsAdFilter` / `HlsCleanProxy` 已实现并用线上流自证（Phase 3）。
 
 3. **自动跳片头与续播争抢**：`skipIntroOutro` 的自动 seek 和 resume 定位抢同一次
    跳转。

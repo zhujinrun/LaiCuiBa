@@ -15,6 +15,7 @@ import '../../services/cast/dlna.dart';
 import '../../services/awake.dart';
 import '../../services/danmaku/danmaku_api.dart';
 import '../../services/danmaku/source_danmaku.dart';
+import '../../services/hls_clean_proxy.dart';
 import '../../services/playback_clock.dart';
 import '../../services/picture.dart';
 import '../../services/player_info.dart';
@@ -668,14 +669,23 @@ class _PlayerPageState extends State<PlayerPage> {
       await _applyDecoder();
       await _player.setVolume(widget.initialVolume.toDouble());
       await _player.setRate(widget.initialRate);
+      final headers = <String, String>{'User-Agent': _ua, ...widget.headers};
+      // Some CDNs splice an ad pod into the same HLS playlist; when it ends mpv
+      // reports a new timeline and the bar jumps back to 00:00. Serve the
+      // playlist through our loopback cleaner instead of handing the polluted
+      // one to mpv. Non-HLS URLs are returned unchanged.
+      final url = await HlsCleanProxy.instance.wrap(
+        widget.url,
+        headers: headers,
+      );
       // `start` is only a hint: mpv applies it while loading and drops it for
       // some HLS streams. The clock verifies the landing and re-issues the seek
       // when it did not take, so this stays a fast path rather than the truth.
       await _player.open(
         Media(
-          widget.url,
+          url,
           start: widget.resume?.position,
-          httpHeaders: {'User-Agent': _ua, ...widget.headers},
+          httpHeaders: headers,
         ),
         play: true,
       );
