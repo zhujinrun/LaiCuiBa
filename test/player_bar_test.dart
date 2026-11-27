@@ -20,6 +20,7 @@ PlayerBar _bar({
   VoidCallback? onTracks,
   VoidCallback? onSkipPanel,
   int episodeCount = 3,
+  bool iconMode = false,
 }) => PlayerBar(
   playing: true,
   buffering: false,
@@ -49,6 +50,7 @@ PlayerBar _bar({
   episodesOpen: false,
   episodeCount: episodeCount,
   onSkipPanel: onSkipPanel ?? () {},
+  iconMode: iconMode,
 );
 
 void main() {
@@ -118,5 +120,19 @@ void main() {
   testWidgets('只有一集时不摆「选集」', (tester) async {
     await tester.pumpWidget(_wrap(_bar(episodeCount: 1)));
     expect(find.text('选集'), findsNothing);
+  });
+
+  testWidgets('操作按钮可以换成图标，功能一个不少', (tester) async {
+    await tester.pumpWidget(_wrap(_bar(iconMode: true)));
+    for (final label in ['倍速', '字幕', '弹幕', '比例', '画面', '信息', '选集']) {
+      expect(find.text(label), findsNothing, reason: '图标模式不该再写「$label」');
+    }
+    expect(find.byIcon(Icons.speed), findsOneWidget);
+    expect(find.byIcon(Icons.closed_caption), findsOneWidget);
+    expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+    expect(find.byIcon(Icons.aspect_ratio), findsOneWidget);
+    expect(find.byIcon(Icons.tune), findsOneWidget);
+    expect(find.byIcon(Icons.info_outline), findsOneWidget);
+    expect(find.byIcon(Icons.list), findsOneWidget);
   });
 }

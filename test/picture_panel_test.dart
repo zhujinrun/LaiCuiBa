@@ -76,6 +76,38 @@ void main() {
 
     expect(find.text('恢复原始画面'), findsNothing);
   });
+
+  testWidgets('画面面板还给出全屏、小窗和截图三个真出口', (tester) async {
+    tester.view.physicalSize = const Size(1280, 1100);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var full = 0;
+    var mini = 0;
+    var shot = 0;
+    await tester.pumpWidget(
+      _wrap(
+        PicturePanel(
+          adjust: PictureAdjust.none,
+          onAdjust: _noop,
+          onFullScreen: () => full++,
+          onMiniWindow: () => mini++,
+          onScreenshot: () => shot++,
+        ),
+      ),
+    );
+
+    expect(find.text('全屏（F）'), findsOneWidget);
+    expect(find.text('小窗播放'), findsOneWidget);
+    expect(find.text('截图'), findsOneWidget);
+    await tester.tap(find.text('全屏（F）'));
+    await tester.tap(find.text('小窗播放'));
+    await tester.tap(find.text('截图'));
+    await tester.pump();
+    expect(full, 1);
+    expect(mini, 1);
+    expect(shot, 1);
+  });
 }
 
 void _noop(PictureAdjust _) {}

@@ -623,6 +623,14 @@ void main() {
 
     // The row used to be a hardcoded "1.0x" that ignored the player entirely.
     expect(find.text('1.50x'), findsOneWidget);
+
+    // 原版 player_buttons：底栏按钮文字 / 图标，点一次真的翻过去。
+    expect(find.text('操作按钮'), findsOneWidget);
+    await tester.tap(find.text('操作按钮'));
+    await tester.pumpAndSettle();
+    expect(store.settings.playerButtons, 'icon');
+    expect(find.text('图标'), findsOneWidget);
+
     // And the per-work shelf says how many works carry their own numbers.
     expect(find.text('1 部'), findsOneWidget);
     expect(

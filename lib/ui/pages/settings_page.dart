@@ -783,6 +783,20 @@ class _SettingsPageState extends State<SettingsPage> {
         _Group(
           rows: [
             _Row(
+              icon: CupertinoIcons.ellipsis_circle,
+              color: LcbColors.sysPurple,
+              title: '操作按钮',
+              subtitle: '倍速、字幕、弹幕、内核这些操作按钮显示成文字还是图标',
+              value: store.settings.playerButtons == 'icon' ? '图标' : '文字',
+              onTap: () => store.updateSettings(
+                store.settings.copyWith(
+                  playerButtons: store.settings.playerButtons == 'icon'
+                      ? 'text'
+                      : 'icon',
+                ),
+              ),
+            ),
+            _Row(
               icon: CupertinoIcons.arrow_right_arrow_left,
               color: LcbColors.sysBlue,
               title: '跳过片头片尾',

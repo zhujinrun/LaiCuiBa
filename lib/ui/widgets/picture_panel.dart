@@ -9,10 +9,24 @@ import 'player_panel_chrome.dart';
 /// 比例已经拆到「比例」按钮下，这里只剩调节——五个量都是 mpv 属性，滑一下
 /// 改一下，窗口关掉也不会自己回去（值跟着设置存）。
 class PicturePanel extends StatelessWidget {
-  const PicturePanel({super.key, required this.adjust, required this.onAdjust});
+  const PicturePanel({
+    super.key,
+    required this.adjust,
+    required this.onAdjust,
+    this.onFullScreen,
+    this.onMiniWindow,
+    this.onScreenshot,
+    this.fullScreen = false,
+    this.miniWindow = false,
+  });
 
   final PictureAdjust adjust;
   final ValueChanged<PictureAdjust> onAdjust;
+  final VoidCallback? onFullScreen;
+  final VoidCallback? onMiniWindow;
+  final VoidCallback? onScreenshot;
+  final bool fullScreen;
+  final bool miniWindow;
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +63,24 @@ class PicturePanel extends StatelessWidget {
           ),
           if (!adjust.isNeutral)
             _ResetRow(onTap: () => onAdjust(PictureAdjust.none)),
+          const PanelGroupHeader('窗口'),
+          PanelRow(
+            label: '全屏（F）',
+            selected: fullScreen,
+            detail: fullScreen ? '退出全屏' : null,
+            onTap: onFullScreen ?? () {},
+          ),
+          PanelRow(
+            label: '小窗播放',
+            selected: miniWindow,
+            detail: miniWindow ? '还原窗口' : null,
+            onTap: onMiniWindow ?? () {},
+          ),
+          PanelRow(
+            label: '截图',
+            selected: false,
+            onTap: onScreenshot ?? () {},
+          ),
           const PanelNote('0% 是原始画面；这里的亮度和屏幕亮度分开'),
         ],
       ),

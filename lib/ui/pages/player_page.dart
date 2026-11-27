@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart' show PointerScrollEvent;
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../core/theme.dart';
 import '../../models/models.dart';
@@ -79,6 +80,7 @@ class PlayerPage extends StatefulWidget {
     this.danmakuEnabled = false,
     this.danmakuBlockTop = false,
     this.danmakuBlockBottom = false,
+    this.buttonsIcon = false,
     this.danmakuService,
     this.lines = const [],
     this.lineIndex = 0,
@@ -188,6 +190,9 @@ class PlayerPage extends StatefulWidget {
   final bool danmakuEnabled;
   final bool danmakuBlockTop;
   final bool danmakuBlockBottom;
+
+  /// 原版 player_buttons：文字还是图标。
+  final bool buttonsIcon;
 
   /// 取弹幕用。整个应用共用一个实例（store 持有），以便同一部剧换集时命中缓存。
   final DanmakuService? danmakuService;
@@ -367,6 +372,10 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _danmakuLoading = false;
   bool _danmakuAsked = false;
   String? _danmakuNote;
+
+  bool _fullScreen = false;
+  bool _miniWindow = false;
+  Rect? _savedBounds;
 
   bool _controlsVisible = true;
   Timer? _hideTimer;
@@ -847,6 +856,49 @@ class _PlayerPageState extends State<PlayerPage> {
   void _toggleTrackPanel() => _togglePanel(_PlayerPanel.tracks);
 
   void _toggleSkipPanel() => _togglePanel(_PlayerPanel.skip);
+
+  Future<void> _toggleFullScreen() async {
+    final next = !_fullScreen;
+    await windowManager.setFullScreen(next);
+    if (mounted) setState(() => _fullScreen = next);
+  }
+
+  /// 小窗：缩小并置顶，再点一次还原到原来的窗口位置。
+  Future<void> _toggleMiniWindow() async {
+    if (_miniWindow) {
+      final bounds = _savedBounds;
+      if (bounds != null) await windowManager.setBounds(bounds);
+      await windowManager.setAlwaysOnTop(false);
+      if (mounted) setState(() => _miniWindow = false);
+      return;
+    }
+    _savedBounds = await windowManager.getBounds();
+    await windowManager.setSize(const Size(440, 280));
+    await windowManager.setAlwaysOnTop(true);
+    if (mounted) setState(() => _miniWindow = true);
+  }
+
+  Future<void> _screenshot() async {
+    try {
+      final bytes = await _player.screenshot();
+      if (bytes == null) {
+        _showNotice('截图失败：内核没有返回画面');
+        return;
+      }
+      final home = Platform.environment['USERPROFILE'] ?? Directory.current.path;
+      final dir = Directory('$home${Platform.pathSeparator}Pictures');
+      if (!dir.existsSync()) await dir.create(recursive: true);
+      final file = File(
+        '${dir.path}${Platform.pathSeparator}'
+        'lcb-${DateTime.now().microsecondsSinceEpoch}.jpg',
+      );
+      await file.writeAsBytes(bytes, flush: true);
+      _showNotice('截图已保存：${file.path}');
+    } on Object catch (error) {
+      _showNotice('截图失败：$error');
+    }
+  }
+
 
   void _toggleAspectPanel() => _togglePanel(_PlayerPanel.aspect);
 
@@ -1399,7 +1451,15 @@ class _PlayerPageState extends State<PlayerPage> {
             Positioned(
               right: 20,
               bottom: 132,
-              child: PicturePanel(adjust: _adjust, onAdjust: _applyAdjust),
+              child: PicturePanel(
+                adjust: _adjust,
+                onAdjust: _applyAdjust,
+                onFullScreen: _toggleFullScreen,
+                onMiniWindow: _toggleMiniWindow,
+                onScreenshot: _screenshot,
+                fullScreen: _fullScreen,
+                miniWindow: _miniWindow,
+              ),
             ),
           if (_panel == _PlayerPanel.episodes)
             Positioned(
@@ -1435,6 +1495,7 @@ class _PlayerPageState extends State<PlayerPage> {
             onDanmaku: _toggleDanmaku,
             danmakuOn: _danmakuOn,
             danmakuAsking: _danmakuLoading,
+            iconMode: widget.buttonsIcon,
             // 原版底栏没有「轨道」这一项：一条流的常见情况下这里没得换，
             // 按钮就不出现。真的有多条线路/画质/音轨时才补一个。
             onTracks:

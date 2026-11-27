@@ -54,6 +54,7 @@ class PlayerBar extends StatelessWidget {
     this.onPrev,
     this.onBack10,
     this.onForward10,
+    this.iconMode = false,
   });
 
   final bool playing;
@@ -106,6 +107,9 @@ class PlayerBar extends StatelessWidget {
 
   final VoidCallback? onBack10;
   final VoidCallback? onForward10;
+
+  /// 原版 player_buttons：操作按钮显示成图标而不是文字。
+  final bool iconMode;
   final VoidCallback? onNext;
   final VoidCallback? onPrev;
 
@@ -257,54 +261,68 @@ class PlayerBar extends StatelessWidget {
                               _BarButton(
                                 key: const ValueKey('player-rate'),
                                 label: '倍速',
+                                icon: Icons.speed,
                                 // 不是 1.0x 的时候亮着，不用点开就知道看过
                                 // 之后为什么「感觉快了一点」。
                                 active: rateOpen || rate != 1.0,
                                 onTap: onRatePanel,
+                                iconMode: iconMode,
                               ),
                               const SizedBox(width: 4),
                               _BarButton(
                                 key: const ValueKey('player-subtitle'),
                                 label: '字幕',
+                                icon: Icons.closed_caption,
                                 active: subtitleOpen,
                                 onTap: onSubtitle,
+                                iconMode: iconMode,
                               ),
                               const SizedBox(width: 4),
                               _BarButton(
                                 key: const ValueKey('player-danmaku'),
                                 label: danmakuAsking ? '弹幕…' : '弹幕',
+                                icon: Icons.chat_bubble_outline,
                                 active: danmakuOn,
                                 onTap: onDanmaku,
+                                iconMode: iconMode,
                               ),
                               if (onTracks != null) ...[
                                 const SizedBox(width: 4),
                                 _BarButton(
                                   key: const ValueKey('player-tracks'),
                                   label: '轨道',
+                                  icon: Icons.swap_horiz,
                                   active: tracksOpen,
                                   onTap: onTracks!,
+                                iconMode: iconMode,
                                 ),
                               ],
                               const SizedBox(width: 4),
                               _BarButton(
                                 key: const ValueKey('player-aspect'),
                                 label: '比例',
+                                icon: Icons.aspect_ratio,
                                 active: aspectOpen,
                                 onTap: onAspect,
+                                iconMode: iconMode,
                               ),
                               const SizedBox(width: 4),
                               _BarButton(
                                 key: const ValueKey('player-picture'),
                                 label: '画面',
+                                icon: Icons.tune,
                                 active: pictureOpen,
                                 onTap: onPicture,
+                                iconMode: iconMode,
                               ),
                               const SizedBox(width: 4),
                               _BarButton(
                                 key: const ValueKey('player-info'),
                                 label: '信息',
+                                icon: Icons.info_outline,
                                 active: infoOpen,
                                 onTap: onInfo,
+                                iconMode: iconMode,
                               ),
                               // 选集：40 集的剧靠两个箭头点过去不现实。
                               if (episodeCount > 1) ...[
@@ -312,8 +330,10 @@ class PlayerBar extends StatelessWidget {
                                 _BarButton(
                                   key: const ValueKey('player-episodes'),
                                   label: '选集',
+                                  icon: Icons.list,
                                   active: episodesOpen,
                                   onTap: onEpisodes,
+                                iconMode: iconMode,
                                 ),
                               ],
                             ],
@@ -390,11 +410,15 @@ class _BarButton extends StatefulWidget {
     required this.label,
     required this.active,
     required this.onTap,
+    this.icon,
+    this.iconMode = false,
   });
 
   final String label;
   final bool active;
   final VoidCallback onTap;
+  final IconData? icon;
+  final bool iconMode;
 
   @override
   State<_BarButton> createState() => _BarButtonState();
@@ -423,14 +447,16 @@ class _BarButtonState extends State<_BarButton> {
             color: _hover ? const Color(0x1AFFFFFF) : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Text(
-            widget.label,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: widget.active ? FontWeight.w600 : FontWeight.w400,
-              color: color,
-            ),
-          ),
+          child: widget.iconMode && widget.icon != null
+              ? Icon(widget.icon, size: 17, color: color)
+              : Text(
+                  widget.label,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: widget.active ? FontWeight.w600 : FontWeight.w400,
+                    color: color,
+                  ),
+                ),
         ),
       ),
     );
