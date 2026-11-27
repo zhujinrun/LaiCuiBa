@@ -4,7 +4,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/detail_nav.dart';
-import '../../core/nav.dart';
 import '../../core/resources_state.dart';
 import '../../core/store_scope.dart';
 import '../../core/theme.dart';
@@ -1123,27 +1122,38 @@ class HistoryPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
     final entries = store.history;
-    return ScrollConfiguration(
-      behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-      child: entries.isEmpty
-          ? const Center(
-              child: _EmptyHint(
-                icon: CupertinoIcons.clock,
-                title: '还没有观看记录',
-                subtitle: '看过的影片会自动记在这里',
-              ),
-            )
-          : ListView.separated(
-              padding: const EdgeInsets.fromLTRB(
-                LcbMetrics.pagePadding,
-                17,
-                LcbMetrics.pagePadding,
-                40,
-              ),
-              itemCount: entries.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (_, i) => _HistoryRow(entry: entries[i]),
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) {
+        if (entries.isEmpty) {
+          return const Center(
+            child: _EmptyHint(
+              icon: CupertinoIcons.clock,
+              title: '还没有观看记录',
+              subtitle: '看过的影片会自动记在这里',
             ),
+          );
+        }
+        return ScrollConfiguration(
+          behavior: ScrollConfiguration.of(context)
+              .copyWith(scrollbars: false),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              LcbMetrics.pagePadding,
+              17,
+              LcbMetrics.pagePadding,
+              40,
+            ),
+            child: Wrap(
+              spacing: 20,
+              runSpacing: 12,
+              children: [
+                for (final entry in entries) _HistoryRow(entry: entry),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -1202,27 +1212,16 @@ class _EmptyHint extends StatelessWidget {
 /// One watch-history row: thumbnail, title, episode + progress line, a source
 /// + time line, and a play button on the right. Hovering the card reveals a
 /// delete button in its top-right corner.
-class _HistoryRow extends StatefulWidget {
+class _HistoryRow extends StatelessWidget {
   const _HistoryRow({required this.entry});
 
   final HistoryEntry entry;
-
-  @override
-  State<_HistoryRow> createState() => _HistoryRowState();
-}
-
-class _HistoryRowState extends State<_HistoryRow> {
-  bool _hover = false;
-
-  HistoryEntry get entry => widget.entry;
 
   String get _progressLabel {
     final pct = (entry.progress * 100).round();
     return '看到 $pct%';
   }
 
-  /// "今天 · 「直」荐片" -- the row says where it was watched by site, the way
-  /// the original does, and falls back to the source name when the site is gone.
   String _timeSourceLabel(AppStore store) {
     final days = DateTime.now()
         .difference(DateTime.fromMillisecondsSinceEpoch(entry.updatedAt))
@@ -1242,105 +1241,111 @@ class _HistoryRowState extends State<_HistoryRow> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: MouseRegion(
-          onEnter: (_) => setState(() => _hover = true),
-          onExit: (_) => setState(() => _hover = false),
-          child: Stack(
+    final store = StoreScope.of(context);
+    final selected = store.selectedHistoryKeys.contains(entry.key);
+    void openDetail() => LcbDetailScope.openOf(
+      context,
+      entry.toMediaItem(),
+      episodeIndex: entry.episodeIndex,
+    );
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onSecondaryTap: () => store.enterHistorySelection(entry.key),
+        onTap: () {
+          if (store.historySelecting) {
+            store.toggleHistorySelection(entry.key);
+          } else {
+            openDetail();
+          }
+        },
+        child: Container(
+          width: 347,
+          height: 104,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: LcbColors.card,
+            borderRadius: BorderRadius.circular(LcbMetrics.cardRadius),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              GestureDetector(
-                onTap: () => LcbDetailScope.openOf(
-                  context,
-                  entry.toMediaItem(),
-                  episodeIndex: entry.episodeIndex,
-                ),
-                child: Container(
-                  width: 395,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: LcbColors.card,
-                    borderRadius: BorderRadius.circular(LcbMetrics.cardRadius),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: SizedBox(
-                          width: 64,
-                          height: 90,
-                          child: PosterArt(
-                            seed: entry.title.hashCode,
-                            image: entry.poster,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              entry.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: LcbColors.text,
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                            Text(
-                              '${entry.episode} · $_progressLabel',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 12.5,
-                                color: LcbColors.textSecondary,
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            Text(
-                              _timeSourceLabel(StoreScope.of(context)),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 12.5,
-                                color: LcbColors.textTertiary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      // 原版这一行右边的圆钮是「接着看」，不是装饰：以前 onTap
-                      // 是空的，按下去什么都不发生。
-                      _PlayButton(
-                        onTap: () => LcbPlayScope.playOf(
-                          context,
-                          entry.toMediaItem(),
-                          episodeIndex: entry.episodeIndex,
-                        ),
-                      ),
-                    ],
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: SizedBox(
+                  width: 64,
+                  height: 80,
+                  child: PosterArt(
+                    seed: entry.title.hashCode,
+                    image: entry.poster,
                   ),
                 ),
               ),
-              if (_hover)
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: _DeleteButton(
-                    onTap: () {
-                      StoreScope.of(context).removeHistory(entry.key);
-                    },
-                  ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      entry.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: LcbColors.text,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${entry.episode} · $_progressLabel',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: LcbColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      height: 2,
+                      decoration: BoxDecoration(
+                        color: const Color(0x33FFFFFF),
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                      child: FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: entry.progress.clamp(0.0, 1.0),
+                        child: const ColoredBox(color: LcbColors.primaryDim),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _timeSourceLabel(store),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: LcbColors.textTertiary,
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+              const SizedBox(width: 10),
+              if (store.historySelecting)
+                Icon(
+                  selected
+                      ? CupertinoIcons.check_mark_circled_solid
+                      : CupertinoIcons.circle,
+                  size: 22,
+                  color: selected ? LcbColors.primaryDim : LcbColors.textTertiary,
+                )
+              else
+                _PlayButton(onTap: openDetail),
             ],
           ),
         ),
@@ -1349,40 +1354,6 @@ class _HistoryRowState extends State<_HistoryRow> {
   }
 }
 
-/// A small circular delete affordance shown on hover, matching the app's
-/// quiet grey-on-card idiom.
-class _DeleteButton extends StatelessWidget {
-  const _DeleteButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 24,
-          height: 24,
-          decoration: BoxDecoration(
-            color: LcbColors.card,
-            shape: BoxShape.circle,
-            border: Border.all(color: const Color(0xFFE2EDF7)),
-          ),
-          child: const Icon(
-            CupertinoIcons.trash,
-            size: 13,
-            color: LcbColors.sysRed,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// The original's trailing control on a history row is a round play button in
-/// the primary tint, not a chevron.
 class _PlayButton extends StatelessWidget {
   const _PlayButton({required this.onTap});
 

@@ -895,6 +895,32 @@ class _HeaderContent extends StatelessWidget {
     );
   }
 
+  Future<void> _confirmDeleteSelectedHistory(BuildContext context) async {
+    final store = StoreScope.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('删除选中的观看记录？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text(
+              '删除',
+              style: TextStyle(color: Color(0xFFE5484D)),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await store.deleteSelectedHistory();
+    }
+  }
+
   /// Confirmation dialog before wiping the watch history, mirroring the
   /// original's guard on the destructive 清空 action.
   Future<void> _confirmClearHistory(BuildContext context) async {
@@ -975,30 +1001,61 @@ class _HeaderContent extends StatelessWidget {
       case LcbPage.favorites:
         return const _FavoritesHeaderTabs();
       case LcbPage.history:
-        return Row(
-          children: [
-            Text(
-              header.title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: LcbColors.text,
-              ),
-            ),
-            const SizedBox(width: 27),
-            TextButton(
-              onPressed: () => _confirmClearHistory(context),
-              style: TextButton.styleFrom(
-                padding: EdgeInsets.zero,
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: const Text(
-                '清空',
-                style: TextStyle(fontSize: 15, color: LcbColors.primaryDim),
-              ),
-            ),
-          ],
+        return ListenableBuilder(
+          listenable: StoreScope.of(context),
+          builder: (context, _) {
+            final store = StoreScope.of(context);
+            if (store.historySelecting) {
+              return Row(
+                children: [
+                  Text(
+                    '已选 ${store.selectedHistoryKeys.length}',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: LcbColors.text,
+                    ),
+                  ),
+                  const SizedBox(width: 22),
+                  _HeaderAction(
+                    label: '全选',
+                    color: LcbColors.primaryDim,
+                    onTap: store.selectAllHistory,
+                  ),
+                  const SizedBox(width: 18),
+                  _HeaderAction(
+                    label: '删除',
+                    color: const Color(0xFFE5484D),
+                    onTap: () => _confirmDeleteSelectedHistory(context),
+                  ),
+                  const SizedBox(width: 18),
+                  _HeaderAction(
+                    label: '完成',
+                    color: LcbColors.primaryDim,
+                    onTap: store.exitHistorySelection,
+                  ),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Text(
+                  header.title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: LcbColors.text,
+                  ),
+                ),
+                const SizedBox(width: 27),
+                _HeaderAction(
+                  label: '清空',
+                  color: LcbColors.primaryDim,
+                  onTap: () => _confirmClearHistory(context),
+                ),
+              ],
+            );
+          },
         );
       case LcbPage.resources:
         return ListenableBuilder(
@@ -1305,6 +1362,29 @@ class _HeaderGlyphState extends State<_HeaderGlyph> {
       ),
     );
   }
+}
+
+class _HeaderAction extends StatelessWidget {
+  const _HeaderAction({
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => TextButton(
+    onPressed: onTap,
+    style: TextButton.styleFrom(
+      padding: EdgeInsets.zero,
+      minimumSize: Size.zero,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    ),
+    child: Text(label, style: TextStyle(fontSize: 15, color: color)),
+  );
 }
 
 /// Favorites' header tabs: plain text with no capsule, matching the original's

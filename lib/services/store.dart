@@ -371,6 +371,50 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 历史页右键进入的批量选择模式。选择状态只在内存里，退出即清空。
+  bool historySelecting = false;
+  final Set<String> _selectedHistoryKeys = {};
+
+  Set<String> get selectedHistoryKeys => Set.unmodifiable(_selectedHistoryKeys);
+
+  void enterHistorySelection(String key) {
+    _selectedHistoryKeys
+      ..clear()
+      ..add(key);
+    historySelecting = true;
+    notifyListeners();
+  }
+
+  void toggleHistorySelection(String key) {
+    if (!_selectedHistoryKeys.remove(key)) _selectedHistoryKeys.add(key);
+    notifyListeners();
+  }
+
+  void selectAllHistory() {
+    _selectedHistoryKeys
+      ..clear()
+      ..addAll(_history.map((e) => e.key));
+    notifyListeners();
+  }
+
+  void exitHistorySelection() {
+    _selectedHistoryKeys.clear();
+    historySelecting = false;
+    notifyListeners();
+  }
+
+  Future<void> deleteSelectedHistory() async {
+    if (_selectedHistoryKeys.isEmpty) {
+      exitHistorySelection();
+      return;
+    }
+    _history.removeWhere((e) => _selectedHistoryKeys.contains(e.key));
+    _selectedHistoryKeys.clear();
+    historySelecting = false;
+    await _persistHistory();
+    notifyListeners();
+  }
+
   // -------------------------------------------------------------------------
   // Favourites (own store, matching flutter.favorites / flutter.favoriteFolders)
   // -------------------------------------------------------------------------

@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:lai_cui_ba/core/detail_nav.dart';
-import 'package:lai_cui_ba/core/nav.dart';
 import 'package:lai_cui_ba/core/store_scope.dart';
 import 'package:lai_cui_ba/models/models.dart';
 import 'package:lai_cui_ba/services/store.dart';
@@ -66,25 +65,25 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('历史行右边的圆钮真的接着放那一集', (tester) async {
+  testWidgets('历史行右边的圆钮打开详情，并停在这一集', (tester) async {
     tester.view.physicalSize = const Size(1400, 900);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
     final store = await seededStore();
-    MediaItem? played;
-    int? playedAt;
+    MediaItem? opened;
+    int? openedAt;
 
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: StoreScope(
             store: store,
-            child: LcbPlayScope(
-              play: (item, {int? episodeIndex}) {
-                played = item;
-                playedAt = episodeIndex;
+            child: LcbDetailScope(
+              open: (item, {int? episodeIndex}) {
+                opened = item;
+                openedAt = episodeIndex;
               },
               child: const HistoryPage(),
             ),
@@ -94,13 +93,13 @@ void main() {
     );
     await tester.pump();
 
-    // 以前这个钮的 onTap 是 `() {}`，按下去一点反应都没有。
+    // 原版历史行的圆钮是进入详情，不是直接播；详情里再由「继续」开播。
     await tester.tap(find.byIcon(CupertinoIcons.play_fill).first);
     await tester.pump();
 
-    expect(playedAt, 38);
-    expect(played?.id, '575857');
-    expect(played?.siteKey, 'nodejs_jianpian');
+    expect(openedAt, 38);
+    expect(opened?.id, '575857');
+    expect(opened?.siteKey, 'nodejs_jianpian');
   });
 
   group('AppStore.startEpisodeFor', () {
