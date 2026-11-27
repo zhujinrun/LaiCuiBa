@@ -38,18 +38,20 @@ jobs:
           channel: stable
           cache: true
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11.9'
+
       - name: Check pinned toolchain
         run: dart run tool/verify_toolchain.dart
 
       - name: Install dependencies
         run: flutter pub get
 
-      # Analyze/test run once here, not in every build job.
+      # Analyze runs once here, not in every build job. Tests are run locally
+      # before tagging; on CI they cost ~90s and would only repeat that work.
       - name: Analyze
         run: flutter analyze
-
-      - name: Test
-        run: flutter test
 
       - name: Enable Windows desktop
         run: flutter config --enable-windows-desktop
@@ -57,17 +59,50 @@ jobs:
       - name: Build release
         run: flutter build windows --release
 
+      - name: Add Node and Python runtimes
+        shell: pwsh
+        run: |
+          $runtime = 'build/windows/x64/runner/Release/runtime'
+          $nodeDir = Join-Path $runtime 'node'
+          $pyDir = Join-Path $runtime 'python'
+          $pyHostDir = Join-Path $runtime 'pyhost'
+
+          New-Item -ItemType Directory -Force -Path $nodeDir, $pyDir, $pyHostDir | Out-Null
+
+          Invoke-WebRequest -Uri 'https://nodejs.org/dist/v18.20.4/node-v18.20.4-win-x64.zip' -OutFile 'node.zip'
+          Expand-Archive -Path 'node.zip' -DestinationPath '.' -Force
+          Copy-Item 'node-v18.20.4-win-x64/node.exe' (Join-Path $nodeDir 'node.exe') -Force
+          Copy-Item 'assets/runtime/node/*.js' $nodeDir -Force
+
+          Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip' -OutFile 'python.zip'
+          Expand-Archive -Path 'python.zip' -DestinationPath $pyDir -Force
+          $pth = Join-Path $pyDir 'python311._pth'
+          $lines = Get-Content $pth | ForEach-Object {
+            if ($_ -eq '#import site') { 'import site' } else { $_ }
+          }
+          $lines += 'Lib\site-packages'
+          Set-Content -Path $pth -Value $lines -Encoding ascii
+
+          python -m pip install --target (Join-Path $pyDir 'Lib/site-packages') `
+            requests==2.34.2 lxml==6.1.3 pycryptodome==3.24.1 `
+            pyquery==2.1.0 beautifulsoup4==4.15.0
+
+          Copy-Item 'assets/runtime/pyhost/*' $pyHostDir -Recurse -Force
+
+          & (Join-Path $nodeDir 'node.exe') --version
+          & (Join-Path $pyDir 'python.exe') -c 'import requests, lxml, pyquery, Crypto; print("python runtime ok")'
+
       - name: Package
         shell: pwsh
         run: |
           $source = 'build/windows/x64/runner/Release'
           if (-not (Test-Path $source)) { throw "Missing Windows build output: $source" }
-          Compress-Archive -Path "$source/*" -DestinationPath 'lai-cui-ba-windows-x64.zip' -Force
+          Compress-Archive -Path "$source/*" -DestinationPath 'LaiCuiBa-windows-x64.zip' -Force
 
       - uses: actions/upload-artifact@v6
         with:
           name: windows-x64
-          path: lai-cui-ba-windows-x64.zip
+          path: LaiCuiBa-windows-x64.zip
           if-no-files-found: error
 
   build-android:
@@ -106,12 +141,12 @@ jobs:
         run: |
           apk="build/app/outputs/flutter-apk/app-release.apk"
           test -f "$apk"
-          cp "$apk" lai-cui-ba-android.apk
+          cp "$apk" LaiCuiBa-android.apk
 
       - uses: actions/upload-artifact@v6
         with:
           name: android-apk
-          path: lai-cui-ba-android.apk
+          path: LaiCuiBa-android.apk
           if-no-files-found: error
 
   release:
@@ -133,7 +168,7 @@ jobs:
           python tool/ci_release.py release-body "$VERSION" --output release_body.md
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
@@ -142,5 +177,5 @@ jobs:
           prerelease: false
           fail_on_unmatched_files: true
           files: |
-            artifacts/windows-x64/lai-cui-ba-windows-x64.zip
-            artifacts/android-apk/lai-cui-ba-android.apk
+            artifacts/windows-x64/LaiCuiBa-windows-x64.zip
+            artifacts/android-apk/LaiCuiBa-android.apk

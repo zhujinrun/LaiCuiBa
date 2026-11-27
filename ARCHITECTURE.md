@@ -108,6 +108,9 @@ CHANGELOG.md            发布正文来源（Keep a Changelog 格式）
   本机数据文件：`C:/Users/lxy/AppData/Roaming/LaiCuiBa/LaiCuiBa/shared_preferences.json`。
 - Android 工程跟随 Flutter 3.44.9 模板：Gradle 9.1.0 / AGP 9.0.1 / Kotlin 2.3.20、Kotlin DSL
   （`*.gradle.kts`）。旧的 Gradle 8.3 + AGP 8.1 Groovy 配置会在 CI 里直接失败，不要回退。
+- Release CI 的 Windows job 会在打包前下载官方 Node 18.20.4 与 Python 3.11.9 embeddable，
+  安装原版同版本的 Python 依赖，并把仓库里的 `cat_host.js` / `js_site_host.js` /
+  `widget_host.js` / `pyhost/` 一起放进 `Release/runtime/`；不要再把原版二进制提交进仓库。
 - 应用图标来自原版 `BieCuiLe.exe` 的 `RT_ICON` 256×256 资源（黑白兽首），统一源图是
   `assets/app_icon.png`；Windows 多尺寸 ICO 与 Android 各密度 `ic_launcher.png` 由它生成。
   不要误用 `assets/app_icons/biecuile.webp` —— 那是源站图标包里的蜗牛图，不是应用图标。
