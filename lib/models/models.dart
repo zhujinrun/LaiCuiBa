@@ -462,6 +462,7 @@ class SourceInfo {
     this.channelCount = 0,
     this.groupName = '',
     this.iconId = '',
+    this.iconPath = '',
   });
 
   final String id;
@@ -500,6 +501,11 @@ class SourceInfo {
   /// 「使用源自带图标；没有时显示默认图标」.
   final String iconId;
 
+  /// An icon copied out of an imported 图标包 (or picked from a local file).
+  /// It is stored per source on purpose: 原版 keeps applied icons after the
+  /// pack is deleted, so the card must not point back into the pack folder.
+  final String iconPath;
+
   /// The site the home feed is drawn from, matching the original's
   /// `homeSite` (`nodejs_jianpian`). Empty when the config has not named one;
   /// the store then falls back to the first active site.
@@ -525,6 +531,7 @@ class SourceInfo {
     int? channelCount,
     String? groupName,
     String? iconId,
+    String? iconPath,
   }) => SourceInfo(
     id: id,
     type: type,
@@ -543,6 +550,7 @@ class SourceInfo {
     channelCount: channelCount ?? this.channelCount,
     groupName: groupName ?? this.groupName,
     iconId: iconId ?? this.iconId,
+    iconPath: iconPath ?? this.iconPath,
   );
 
   /// Replaces one site by key, leaving the rest in order. Used by the editor to
@@ -576,6 +584,7 @@ class SourceInfo {
     if (channelCount != 0) 'channelCount': channelCount,
     if (groupName.isNotEmpty) 'groupName': groupName,
     if (iconId.isNotEmpty) 'iconId': iconId,
+    if (iconPath.isNotEmpty) 'iconPath': iconPath,
   };
 
   factory SourceInfo.fromJson(Map<String, dynamic> json) => SourceInfo(
@@ -599,6 +608,7 @@ class SourceInfo {
     channelCount: json['channelCount'] as int? ?? 0,
     groupName: json['groupName'] as String? ?? '',
     iconId: json['iconId'] as String? ?? '',
+    iconPath: json['iconPath'] as String? ?? '',
   );
 }
 

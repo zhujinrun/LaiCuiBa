@@ -1,3 +1,5 @@
+import 'package:file_selector/file_selector.dart'
+    show XTypeGroup, openFile;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -7,6 +9,7 @@ import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../services/badge_rule.dart';
 import '../../services/danmaku/danmaku_api.dart';
+import '../../services/icon_packs.dart';
 import '../../services/store.dart';
 import '../../services/track_choice.dart';
 import '../page_header.dart';
@@ -254,6 +257,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return _badgeRows(store);
       case '数据与存储':
         return _dataRows(store);
+      case '源图标包':
+        return const [_IconPacksSection()];
       default:
         return const [];
     }
@@ -332,7 +337,7 @@ class _SettingsPageState extends State<SettingsPage> {
               color: LcbColors.sysPurple,
               title: '源图标包',
               subtitle: '导入、合并或删除 ZIP 图标包',
-              onTap: () => _toast('图标包要等源图标解析完成'),
+              onTap: () => _open('源图标包'),
             ),
             _Row(
               icon: CupertinoIcons.photo,
@@ -2027,6 +2032,241 @@ class _DanmakuSourceDialogState extends State<_DanmakuSourceDialog> {
         isDense: true,
         border: const OutlineInputBorder(),
       ),
+    );
+  }
+}
+
+/// 源图标包 — the originally dead row now opens a real ZIP importer.
+///
+/// Everything here is local: a pack never talks to the network, and an icon
+/// already applied to a resource is copied out of the pack first, so deleting
+/// a pack cannot break a card (原版「已经设置到资源上的图标已单独保存」).
+class _IconPacksSection extends StatefulWidget {
+  const _IconPacksSection();
+
+  @override
+  State<_IconPacksSection> createState() => _IconPacksSectionState();
+}
+
+class _IconPacksSectionState extends State<_IconPacksSection> {
+  List<IconPack> _packs = const [];
+  String? _message;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  Future<void> _reload() async {
+    final packs = IconPacks.load();
+    if (!mounted) return;
+    setState(() => _packs = packs);
+  }
+
+  Future<void> _import() async {
+    final file = await openFile(
+      acceptedTypeGroups: const [
+        XTypeGroup(label: 'ZIP', extensions: ['zip']),
+      ],
+    );
+    if (file == null) return;
+    if (!mounted) return;
+    setState(() => _busy = true);
+    String message;
+    try {
+      final pack = await IconPacks.importZip(file.path);
+      message = '${pack.count} 个图标 · ${pack.name}';
+    } on IconPackException catch (error) {
+      message = error.message;
+    } on Object {
+      message = '图标包读取失败';
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _message = message;
+    });
+    await _reload();
+  }
+
+  Future<void> _rename(IconPack pack) async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => _IconPackNameDialog(current: pack.name),
+    );
+    if (name == null) return;
+    try {
+      await IconPacks.rename(pack.id, name);
+      if (!mounted) return;
+      setState(() => _message = '图标包名称已保存');
+      await _reload();
+    } on IconPackException catch (error) {
+      if (!mounted) return;
+      setState(() => _message = error.message);
+    }
+  }
+
+  Future<void> _delete(IconPack pack) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('删除图标包'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('将删除这个图标包的 ${pack.count} 个图标'),
+            const SizedBox(height: 8),
+            Text(
+              '${pack.count} 个图标。已经设置到资源上的图标已单独保存，不受影响。',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await IconPacks.delete(pack.id);
+    if (!mounted) return;
+    setState(() => _message = '图标包已删除');
+    await _reload();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Group(
+          rows: [
+            _Row(
+              icon: CupertinoIcons.square_stack_3d_down_right,
+              color: LcbColors.sysPurple,
+              title: '导入 ZIP 图标包',
+              subtitle: '导入、命名或删除 ZIP 图标包',
+              value: _busy ? '导入中' : null,
+              onTap: _busy ? null : _import,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 10),
+          child: Text(
+            '导入的图标包只保存在本机。编辑资源时选“图标包”，即可从这些包中选择。',
+            style: TextStyle(fontSize: 13, color: LcbColors.settingsQuiet),
+          ),
+        ),
+        if (_message != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+            child: Text(
+              _message!,
+              key: const ValueKey('icon-pack-message'),
+              style: const TextStyle(fontSize: 13, color: LcbColors.sysBlue),
+            ),
+          ),
+        const SizedBox(height: 14),
+        if (_packs.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 10, vertical: 18),
+            child: Text(
+              '还没有图标包',
+              style: TextStyle(fontSize: 14, color: LcbColors.settingsQuiet),
+            ),
+          ),
+        for (final pack in _packs) ...[
+          _Group(
+            rows: [
+              _Row(
+                icon: CupertinoIcons.square_stack_3d_down_right,
+                color: LcbColors.sysTeal,
+                title: pack.name.isEmpty ? '未命名图标包' : pack.name,
+                subtitle: '${pack.count} 个图标。名称只保存在本机，可以和 ZIP 内的建议名称不同。',
+                value: '${pack.count} 个',
+                onTap: () => _rename(pack),
+              ),
+              _Row(
+                icon: CupertinoIcons.pencil,
+                color: LcbColors.sysBlue,
+                title: '命名图标包',
+                subtitle: '只改本机显示的名字，不改图标本身',
+                onTap: () => _rename(pack),
+              ),
+              _Row(
+                icon: CupertinoIcons.trash,
+                color: LcbColors.sysRed,
+                title: '删除',
+                subtitle: '已设置到资源上的图标不受影响',
+                onTap: () => _delete(pack),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+        ],
+      ],
+    );
+  }
+}
+
+class _IconPackNameDialog extends StatefulWidget {
+  const _IconPackNameDialog({required this.current});
+
+  final String current;
+
+  @override
+  State<_IconPackNameDialog> createState() => _IconPackNameDialogState();
+}
+
+class _IconPackNameDialogState extends State<_IconPackNameDialog> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.current,
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final name = _controller.text.trim();
+    if (name.isEmpty) return;
+    Navigator.of(context).pop(name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('命名图标包'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          labelText: '图标包名称',
+          isDense: true,
+          border: OutlineInputBorder(),
+        ),
+        onSubmitted: (_) => _save(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        TextButton(onPressed: _save, child: const Text('保存')),
+      ],
     );
   }
 }

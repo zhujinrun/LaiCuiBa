@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -685,9 +687,22 @@ class _SourceCard extends StatelessWidget {
                     color: const Color(0xFFEFEFF2),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  // A picked icon from the bundled pack wins; otherwise the card
-                  // falls back to the glyph for the source's type.
-                  child: source.iconId.isEmpty
+                  // An applied 图标包 / 本地图标 is copied per source and wins;
+                  // then a bundled-pack pick; then the type glyph.
+                  child: source.iconPath.isNotEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.all(5),
+                          child: Image.file(
+                            File(source.iconPath),
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, _, _) => Icon(
+                              source.type.sourceIcon,
+                              size: 20,
+                              color: const Color(0xFF1D1D1F),
+                            ),
+                          ),
+                        )
+                      : source.iconId.isEmpty
                       ? Icon(
                           source.type.sourceIcon,
                           size: 20,

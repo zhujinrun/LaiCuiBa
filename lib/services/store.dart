@@ -1979,13 +1979,19 @@ class AppStore extends ChangeNotifier {
           if (source.groupName.isNotEmpty) source.groupName,
       }.toList()..sort();
 
-  /// Gives one source an icon from the bundled pack. An empty id clears it,
-  /// which puts the source back on the glyph for its type.
-  Future<void> setSourceIcon(String sourceId, String iconId) async {
+  /// Gives one source an icon from the bundled pack, an imported 图标包 or a
+  /// local file. An empty id and path clear it, which puts the source back on
+  /// the glyph for its type.
+  Future<void> setSourceIcon(
+    String sourceId,
+    String iconId, {
+    String iconPath = '',
+  }) async {
     final index = _sources.indexWhere((source) => source.id == sourceId);
     if (index < 0) return;
-    if (_sources[index].iconId == iconId) return;
-    _sources[index] = _sources[index].copyWith(iconId: iconId);
+    final current = _sources[index];
+    if (current.iconId == iconId && current.iconPath == iconPath) return;
+    _sources[index] = current.copyWith(iconId: iconId, iconPath: iconPath);
     await _persistSources();
     notifyListeners();
   }

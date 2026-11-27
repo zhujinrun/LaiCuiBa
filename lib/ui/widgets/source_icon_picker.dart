@@ -1,3 +1,7 @@
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart'
+    show XTypeGroup, openFile;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -5,6 +9,7 @@ import '../../core/store_scope.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../services/app_icons.dart';
+import '../../services/icon_packs.dart';
 
 /// 「更换图标」：the bundled 图标包, grouped the way the pack groups itself.
 ///
@@ -29,12 +34,77 @@ class _SourceIconPicker extends StatefulWidget {
 
 class _SourceIconPickerState extends State<_SourceIconPicker> {
   final Future<List<AppIcon>> _icons = loadAppIcons();
+  final List<IconPack> _packs = IconPacks.load();
+  final TextEditingController _search = TextEditingController();
+  String _filter = '';
+  String? _error;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   Future<void> _pick(String iconId) async {
-    await StoreScope.of(context).setSourceIcon(widget.source.id, iconId);
+    await StoreScope.of(context).setSourceIcon(
+      widget.source.id,
+      iconId,
+      iconPath: '',
+    );
     if (!mounted) return;
     Navigator.of(context).pop();
   }
+
+  /// 图标包 / 本地图片里的图标先复制一份到这个源名下，再写进 store。
+  /// 包以后被删掉也不会让资源卡片指向一个不存在的路径。
+  Future<void> _pickPath(String path) async {
+    try {
+      final stored = await IconPacks.applyFile(widget.source.id, path);
+      if (!mounted) return;
+      await StoreScope.of(context).setSourceIcon(
+        widget.source.id,
+        '',
+        iconPath: stored,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    } on IconPackException catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.message);
+    }
+  }
+
+  Future<void> _pickPackIcon(IconPack pack, String file) async {
+    try {
+      final stored = await IconPacks.applyPackIcon(widget.source.id, pack, file);
+      if (!mounted) return;
+      await StoreScope.of(context).setSourceIcon(
+        widget.source.id,
+        '',
+        iconPath: stored,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    } on IconPackException catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.message);
+    }
+  }
+
+  Future<void> _pickFile() async {
+    final file = await openFile(
+      acceptedTypeGroups: const [
+        XTypeGroup(
+          label: '图片',
+          extensions: ['webp', 'png', 'jpg', 'jpeg', 'gif', 'bmp'],
+        ),
+      ],
+    );
+    if (file != null) await _pickPath(file.path);
+  }
+
+  bool _matches(String name) =>
+      _filter.isEmpty || name.toLowerCase().contains(_filter);
 
   @override
   Widget build(BuildContext context) {
@@ -77,77 +147,129 @@ class _SourceIconPickerState extends State<_SourceIconPicker> {
                 ],
               ),
               const SizedBox(height: 14),
+              SizedBox(
+                height: 36,
+                child: TextField(
+                  controller: _search,
+                  decoration: const InputDecoration(
+                    hintText: '搜索图标名称',
+                    prefixIcon: Icon(CupertinoIcons.search, size: 16),
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (value) =>
+                      setState(() => _filter = value.trim().toLowerCase()),
+                ),
+              ),
+              const SizedBox(height: 10),
               _DefaultRow(
-                selected: widget.source.iconId.isEmpty,
+                selected: widget.source.iconId.isEmpty &&
+                    widget.source.iconPath.isEmpty,
                 onTap: () => _pick(''),
               ),
               const SizedBox(height: 6),
+              _ChoiceRow(
+                icon: CupertinoIcons.photo,
+                label: '选择图标文件',
+                onTap: _pickFile,
+              ),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8, left: 4),
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(fontSize: 12, color: LcbColors.sysRed),
+                  ),
+                ),
+              const SizedBox(height: 8),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 380),
-                child: FutureBuilder<List<AppIcon>>(
-                  future: _icons,
-                  builder: (context, snapshot) {
-                    final icons = snapshot.data ?? const <AppIcon>[];
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 28),
-                        child: Center(
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: LcbColors.primary,
-                            ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_packs.isNotEmpty) ...[
+                        const _SectionLabel('图标包'),
+                        for (final pack in _packs) ...[
+                          _SectionLabel(
+                            pack.name.isEmpty ? '未命名图标包' : pack.name,
                           ),
-                        ),
-                      );
-                    }
-                    if (icons.isEmpty) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 28),
-                        child: Text(
-                          '图标包没有读到可用图标',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: LcbColors.textSecondary,
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              for (final file in pack.files)
+                                if (_matches(file))
+                                  _FileIconTile(
+                                    pack: pack,
+                                    file: file,
+                                    selected: widget.source.iconPath.endsWith(file),
+                                    onTap: () => _pickPackIcon(pack, file),
+                                  ),
+                            ],
                           ),
-                        ),
-                      );
-                    }
-                    final groups = groupAppIcons(icons);
-                    return SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          for (final entry in groups.entries) ...[
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(2, 8, 0, 8),
-                              child: Text(
-                                entry.key,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: LcbColors.textTertiary,
+                        ],
+                      ],
+                      const _SectionLabel('内置图标'),
+                      FutureBuilder<List<AppIcon>>(
+                        future: _icons,
+                        builder: (context, snapshot) {
+                          final icons = (snapshot.data ?? const <AppIcon>[])
+                              .where((icon) => _matches(icon.name))
+                              .toList();
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 28),
+                              child: Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: LcbColors.primary,
+                                  ),
                                 ),
                               ),
-                            ),
-                            Wrap(
-                              spacing: 10,
-                              runSpacing: 10,
-                              children: [
-                                for (final icon in entry.value)
-                                  _IconTile(
-                                    icon: icon,
-                                    selected: icon.id == widget.source.iconId,
-                                    onTap: () => _pick(icon.id),
-                                  ),
+                            );
+                          }
+                          if (icons.isEmpty) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 28),
+                              child: Text(
+                                '没有找到图标',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: LcbColors.textSecondary,
+                                ),
+                              ),
+                            );
+                          }
+                          final groups = groupAppIcons(icons);
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              for (final entry in groups.entries) ...[
+                                _SectionLabel(entry.key),
+                                Wrap(
+                                  spacing: 10,
+                                  runSpacing: 10,
+                                  children: [
+                                    for (final icon in entry.value)
+                                      _IconTile(
+                                        icon: icon,
+                                        selected: icon.id == widget.source.iconId,
+                                        onTap: () => _pick(icon.id),
+                                      ),
+                                  ],
+                                ),
                               ],
-                            ),
-                          ],
-                        ],
+                            ],
+                          );
+                        },
                       ),
-                    );
-                  },
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -253,6 +375,117 @@ class _IconTileState extends State<_IconTile> {
             ),
             child: Image.asset(
               widget.icon.assetPath,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => const Icon(
+                CupertinoIcons.photo,
+                size: 18,
+                color: LcbColors.textTertiary,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 10, 0, 8),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 12,
+          color: LcbColors.textTertiary,
+        ),
+      ),
+    );
+  }
+}
+
+class _ChoiceRow extends StatelessWidget {
+  const _ChoiceRow({required this.icon, required this.label, required this.onTap});
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: LcbColors.card,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 16, color: LcbColors.textSecondary),
+              const SizedBox(width: 10),
+              Text(
+                label,
+                style: const TextStyle(fontSize: 13.5, color: LcbColors.text),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FileIconTile extends StatelessWidget {
+  const _FileIconTile({
+    required this.pack,
+    required this.file,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconPack pack;
+  final String file;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final path = '${IconPacks.directory().path}${Platform.pathSeparator}packs'
+        '${Platform.pathSeparator}${pack.id}${Platform.pathSeparator}$file';
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Tooltip(
+          message: file,
+          waitDuration: const Duration(milliseconds: 400),
+          child: Container(
+            width: 52,
+            height: 52,
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: LcbColors.card,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: selected
+                    ? LcbColors.primary
+                    : const Color(0xFFBBD2F5),
+                width: selected ? 2 : 1,
+              ),
+            ),
+            child: Image.file(
+              File(path),
               fit: BoxFit.contain,
               errorBuilder: (_, _, _) => const Icon(
                 CupertinoIcons.photo,
