@@ -18,15 +18,15 @@ import '../widgets/media_badges.dart';
 /// category chips on white. The page is pushed into the content column, so the
 /// sidebar stays visible and the shell header swaps in a back arrow.
 ///
-/// Non-functional controls (换平台 / 下载 / 追更 / 评论 and the 选集 filters) are
-/// rendered but inert: they need the source layer from Phase 2. 收藏 is live and
-/// writes to `flutter.favorites`.
+/// 换平台 / 下载 / 追更 / 评论 and the 选集 filters all have real dialogs or
+/// honest empty states; 收藏 writes to `flutter.favorites`.
 class DetailPage extends StatefulWidget {
   const DetailPage({
     super.key,
     required this.item,
     this.episodeIndex,
     this.onPlay,
+    this.initialLine = 0,
   });
 
   final MediaItem item;
@@ -41,6 +41,9 @@ class DetailPage extends StatefulWidget {
   /// action when the detail carries no play URLs.
   final void Function(int? episodeIndex, int lineIndex)? onPlay;
 
+  /// 上次实际能播的线路，由 Shell 从设置/历史解析后传入。
+  final int initialLine;
+
   @override
   State<DetailPage> createState() => _DetailPageState();
 }
@@ -52,7 +55,8 @@ class _DetailPageState extends State<DetailPage> {
 
   /// Selected play line (线路) index. When the detail carries [MediaItem.playLines],
   /// the episode grid renders that line's episodes; 0 otherwise.
-  int _line = 0;
+  late int _line = widget.initialLine;
+  bool _lineChosen = false;
   bool _originalNames = false;
   bool _descending = false;
 
@@ -135,8 +139,17 @@ class _DetailPageState extends State<DetailPage> {
   void _onSelectLine(int line) {
     setState(() {
       _line = line;
+      _lineChosen = true;
       _range = 0;
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant DetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_lineChosen && widget.initialLine != oldWidget.initialLine) {
+      setState(() => _line = widget.initialLine);
+    }
   }
 
   @override

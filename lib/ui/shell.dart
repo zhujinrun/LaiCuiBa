@@ -154,7 +154,7 @@ class _ShellState extends State<Shell> {
       if (!mounted) return;
       if (full == null) return;
       if (_detail?.id != resolved.id) return; // user navigated away already
-      setState(() => _detail = full);
+      setState(() => _detail = full.withPosterFrom(resolved));
     });
   }
 
@@ -216,7 +216,7 @@ class _ShellState extends State<Shell> {
       final index = episodeIndex ?? _store.startEpisodeFor(record);
       // A film has no episode list: null is "the whole thing", not 第0集.
       final at = record.episodes.isEmpty && index == 0 ? null : index;
-      _openPlayer(record, at, 0);
+      _openPlayer(record, at, _store.playLineFor(record));
     });
   }
 
@@ -331,6 +331,7 @@ class _ShellState extends State<Shell> {
     final lineName = (lineIndex >= 0 && lineIndex < lines.length)
         ? lines[lineIndex]
         : '';
+    if (lineName.isNotEmpty) _store.savePlayLine(item, lineName);
     setState(() {
       _player = _PlayerSession(
         item: item,
@@ -416,6 +417,7 @@ class _ShellState extends State<Shell> {
         key: ValueKey('detail-${detail.id}'),
         item: detail,
         episodeIndex: _detailEpisode,
+        initialLine: _store.playLineFor(detail),
         onPlay: (i, line) => _openPlayer(detail, i, line),
       );
     }

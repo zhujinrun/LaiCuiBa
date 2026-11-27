@@ -1508,6 +1508,27 @@ class AppStore extends ChangeNotifier {
     );
   }
 
+  /// 上次实际能播的线路名：先读设置（切换时立刻写），再退回历史行的 flag。
+  /// 线路列表换了顺序也不能按 index 记，所以这里存名字。
+  String? rememberedPlayLine(MediaItem item) =>
+      _settings.playLines[item.id] ?? historyFor(item)?.flag;
+
+  Future<void> savePlayLine(MediaItem item, String lineName) async {
+    if (lineName.isEmpty) return;
+    if (_settings.playLines[item.id] == lineName) return;
+    await updateSettings(
+      _settings.copyWith(playLines: {..._settings.playLines, item.id: lineName}),
+    );
+  }
+
+  /// 打开作品/播放时该选哪条线路。没记住或名字已不存在时回到第一条。
+  int playLineFor(MediaItem item) {
+    final flag = rememberedPlayLine(item);
+    if (flag == null || flag.isEmpty) return 0;
+    final index = item.playLines.indexWhere((line) => line.name == flag);
+    return index < 0 ? 0 : index;
+  }
+
   /// Home categories for the active home site, e.g. 电影 / 电视剧.
   Future<List<SpiderClass>> homeCategoriesReal() async {
     final session = spider;

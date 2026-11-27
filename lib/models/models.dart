@@ -93,6 +93,27 @@ class MediaItem {
     sourceName: sourceName,
   );
 
+  /// Keeps a usable poster from [other] when a fresh detail response has none.
+  MediaItem withPosterFrom(MediaItem other) => MediaItem(
+    id: id,
+    title: title,
+    subtitle: subtitle,
+    score: score,
+    tag: tag,
+    year: year,
+    overview: overview,
+    posterSeed: image == null || image!.isEmpty ? other.posterSeed : posterSeed,
+    image: image == null || image!.isEmpty ? other.image : image,
+    latest: latest,
+    area: area,
+    categories: categories,
+    actors: actors,
+    episodes: episodes,
+    playLines: playLines,
+    siteKey: siteKey,
+    sourceName: sourceName,
+  );
+
   /// Same record with the fields only a detail fetch can supply. Every
   /// argument is optional, so a caller fills in just what its source has --
   /// Emby, for instance, has no `vod_play_from` equivalent and only sets the
@@ -750,6 +771,7 @@ class AppSettings {
     this.aspectFit = 'fit',
     this.pictureAdjust = const {},
     this.playerInfoFields = '',
+    this.playLines = const {},
     this.infoPositions = const {},
     this.miniProgress = false,
     this.subtitlePref = 'auto',
@@ -835,6 +857,9 @@ class AppSettings {
   /// `bitrate`），逗号分隔、按此顺序排列。空串 = 不显示浮层。语义在
   /// `services/player_info.dart` 的 `PlayerInfoField`，模型层只存短码串。
   final String playerInfoFields;
+
+  /// 每部作品上次实际能播的线路名，键是 item.id。
+  final Map<String, String> playLines;
 
   /// 信息显示面板里每项的角标位置：off / topLeft / topRight / bottomLeft / bottomRight。
   final Map<String, String> infoPositions;
@@ -957,6 +982,7 @@ class AppSettings {
     String? aspectFit,
     Map<String, int>? pictureAdjust,
     String? playerInfoFields,
+    Map<String, String>? playLines,
     Map<String, String>? infoPositions,
     bool? miniProgress,
     String? subtitlePref,
@@ -1014,6 +1040,7 @@ class AppSettings {
       aspectFit: aspectFit ?? this.aspectFit,
       pictureAdjust: pictureAdjust ?? this.pictureAdjust,
       playerInfoFields: playerInfoFields ?? this.playerInfoFields,
+      playLines: playLines ?? this.playLines,
       infoPositions: infoPositions ?? this.infoPositions,
       miniProgress: miniProgress ?? this.miniProgress,
       subtitlePref: subtitlePref ?? this.subtitlePref,
@@ -1075,6 +1102,7 @@ class AppSettings {
     'aspectFit': aspectFit,
     'pictureAdjust': pictureAdjust,
     'playerInfoFields': playerInfoFields,
+    'playLines': playLines,
     'infoPositions': infoPositions,
     'miniProgress': miniProgress,
     'subtitlePref': subtitlePref,
@@ -1154,6 +1182,7 @@ class AppSettings {
       aspectFit: pop('aspectFit', 'fit'),
       pictureAdjust: _readIntMap(extra.remove('pictureAdjust')),
       playerInfoFields: pop('playerInfoFields', ''),
+      playLines: _readStringMap(extra.remove('playLines')),
       infoPositions: _readStringMap(extra.remove('infoPositions')),
       miniProgress: pop('miniProgress', false),
       subtitlePref: _readSubtitlePref(extra.remove('subtitlePref')),
