@@ -9,28 +9,13 @@ permissions:
   contents: read
 
 jobs:
-  verify:
-    name: Verify tag and source
+  # Keep this job Flutter-free. Jobs run on isolated runners, so any Flutter
+  # setup or pub get done here would have to be repeated in both build jobs.
+  preflight:
+    name: Check tag and changelog
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.44.9'
-          channel: stable
-          cache: true
-
-      - name: Show toolchain
-        run: |
-          flutter --version
-          dart --version
-
-      - name: Check pinned toolchain
-        run: dart run tool/verify_toolchain.dart
-
-      - name: Install dependencies
-        run: flutter pub get
 
       - name: Check tag against pubspec version
         run: python tool/ci_release.py check-tag "$GITHUB_REF_NAME"
@@ -40,15 +25,9 @@ jobs:
           VERSION="$(python tool/ci_release.py version)"
           python tool/ci_release.py release-body "$VERSION" > /dev/null
 
-      - name: Analyze
-        run: flutter analyze
-
-      - name: Test
-        run: flutter test
-
   build-windows:
     name: Build Windows x64
-    needs: verify
+    needs: preflight
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -64,6 +43,13 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      # Analyze/test run once here, not in every build job.
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
 
       - name: Enable Windows desktop
         run: flutter config --enable-windows-desktop
@@ -86,7 +72,7 @@ jobs:
 
   build-android:
     name: Build Android APK
-    needs: verify
+    needs: preflight
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
