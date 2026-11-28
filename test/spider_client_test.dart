@@ -113,6 +113,20 @@ void main() {
     expect(bodyCache, contains('"id":"575857"'));
   });
 
+  test('comma-joined type and actor fields split into one entry each', () {
+    // Some catvod sources use commas instead of the usual slash. The detail
+    // page must show four genre chips, not one "剧情,喜剧,爱情,同性" chip.
+    final item = SpiderClient.vodToItem({
+      'vod_id': 'comma',
+      'vod_name': '测试片',
+      'type_name': '剧情,喜剧,爱情,同性',
+      'vod_actor': 'SkyKawa,李昀锐，孟子义',
+    }, null);
+
+    expect(item.categories, ['剧情', '喜剧', '爱情', '同性']);
+    expect(item.actors, ['SkyKawa', '李昀锐', '孟子义']);
+  });
+
   test('home maps the class list to SpiderClass rows', () async {
     await serve((request) async {
       request.response.headers.contentType = ContentType.json;

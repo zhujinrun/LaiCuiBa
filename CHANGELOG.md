@@ -6,6 +6,12 @@ the section whose heading matches the pushed tag.
 
 ## [Unreleased]
 
+### Fixed
+- Catvod `type_name` / `vod_actor` fields that arrive comma-joined (ASCII or
+  full-width) are now split into separate entries, like the usual slash-joined
+  ones. The 分类 row shows one chip per genre instead of a single
+  「剧情,喜剧,爱情,同性」 chip.
+
 ## [0.1.3] - 2026-11-28
 
 ### Added

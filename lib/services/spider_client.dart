@@ -17,6 +17,19 @@ import '../models/models.dart';
 ///   * `detail {id}`  -> `{list:[vod...]}` (note: `id`, singular, not `ids`)
 ///   * `home {}`      -> `{class:[{type_id,type_name}], filters:{}}` (categories
 ///     only; the per-category feed comes from `category`, which can be empty).
+///
+/// Catvod sites are not consistent about list separators: most use `/`, but
+/// some send `type_name` / `vod_actor` as a comma-joined string (ASCII or
+/// full-width). [_splitNames] normalises both so the detail page renders one
+/// chip per genre/actor instead of a single comma-joined chip.
+final RegExp _nameSeparators = RegExp(r'[/,，、]');
+
+List<String> _splitNames(String raw) => raw
+    .split(_nameSeparators)
+    .map((e) => e.trim())
+    .where((e) => e.isNotEmpty)
+    .toList(growable: false);
+
 class SpiderClient {
   SpiderClient(this.port, {HttpClient? client})
     : _client = client ?? HttpClient()
@@ -291,12 +304,8 @@ class SpiderClient {
       area: (vod['vod_area'] as String?)?.trim().isNotEmpty == true
           ? vod['vod_area'] as String
           : null,
-      categories: typeName.isEmpty
-          ? const []
-          : typeName.split('/').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
-      actors: actor.isEmpty
-          ? const []
-          : actor.split('/').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
+      categories: _splitNames(typeName),
+      actors: _splitNames(actor),
       episodes: firstLineEpisodes,
       playLines: lines,
       siteKey: siteKey,
