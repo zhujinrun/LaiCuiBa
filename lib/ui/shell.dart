@@ -795,8 +795,10 @@ class _NavItemState extends State<_NavItem> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
+        // Instant highlight, like every other hover surface in the shell and
+        // the original: a 140ms AnimatedContainer here only showed a half-faded
+        // grey while the pointer crossed the rail, reading as a flicker.
+        child: Container(
           height: 40,
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
