@@ -76,6 +76,14 @@ the section whose heading matches the pushed tag.
   instant grey hover background; the disabled 设为当前资源 row stays flat.
 - The 资源 page's first header tool icon now uses the original's slider glyph
   (three lines with knobs) instead of a plain hamburger.
+- Source check notifications no longer stay on screen for minutes. The 重新检测
+  and 测速进度 bars used a 2/10-minute `SnackBar.duration` as a stand-in for a
+  manual close; an exception or an early `!context.mounted` return skipped the
+  `hideCurrentSnackBar()`, and a notification raised mid-check pushed the bar
+  down the queue where hiding the head left it to surface for its full length.
+  A shared `runProgressSnackBar()` now catches errors, clears the whole queue
+  before showing the result, and gives the progress bar a finite fallback
+  duration so a hung probe cannot pin a message to the screen.
 
 ## [0.1.2] - 2026-11-27
 

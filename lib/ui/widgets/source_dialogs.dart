@@ -9,6 +9,7 @@ import '../../services/script_runtime.dart';
 import '../../services/site_parser.dart';
 import '../../services/source_probe.dart';
 import '../../services/store.dart';
+import 'progress_snackbar.dart';
 import 'source_icon_picker.dart';
 
 /// Source management dialogs.
@@ -161,21 +162,11 @@ Future<void> _recheckSource(
   AppStore store,
   SourceInfo source,
 ) async {
-  final messenger = ScaffoldMessenger.of(context);
-  messenger.showSnackBar(
-    SnackBar(
-      content: Text(_stageLine(store, source)),
-      duration: const Duration(minutes: 2),
-    ),
-  );
-  final result = await probeSourceQuietly(store, source);
-  if (!context.mounted) return;
-  messenger.hideCurrentSnackBar();
-  messenger.showSnackBar(
-    SnackBar(
-      content: Text(result.line),
-      duration: const Duration(seconds: 4),
-    ),
+  await runProgressSnackBar(
+    ScaffoldMessenger.of(context),
+    progress: _stageLine(store, source),
+    work: () async => (await probeSourceQuietly(store, source)).line,
+    onError: (error) => '${source.name}：检测失败，$error',
   );
 }
 
@@ -194,40 +185,31 @@ Future<void> checkAllSources(BuildContext context) async {
     return;
   }
 
-  messenger.showSnackBar(
-    SnackBar(
-      content: Text('共检测 ${sources.length} 个资源…'),
-      duration: const Duration(minutes: 10),
-    ),
-  );
+  await runProgressSnackBar(
+    messenger,
+    progress: '共检测 ${sources.length} 个资源…',
+    work: () async {
+      var ok = 0;
+      for (final source in sources) {
+        final result = await probeSourceQuietly(store, source);
+        if (result.ok) ok++;
+      }
 
-  var ok = 0;
-  for (final source in sources) {
-    final result = await probeSourceQuietly(store, source);
-    if (result.ok) ok++;
-    if (!context.mounted) return;
-  }
+      // Latency 0 means the check never got a number (dead, or nothing to
+      // time). Those sink below the ones that answered, keeping their own
+      // relative order.
+      final ordered = List<SourceInfo>.from(store.sources);
+      ordered.sort((a, b) {
+        final la = a.latencyMs > 0 ? a.latencyMs : 1 << 30;
+        final lb = b.latencyMs > 0 ? b.latencyMs : 1 << 30;
+        return la.compareTo(lb);
+      });
+      await store.reorderSources([for (final source in ordered) source.id]);
 
-  // Latency 0 means the check never got a number (dead, or nothing to time).
-  // Those sink below the ones that answered, keeping their own relative order.
-  final ordered = List<SourceInfo>.from(store.sources);
-  ordered.sort((a, b) {
-    final la = a.latencyMs > 0 ? a.latencyMs : 1 << 30;
-    final lb = b.latencyMs > 0 ? b.latencyMs : 1 << 30;
-    return la.compareTo(lb);
-  });
-  await store.reorderSources([for (final source in ordered) source.id]);
-  if (!context.mounted) return;
-
-  final failed = sources.length - ok;
-  messenger.hideCurrentSnackBar();
-  messenger.showSnackBar(
-    SnackBar(
-      content: Text(
-        '测速完成，已按速度排序（$ok 个正常${failed > 0 ? '，$failed 个异常' : ''}）',
-      ),
-      duration: const Duration(seconds: 4),
-    ),
+      final failed = sources.length - ok;
+      return '测速完成，已按速度排序（$ok 个正常${failed > 0 ? '，$failed 个异常' : ''}）';
+    },
+    onError: (error) => '测速中断：$error',
   );
 }
 
