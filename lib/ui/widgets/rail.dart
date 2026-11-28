@@ -38,8 +38,9 @@ class LcbRail extends StatefulWidget {
 
   final double gap;
 
-  /// The page gutter, carried as leading padding so the first cover lines up
-  /// with the section header while the last one still bleeds off the edge.
+  /// The page gutter. The card list is inset by this on BOTH sides so it
+  /// stays inside the section's main band (section title .. 查看全部), which
+  /// carry the same gutter. The paging discs remain on the rail edge.
   final double leading;
 
   /// Diameter of the paging disc, as measured on the original.
@@ -106,25 +107,36 @@ class _LcbRailState extends State<LcbRail> {
         onExit: (_) => setState(() => _hover = false),
         child: Stack(
           children: [
-            // Both notifications matter: a scroll changes the offset, while a
-            // resize or a feed swap changes the extent without scrolling.
-            NotificationListener<ScrollMetricsNotification>(
-              onNotification: (n) {
-                _sync(n.metrics);
-                return false;
-              },
-              child: NotificationListener<ScrollNotification>(
-                onNotification: (n) {
-                  _sync(n.metrics);
-                  return false;
-                },
-                child: ListView.separated(
-                  controller: _controller,
-                  scrollDirection: Axis.horizontal,
-                  padding: EdgeInsets.only(left: widget.leading),
-                  itemCount: widget.itemCount,
-                  separatorBuilder: (_, __) => SizedBox(width: widget.gap),
-                  itemBuilder: widget.itemBuilder,
+            // Inset the scrollable list on both sides so its viewport matches
+            // the section header's band (title .. 查看全部). Previously only
+            // the left had a gutter and the cards bled off the right window
+            // edge, so a paged rail looked ragged against the header above it.
+            // The discs are siblings of this padding, so they still sit on the
+            // full-width rail edge where the original measured them.
+            Positioned.fill(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: widget.leading),
+                // Both notifications matter: a scroll changes the offset,
+                // while a resize or a feed swap changes the extent without
+                // scrolling.
+                child: NotificationListener<ScrollMetricsNotification>(
+                  onNotification: (n) {
+                    _sync(n.metrics);
+                    return false;
+                  },
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (n) {
+                      _sync(n.metrics);
+                      return false;
+                    },
+                    child: ListView.separated(
+                      controller: _controller,
+                      scrollDirection: Axis.horizontal,
+                      itemCount: widget.itemCount,
+                      separatorBuilder: (_, __) => SizedBox(width: widget.gap),
+                      itemBuilder: widget.itemBuilder,
+                    ),
+                  ),
                 ),
               ),
             ),

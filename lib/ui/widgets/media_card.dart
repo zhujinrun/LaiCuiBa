@@ -135,51 +135,66 @@ class _LandscapeCardState extends State<LandscapeCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
+              // Height must track the window immediately: LcbRail's tight
+              // SizedBox jumps to the new size, and animating this height made
+              // the art taller than its slot mid-resize (yellow/black stripes
+              // while dragging). Only the hover shadow is animated.
+              SizedBox(
                 height: h,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(LcbMetrics.cardRadius),
-                  boxShadow: _hover
-                      ? const [
-                          BoxShadow(
-                            color: Color(0x26000000),
-                            blurRadius: 18,
-                            offset: Offset(0, 8),
-                          ),
-                        ]
-                      : null,
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    AnimatedScale(
-                      duration: const Duration(milliseconds: 220),
-                      scale: _hover ? 1.04 : 1.0,
-                      child: PosterArt(
-                        seed: widget.item.posterSeed,
-                        image: widget.item.image,
-                        // The 2:3 art covers a 16:9 slot, so 337px of height is
-                        // cropped. The original anchors the crop 93px down from
-                        // the top (a template match lands at that offset), not at
-                        // the centre: Alignment.y = 2 * 93 / 337 - 1.
-                        alignment: const Alignment(0, -0.45),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(LcbMetrics.cardRadius),
+                    boxShadow: _hover
+                        ? const [
+                            BoxShadow(
+                              color: Color(0x26000000),
+                              blurRadius: 18,
+                              offset: Offset(0, 8),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      AnimatedScale(
+                        duration: const Duration(milliseconds: 220),
+                        scale: _hover ? 1.04 : 1.0,
+                        child: PosterArt(
+                          seed: widget.item.posterSeed,
+                          image: widget.item.image,
+                          // The 2:3 art covers a 16:9 slot, so 337px of height is
+                          // cropped. The original anchors the crop 93px down from
+                          // the top (a template match lands at that offset), not at
+                          // the centre: Alignment.y = 2 * 93 / 337 - 1.
+                          alignment: const Alignment(0, -0.45),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 10),
-              Text(
-                widget.item.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  height: 1.43,
-                  fontWeight: FontWeight.w500,
-                  color: LcbColors.text,
+              // The rail reserves exactly 20px for the caption (14 * 1.43 =
+              // 20.02). At fractional card widths that 0.02px plus rounding
+              // overflows the rail's tight-height SizedBox by ~0.2px. Pin the
+              // caption's line box to 20 so it never exceeds its allowance.
+              ClipRect(
+                child: SizedBox(
+                  height: 20,
+                  child: Text(
+                    widget.item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      height: 1.43,
+                      fontWeight: FontWeight.w500,
+                      color: LcbColors.text,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 3),
@@ -238,72 +253,86 @@ class _PosterCardState extends State<PosterCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
+              // Keep height immediate so resizing never runs the art taller
+              // than LcbRail's tight slot mid-drag (yellow/black stripes).
+              // The hover lift and shadow still animate.
+              SizedBox(
                 height: h,
-                transform: Matrix4.translationValues(0, _hover ? -3 : 0, 0),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: _hover
-                      ? const [
-                          BoxShadow(
-                            color: Color(0x33000000),
-                            blurRadius: 20,
-                            offset: Offset(0, 10),
-                          ),
-                        ]
-                      : null,
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    PosterArt(
-                      seed: widget.item.posterSeed,
-                      image: widget.item.image,
-                    ),
-                    // 规格徽章叠在海报角落，识别不到就自动不画。
-                    MediaBadgeRow(
-                      item: widget.item,
-                      settings: StoreScope.of(context).settings,
-                    ),
-                    if (_hover && widget.onMore != null)
-                      Positioned(
-                        right: 6,
-                        top: 6,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTapDown: (details) =>
-                              widget.onMore?.call(details.globalPosition),
-                          child: Container(
-                            width: 24,
-                            height: 24,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: const Color(0x99000000),
-                              borderRadius: BorderRadius.circular(12),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  transform: Matrix4.translationValues(0, _hover ? -3 : 0, 0),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: _hover
+                        ? const [
+                            BoxShadow(
+                              color: Color(0x33000000),
+                              blurRadius: 20,
+                              offset: Offset(0, 10),
                             ),
-                            child: const Icon(
-                              CupertinoIcons.ellipsis,
-                              size: 14,
-                              color: Color(0xFFFFFFFF),
+                          ]
+                        : null,
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      PosterArt(
+                        seed: widget.item.posterSeed,
+                        image: widget.item.image,
+                      ),
+                      // 规格徽章叠在海报角落，识别不到就自动不画。
+                      MediaBadgeRow(
+                        item: widget.item,
+                        settings: StoreScope.of(context).settings,
+                      ),
+                      if (_hover && widget.onMore != null)
+                        Positioned(
+                          right: 6,
+                          top: 6,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTapDown: (details) =>
+                                widget.onMore?.call(details.globalPosition),
+                            child: Container(
+                              width: 24,
+                              height: 24,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: const Color(0x99000000),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                CupertinoIcons.ellipsis,
+                                size: 14,
+                                color: Color(0xFFFFFFFF),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 10),
-              Text(
-                widget.item.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  height: 1.43,
-                  fontWeight: FontWeight.w500,
-                  color: LcbColors.text,
+              // The rail reserves exactly 20px for the caption (14 * 1.43 =
+              // 20.02). At fractional card widths that 0.02px plus rounding
+              // overflows the rail's tight-height SizedBox by ~0.2px. Pin the
+              // caption's line box to 20 so it never exceeds its allowance.
+              ClipRect(
+                child: SizedBox(
+                  height: 20,
+                  child: Text(
+                    widget.item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      height: 1.43,
+                      fontWeight: FontWeight.w500,
+                      color: LcbColors.text,
+                    ),
+                  ),
                 ),
               ),
             ],

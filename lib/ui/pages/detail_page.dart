@@ -288,103 +288,109 @@ class _Hero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 386,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: _Backdrop(image: item.image, seed: item.posterSeed),
+    // The hero was a fixed 386-high Stack with an OverflowBox-clipped copy
+    // block. On a narrow window the six action pills overflowed their Row
+    // (RenderFlex overflow — the yellow/black stripe in the screenshot), and
+    // the clip hid the overflow rather than laying it out. Let the content
+    // size the hero instead: the 204x306 poster with 35px top and 45px bottom
+    // air still gives the original 386 at wide widths, while wrapped pills
+    // grow the band and the Positioned.fill backdrop follows along.
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: _Backdrop(image: item.image, seed: item.posterSeed),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            LcbMetrics.pagePadding,
+            35,
+            LcbMetrics.pagePadding,
+            45,
           ),
-          Positioned(
-            left: LcbMetrics.pagePadding,
-            top: 35,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: SizedBox(
-                width: 204,
-                height: 306,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    PosterArt(
-                      seed: item.posterSeed,
-                      image: item.image,
-                      fit: BoxFit.cover,
-                    ),
-                    MediaBadgeRow(
-                      item: item,
-                      settings: StoreScope.of(context).settings,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          // OverflowBox + ClipRect: the copy block is laid out at its natural
-          // height and clipped to the band instead of tripping a RenderFlex
-          // overflow when a test font or an extra-long synopsis runs long.
-          Positioned(
-            left: 276,
-            top: 92,
-            right: 40,
-            bottom: 0,
-            child: ClipRect(
-              child: OverflowBox(
-                alignment: Alignment.topLeft,
-                maxHeight: double.infinity,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 34,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                        height: 1.15,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: SizedBox(
+                  width: 204,
+                  height: 306,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      PosterArt(
+                        seed: item.posterSeed,
+                        image: item.image,
+                        fit: BoxFit.cover,
                       ),
-                    ),
-                    const SizedBox(height: 13),
-                    _MetaChips(item: item),
-                    if (item.overview != null && item.overview!.isNotEmpty) ...[
-                      const SizedBox(height: 14),
-                      // The synopsis column is far narrower than the band: the
-                      // original wraps it at ~845 rather than at the window edge.
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 845),
-                        child: Text(
-                          item.overview!,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            height: 1.62,
-                            color: Color(0xFFE2E2E2),
-                          ),
-                        ),
+                      MediaBadgeRow(
+                        item: item,
+                        settings: StoreScope.of(context).settings,
                       ),
                     ],
-                    const SizedBox(height: 20),
-                    _ActionRow(
-                      resumeLabel: resumeLabel,
-                      favorite: favorite,
-                      onFavorite: onFavorite,
-                      onPlay: onPlay,
-                      onPlatform: onPlatform,
-                      onDownload: onDownload,
-                      onFollow: onFollow,
-                      onComments: onComments,
-                    ),
-                  ],
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(width: 32),
+              // Copy block starts at y=92 (35 + 57) and x=276 (40 + 204 + 32),
+              // matching the original's measured baseline at wide widths.
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 57),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 34,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          height: 1.15,
+                        ),
+                      ),
+                      const SizedBox(height: 13),
+                      _MetaChips(item: item),
+                      if (item.overview != null && item.overview!.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        // The synopsis column is far narrower than the band: the
+                        // original wraps it at ~845 rather than at the window edge.
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 845),
+                          child: Text(
+                            item.overview!,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              height: 1.62,
+                              color: Color(0xFFE2E2E2),
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      _ActionRow(
+                        resumeLabel: resumeLabel,
+                        favorite: favorite,
+                        onFavorite: onFavorite,
+                        onPlay: onPlay,
+                        onPlatform: onPlatform,
+                        onDownload: onDownload,
+                        onFollow: onFollow,
+                        onComments: onComments,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -486,7 +492,8 @@ class _MetaChips extends StatelessWidget {
 }
 
 /// 继续 + the five secondary actions. Heights and gaps are measured: 42 tall,
-/// 13 between pills.
+/// 13 between pills. Wraps onto extra lines when the window is narrow instead
+/// of overflowing the hero band.
 class _ActionRow extends StatelessWidget {
   const _ActionRow({
     required this.resumeLabel,
@@ -510,7 +517,9 @@ class _ActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Wrap(
+      spacing: 13,
+      runSpacing: 13,
       children: [
         _PillButton(
           label: resumeLabel,
@@ -518,31 +527,26 @@ class _ActionRow extends StatelessWidget {
           primary: true,
           onTap: onPlay,
         ),
-        const SizedBox(width: 13),
         _PillButton(
           label: '换平台',
           icon: CupertinoIcons.search,
           onTap: onPlatform,
         ),
-        const SizedBox(width: 13),
         _PillButton(
           label: '下载',
           icon: CupertinoIcons.arrow_down_to_line,
           onTap: onDownload,
         ),
-        const SizedBox(width: 13),
         _PillButton(
           label: '收藏',
           icon: favorite ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
           onTap: onFavorite,
         ),
-        const SizedBox(width: 13),
         _PillButton(
           label: '追更',
           icon: CupertinoIcons.calendar,
           onTap: onFollow,
         ),
-        const SizedBox(width: 13),
         _PillButton(
           label: '评论',
           icon: CupertinoIcons.chat_bubble_2,
@@ -597,6 +601,7 @@ class _PillButtonState extends State<_PillButton> {
             ),
           ),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(widget.icon, size: 15, color: Colors.white),
               const SizedBox(width: 9),
@@ -801,7 +806,11 @@ class _RangePill extends StatelessWidget {
   }
 }
 
-/// The episode grid: fixed-width chips, as many columns as fit, 9px apart.
+/// 选集网格：固定宽度的 chip，能放几个放几个、9px 间隔，放不下就换行。
+///
+/// 以前在这里按可用宽度拉伸 chip。20 集时算出来正好 ~92px 看不出问题，
+/// 但电影只有 2 个版本时每个会被撑到半屏宽（用户截图里的「过长」）。
+/// 固定成 92px 后，多集时视觉不变，少集/最大化时也不会被拉伸。
 class _EpisodeGrid extends StatelessWidget {
   const _EpisodeGrid({
     required this.labels,
@@ -821,34 +830,25 @@ class _EpisodeGrid extends StatelessWidget {
   /// Invoked with the absolute episode index (offset + i) on tap.
   final ValueChanged<int> onEpisode;
 
+  static const _chipWidth = 92.0;
+  static const _gap = 9.0;
+
   @override
   Widget build(BuildContext context) {
     if (labels.isEmpty) return const SizedBox.shrink();
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const gap = 9.0;
-        const minWidth = 92.0;
-        final columns = ((constraints.maxWidth + gap) / (minWidth + gap))
-            .floor()
-            .clamp(1, labels.length);
-        final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
-
-        return Wrap(
-          spacing: gap,
-          runSpacing: 10,
-          children: [
-            for (final (i, label) in labels.indexed)
-              _EpisodeChip(
-                key: ValueKey('episode-chip-${indices?[i] ?? i + offset}'),
-                label: label,
-                width: width,
-                selected: current != null &&
-                    current == (indices?[i] ?? i + offset),
-                onTap: () => onEpisode(indices?[i] ?? i + offset),
-              ),
-          ],
-        );
-      },
+    return Wrap(
+      spacing: _gap,
+      runSpacing: 10,
+      children: [
+        for (final (i, label) in labels.indexed)
+          _EpisodeChip(
+            key: ValueKey('episode-chip-${indices?[i] ?? i + offset}'),
+            label: label,
+            width: _chipWidth,
+            selected: current != null && current == (indices?[i] ?? i + offset),
+            onTap: () => onEpisode(indices?[i] ?? i + offset),
+          ),
+      ],
     );
   }
 }
@@ -909,7 +909,9 @@ class _EpisodeChipState extends State<_EpisodeChip> {
   }
 }
 
-/// 演员阵容: a horizontal rail of 60px discs with the name centred underneath.
+/// 演员阵容: 72px discs with the name centred underneath. Wraps onto as many
+/// rows as fit — the same adaptive grid as 选集 — so a long cast is never cut
+/// off at the edge of a narrow window.
 class _CastRail extends StatelessWidget {
   const _CastRail({required this.names});
 
@@ -917,52 +919,52 @@ class _CastRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 98,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: names.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 18),
-        itemBuilder: (_, i) => SizedBox(
-          width: 72,
-          child: Column(
-            children: [
-              Container(
-                width: 72,
-                height: 72,
-                decoration: const BoxDecoration(
-                  color: LcbColors.card,
-                  shape: BoxShape.circle,
+    return Wrap(
+      spacing: 18,
+      runSpacing: 22,
+      children: [
+        for (final name in names)
+          SizedBox(
+            width: 72,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: const BoxDecoration(
+                    color: LcbColors.card,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    CupertinoIcons.person,
+                    size: 30,
+                    color: Color(0xFFC7C7CC),
+                  ),
                 ),
-                child: const Icon(
-                  CupertinoIcons.person,
-                  size: 30,
-                  color: Color(0xFFC7C7CC),
-                ),
-              ),
-              const SizedBox(height: 10),
-              // Fixed 16px line box: 72 + 10 + 16 keeps the rail exactly 98 so
-              // the sections below stay on their measured baselines.
-              SizedBox(
-                height: 16,
-                child: Center(
-                  child: Text(
-                    names[i],
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      height: 1.0,
-                      fontWeight: FontWeight.w600,
-                      color: LcbColors.text,
+                const SizedBox(height: 10),
+                // Fixed 16px line box keeps a single row at 98, matching the
+                // original's measured baseline; extra rows add runSpacing.
+                SizedBox(
+                  height: 16,
+                  child: Center(
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        height: 1.0,
+                        fontWeight: FontWeight.w600,
+                        color: LcbColors.text,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ),
+      ],
     );
   }
 }

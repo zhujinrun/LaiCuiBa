@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lai_cui_ba/core/theme.dart';
 import 'package:lai_cui_ba/ui/widgets/rail.dart';
 
 /// Feeds the rail a fixed row of boxes so paging can be reasoned about in
@@ -145,6 +146,36 @@ void main() {
     final prev = tester.getRect(find.byKey(const ValueKey('rail-prev')));
     expect(prev.center.dx - rail.left, closeTo(LcbRail.arrowInset, 0.6));
     expect(prev.center.dy, closeTo(disc.center.dy, 0.6));
+  });
+
+  testWidgets('card viewport is inset to the section band on both sides',
+      (tester) async {
+    // The header (title .. 查看全部) sits inside the page gutter. A paged rail
+    // must keep its cards inside that same band, otherwise they bleed off the
+    // right window edge and the row looks ragged. The discs stay on the rail
+    // edge (covered by the test above), independent of this inset.
+    for (final width in [700.0, 800.0, 1100.0, 1600.0]) {
+      await tester.pumpWidget(_host(count: 10, width: width));
+      await tester.pumpAndSettle();
+      final rail = tester.getRect(find.byType(LcbRail));
+      final list = tester.getRect(find.byType(ListView));
+      expect(list.left - rail.left, closeTo(LcbMetrics.pagePadding, 0.6),
+          reason: '左侧卡片应贴齐标题 @ $width');
+      expect(rail.right - list.right, closeTo(LcbMetrics.pagePadding, 0.6),
+          reason: '右侧卡片应贴齐「查看全部」，不能溢出窗口 @ $width');
+    }
+  });
+
+  testWidgets('paging keeps cards clipped inside the band', (tester) async {
+    await tester.pumpWidget(_host(count: 10, width: 800));
+    await tester.pumpAndSettle();
+    await _hoverRail(tester);
+    await tester.tap(find.byKey(const ValueKey('rail-next')));
+    await tester.pumpAndSettle();
+    final list = tester.getRect(find.byType(ListView));
+    // After a page turn the viewport itself has not moved; only its content.
+    expect(list.left, closeTo(LcbMetrics.pagePadding, 0.6));
+    expect(list.right, closeTo(800 - LcbMetrics.pagePadding, 0.6));
   });
 
   testWidgets('inside a start-aligned Column the rail still fills the width',

@@ -23,6 +23,29 @@ the section whose heading matches the pushed tag.
   rebinds the same activator to the shell's own pause-and-minimize callback.
 - Volume can now be raised to the original's 150% (default stays 100%); it was
   clamped to 100% in the stepper, slider and tests.
+- Detail pages no longer overflow when the window is narrow. The hero used a
+  fixed 386px band with an `OverflowBox` clip, and the six action pills sat in
+  a `Row`, so shrinking the window produced a `RenderFlex` overflow (the
+  yellow/black stripe). The hero now sizes to its content — still 386px at wide
+  widths — and the pills keep their natural width and wrap like the episode
+  chips. The 选集 chips themselves are fixed at 92px again: stretching them to
+  the available width made a two-version film render each chip half a screen
+  wide.
+- 演员阵容 wraps onto multiple rows like 选集 instead of a horizontal rail that
+  cut off a long cast.
+- Poster-card captions no longer overflow the home rail by ~0.2px at fractional
+  card widths (14 × 1.43 = 20.02 against a 20px allowance); the caption line box
+  is pinned to 20px.
+- Dragging the window narrower no longer flashes yellow/black overflow stripes
+  under poster captions. The card art animated its height over 160ms while
+  `LcbRail` resized its tight-height slot immediately, so mid-drag frames left
+  the art taller than the slot; the art height now tracks the window and only
+  the hover shadow/lift animates.
+- Paged home rails no longer bleed past the section header's band. The card
+  list previously had only a left gutter and ran to the window edge, so a rail
+  with a 查看全部 button looked ragged; its scroll viewport is now inset by the
+  page gutter on both sides, matching the title .. 查看全部 span. The paging
+  discs stay on the rail edge.
 
 ## [0.1.2] - 2026-11-27
 
