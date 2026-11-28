@@ -144,32 +144,38 @@ class _BrowseSheetState extends State<_BrowseSheet> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: SizedBox(
         width: 591,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const _Heading(),
-              if (_loading)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 90),
-                  child: Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.2,
-                        color: LcbColors.primaryDim,
+        // Wrapping the filter rows makes the panel taller on sources with many
+        // options (17 years). Keep the whole panel scrollable so it never
+        // overflows a short window; on a normal window it stays its natural
+        // height and does not scroll.
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _Heading(),
+                if (_loading)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 90),
+                    child: Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: LcbColors.primaryDim,
+                        ),
                       ),
                     ),
-                  ),
-                )
-              else if (_error != null)
-                _Failure(message: _error!, onRetry: _load)
-              else
-                ..._buildPicker(),
-            ],
+                  )
+                else if (_error != null)
+                  _Failure(message: _error!, onRetry: _load)
+                else
+                  ..._buildPicker(),
+              ],
+            ),
           ),
         ),
       ),
@@ -196,7 +202,9 @@ class _BrowseSheetState extends State<_BrowseSheet> {
         ],
       ),
       for (final group in _groups) ...[
-        const SizedBox(height: 54),
+        // Roughly one chip height: the old 54px gap left the groups looking
+        // scattered instead of like one compact filter panel.
+        const SizedBox(height: 28),
         _ChipRow(
           children: [
             for (final option in _optionsOf(group))
@@ -208,7 +216,7 @@ class _BrowseSheetState extends State<_BrowseSheet> {
           ],
         ),
       ],
-      const SizedBox(height: 55),
+      const SizedBox(height: 32),
       SizedBox(
         width: double.infinity,
         height: 40,
@@ -294,8 +302,9 @@ class _Heading extends StatelessWidget {
   }
 }
 
-/// One horizontally scrollable row of chips. The source can declare more
-/// options than fit (17 years), and the original keeps them on one line.
+/// Filter chips wrap onto additional rows when a source declares more options
+/// than fit (17 years). The old single-line `SingleChildScrollView` hid the
+/// overflow with no way to reveal it, so trailing options could not be tapped.
 class _ChipRow extends StatelessWidget {
   const _ChipRow({required this.children});
 
@@ -303,16 +312,10 @@ class _ChipRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (var i = 0; i < children.length; i++) ...[
-            if (i > 0) const SizedBox(width: 8),
-            children[i],
-          ],
-        ],
-      ),
+    return Wrap(
+      spacing: 8,
+      runSpacing: 10,
+      children: children,
     );
   }
 }
@@ -336,17 +339,25 @@ class _Chip extends StatelessWidget {
       child: Container(
         height: 30,
         padding: const EdgeInsets.symmetric(horizontal: 14),
-        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? LcbColors.primaryDim : LcbColors.searchFill,
           borderRadius: BorderRadius.circular(15),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12.5,
-            color: selected ? Colors.white : LcbColors.text,
-          ),
+        // No `alignment` here: inside `Wrap` the parent hands down a bounded
+        // width, and `Container.alignment` expands to fill it (each chip would
+        // take a whole row). `Row(mainAxisSize.min)` keeps the original
+        // content-width pill and still centres the label vertically.
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                color: selected ? Colors.white : LcbColors.text,
+              ),
+            ),
+          ],
         ),
       ),
     );

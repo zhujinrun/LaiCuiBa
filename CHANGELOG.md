@@ -8,6 +8,9 @@ the section whose heading matches the pushed tag.
 
 ### Added
 - `Space` toggles play/pause in the player, matching the original.
+- Home rails now show every category a site declares. A source like 大师兄
+  (电影/剧集/综艺/动漫/短剧/AI漫剧/少儿) used to lose its last two sections to
+  a hard cap of five.
 
 ### Fixed
 - Player keyboard shortcuts now actually fire. The player and shell live in the
@@ -46,6 +49,14 @@ the section whose heading matches the pushed tag.
   with a 查看全部 button looked ragged; its scroll viewport is now inset by the
   page gutter on both sides, matching the title .. 查看全部 span. The paging
   discs stay on the rail edge.
+- Sidebar navigation highlights instantly on hover again. Its background used
+  a 140ms `AnimatedContainer` — unlike every other hover surface in the shell —
+  so a pointer crossing the rail only caught a half-faded grey that read as a
+  flicker; it is a plain `Container` now, matching the original.
+- 「浏览内容」 filter chips wrap onto multiple rows instead of a single
+  non-scrollable line that hid and disabled every option past the panel's edge
+  (a source like 大师兄 ships 17 years). The panel itself scrolls vertically
+  now so a tall, wrapped filter list never overflows a short window.
 
 ## [0.1.2] - 2026-11-27
 

@@ -155,4 +155,68 @@ void main() {
     expect(find.text('这个站点没有答上来'), findsOneWidget);
     expect(find.text('重试'), findsOneWidget);
   });
+
+  testWidgets('many options wrap onto rows so every chip is visible and tappable', (
+    tester,
+  ) async {
+    // A source like 大师兄 ships 17 years; the old single-line scroll row hid
+    // the tail with no way to reveal it, so those chips were unreachable.
+    final years = List.generate(
+      17,
+      (i) => SpiderFilterOption(
+        label: '${2026 - i}',
+        value: '${2026 - i}',
+      ),
+    );
+    final manyHome = SpiderHome(
+      classes: const [SpiderClass(typeId: '1', name: '电影')],
+      filters: {
+        '1': [
+          SpiderFilterGroup(
+            key: 'year',
+            init: '',
+            options: [
+              const SpiderFilterOption(label: '全部', value: ''),
+              ...years,
+            ],
+          ),
+        ],
+      },
+    );
+    BrowseChoice? choice;
+    await openPanel(tester, (c) => choice = c, load: () async => manyHome);
+
+    // Every year is laid out — none is clipped off the end of a single row.
+    for (final year in years) {
+      expect(find.text(year.label), findsOneWidget,
+          reason: '${year.label} 应可见，不能被单行截断');
+    }
+
+    // Chips keep their original content width inside the `Wrap`. A `Container`
+    // with `alignment` would expand to the dialog's full inner width (547px),
+    // making every chip take a whole row.
+    final firstChip = find.ancestor(
+      of: find.text('2026'),
+      matching: find.byType(Container),
+    ).first;
+    final chipWidth = tester.getSize(firstChip).width;
+    expect(chipWidth, lessThan(120),
+        reason: '筛选按钮应保持内容宽度，而不是撑满整行 ($chipWidth)');
+    final secondChip = find.ancestor(
+      of: find.text('2025'),
+      matching: find.byType(Container),
+    ).first;
+    expect(tester.getCenter(firstChip).dy, tester.getCenter(secondChip).dy,
+        reason: '相邻两个筛选按钮应在同一行');
+
+    // The last (previously unreachable) chip can now be tapped and travels
+    // back as the chosen filter.
+    await tester.tap(find.text('2010'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('查看筛选项结果'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查看筛选项结果'));
+    await tester.pumpAndSettle();
+    expect(choice!.filters, {'year': '2010'});
+  });
 }
