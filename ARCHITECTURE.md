@@ -742,8 +742,8 @@ dart run tool/verify_player_info_live.dart # 无 GPU 时降级退出 0
 
 # 发版校验（CI 也会跑）
 python tool/ci_release.py version
-python tool/ci_release.py check-tag v0.1.2
-python tool/ci_release.py release-body 0.1.2
+python tool/ci_release.py check-tag v0.1.3
+python tool/ci_release.py release-body 0.1.3
 ```
 
 环境约束（**已锁定，勿随意升级**）：

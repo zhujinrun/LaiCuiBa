@@ -6,6 +6,8 @@ the section whose heading matches the pushed tag.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-28
+
 ### Added
 - `Space` toggles play/pause in the player, matching the original.
 - Home rails now show every category a site declares. A source like 大师兄
