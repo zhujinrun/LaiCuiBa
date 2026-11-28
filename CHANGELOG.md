@@ -84,6 +84,10 @@ the section whose heading matches the pushed tag.
   A shared `runProgressSnackBar()` now catches errors, clears the whole queue
   before showing the result, and gives the progress bar a finite fallback
   duration so a hung probe cannot pin a message to the screen.
+- The 资源 header's tool icons now match the 收藏 page's: transparent 28px
+  tiles with a quiet glyph that darkens on hover, instead of permanently
+  filled #F6F6F8 squares. Active modes (分组 / 搜索 / 多选) tint the glyph
+  instead of the tile.
 
 ## [0.1.2] - 2026-11-27
 

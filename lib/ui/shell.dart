@@ -1564,9 +1564,10 @@ class _HeaderIconButtonState extends State<_HeaderIconButton> {
   }
 }
 
-/// A square tool button used on the resources page header: a #F6F6F8 rounded
-/// tile holding a dark glyph.
-class _HeaderToolIcon extends StatelessWidget {
+/// A header tool button on the resources page, styled like the favourites
+/// header's three buttons: a transparent 28px tile with a quiet glyph that
+/// darkens on hover, instead of a permanently filled #F6F6F8 square.
+class _HeaderToolIcon extends StatefulWidget {
   const _HeaderToolIcon({
     required this.icon,
     this.onTap,
@@ -1579,30 +1580,44 @@ class _HeaderToolIcon extends StatelessWidget {
   /// for the pages that still draw a tool row without behaviour.
   final VoidCallback? onTap;
 
-  /// Tinted while the mode it toggles is on (分组 / 搜索 / 多选), so the tile
-  /// says "this is showing because of me" and clicking it again turns it off.
+  /// Tinted while the mode it toggles is on (分组 / 搜索 / 多选). With no filled
+  /// tile to light up, the glyph itself carries the state so clicking it again
+  /// still reads as turning the mode off.
   final bool active;
+
+  @override
+  State<_HeaderToolIcon> createState() => _HeaderToolIconState();
+}
+
+class _HeaderToolIconState extends State<_HeaderToolIcon> {
+  bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
     final box = Container(
-      width: 32,
-      height: 32,
+      width: 28,
+      height: 28,
       decoration: BoxDecoration(
-        color: active ? LcbColors.primaryContainer : LcbColors.card,
+        color: _hover ? LcbColors.hover : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Icon(
-        icon,
+        widget.icon,
         size: 17,
-        color: active ? LcbColors.primary : LcbColors.text,
+        color: widget.active
+            ? LcbColors.primary
+            : _hover
+                ? LcbColors.text
+                : LcbColors.settingsQuiet,
       ),
     );
-    if (onTap == null) return box;
+    if (widget.onTap == null) return box;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
-        onTap: onTap,
+        onTap: widget.onTap,
         behavior: HitTestBehavior.opaque,
         child: box,
       ),
