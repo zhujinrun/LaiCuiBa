@@ -17,6 +17,7 @@ enum PlayerShortcut {
   seekBack,
   seekForward,
   miniWindow,
+  togglePlay,
 }
 
 /// 物理按键按位置识别：[LogicalKeyboardKey] 不会被输入法切换成别的字符，
@@ -27,6 +28,7 @@ PlayerShortcut? playerShortcutFor(LogicalKeyboardKey key) {
   if (key == LogicalKeyboardKey.arrowLeft) return PlayerShortcut.seekBack;
   if (key == LogicalKeyboardKey.arrowRight) return PlayerShortcut.seekForward;
   if (key == LogicalKeyboardKey.keyP) return PlayerShortcut.miniWindow;
+  if (key == LogicalKeyboardKey.space) return PlayerShortcut.togglePlay;
   return null;
 }
 
@@ -41,6 +43,7 @@ Map<ShortcutActivator, PlayerShortcut> get playerShortcutBindings =>
       SingleActivator(LogicalKeyboardKey.arrowLeft): PlayerShortcut.seekBack,
       SingleActivator(LogicalKeyboardKey.arrowRight): PlayerShortcut.seekForward,
       SingleActivator(LogicalKeyboardKey.keyP): PlayerShortcut.miniWindow,
+      SingleActivator(LogicalKeyboardKey.space): PlayerShortcut.togglePlay,
     };
 
 /// 老板键：Ctrl+Alt+H。

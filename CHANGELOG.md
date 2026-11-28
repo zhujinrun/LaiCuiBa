@@ -6,6 +6,24 @@ the section whose heading matches the pushed tag.
 
 ## [Unreleased]
 
+### Added
+- `Space` toggles play/pause in the player, matching the original.
+
+### Fixed
+- Player keyboard shortcuts now actually fire. The player and shell live in the
+  same `FocusScope`, and Flutter grants `autofocus` only once per scope — the
+  shell mounted first and consumed it, so the player's `autofocus: true` was
+  ignored and focus stayed on the shell, where no arrow key reached the player's
+  bindings. The player now owns a `FocusNode` and calls `requestFocus()` in a
+  post-frame callback. `CallbackShortcuts` also has to wrap the `Focus` (it binds
+  to descendant focus nodes only). Arrow up/down change volume by 10% (mouse
+  wheel stays at 5%), left/right seek ±10 seconds, `P` toggles the mini window.
+- `Ctrl+Alt+H` (boss key) now works while the player is open. The shell's
+  shortcut scope cannot see the key once the player holds focus, so the player
+  rebinds the same activator to the shell's own pause-and-minimize callback.
+- Volume can now be raised to the original's 150% (default stays 100%); it was
+  clamped to 100% in the stepper, slider and tests.
+
 ## [0.1.2] - 2026-11-27
 
 ### Added

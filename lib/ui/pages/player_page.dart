@@ -118,6 +118,7 @@ class PlayerPage extends StatefulWidget {
     this.onSubtitleFile,
     this.awake,
     this.bossKey,
+    this.onBossKey,
   });
 
   /// Title shown in the top bar.
@@ -169,7 +170,7 @@ class PlayerPage extends StatefulWidget {
   /// mid-session.
   final ValueChanged<SkipOverride>? onSkip;
 
-  /// Volume (0-100) and speed to open with — the values the last session was
+  /// Volume (0-150, default 100) and speed to open with — the values the last session was
   /// left at, not a hardcoded 100 / 1.0×.
   final int initialVolume;
   final double initialRate;
@@ -284,6 +285,11 @@ class PlayerPage extends StatefulWidget {
   /// the shell minimizes the window, so coming back never auto-plays.
   final BossKeyNotifier? bossKey;
 
+  /// The shell's boss-key handler (pause + minimize). The player holds focus
+  /// while open, so the shell's own shortcut scope cannot see Ctrl+Alt+H; the
+  /// player rebinds the same key to this callback to keep the hotkey alive.
+  final VoidCallback? onBossKey;
+
   @override
   State<PlayerPage> createState() => _PlayerPageState();
 }
@@ -325,6 +331,13 @@ class _PlayerPageState extends State<PlayerPage> {
   late SkipRule _appliedSkip = _mergedSkip;
 
   late final Awake _awake = widget.awake ?? SystemAwake();
+
+  /// 播放页自己的焦点节点。shell 和 player 挂在同一个 FocusScope 里，而
+  /// Flutter 的 autofocus 在每个 Scope 只兑现一次 —— shell 先挂载已经占掉
+  /// 了那个名额，后插入的播放页再写 autofocus: true 会被直接忽略，焦点留在
+  /// shell，方向键一个都到不了下面的 CallbackShortcuts。所以这里显式
+  /// requestFocus() 把焦点真正抢过来（见 initState 的 post-frame 回调）。
+  final FocusNode _shortcutFocus = FocusNode(debugLabel: 'LcbPlayer');
 
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration>? _durationSub;
@@ -447,6 +460,11 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void initState() {
     super.initState();
+    // autofocus 不够：shell 的 autofocus 先挂载、已经用掉了这个 Scope 唯一的
+    // 名额。必须等这一帧挂完再显式抢焦点，方向键才能落到本页的绑定上。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _shortcutFocus.requestFocus();
+    });
     _decoderMode = widget.decoderMode;
     windowManager.isMaximized().then((value) {
       if (mounted) setState(() => _maximized = value);
@@ -1267,12 +1285,12 @@ class _PlayerPageState extends State<PlayerPage> {
     }
   }
 
-  /// 滚轮调音量：向上滚 +5，向下滚 -5，夹在 mpv 的 0-100 里。
+  /// 滚轮调音量：向上滚 +5，向下滚 -5，夹在 mpv 的 0-150 里。
   ///
   /// 音量本来有一根底栏滑杆，原版没有那根滑杆，所以它挪到了滚轮上——音量是
   /// 边看边试的，挪进设置页反而更难用。真实值仍然跟着设置存。
-  void _nudgeVolume(double dy) {
-    final next = steppedVolume(_volume, dy);
+  void _nudgeVolume(double dy, {double step = wheelVolumeStep}) {
+    final next = steppedVolume(_volume, dy, step: step);
     if (next == _volume) return;
     _player.setVolume(next);
     _showNotice(next <= 0 ? '已静音' : '音量 ${next.round()}');
@@ -1334,25 +1352,33 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   /// 键盘动作和滚轮 / 底栏按钮共用同一套实现，避免两处音量或落点算法分叉。
-  /// 上箭头对应滚轮上滚（dy<0），所以传 -5；±10 秒直接走 [`_nudge`]。
+  /// 上方向键对应上滚（dy<0），但键盘一步 10%、滚轮一格 5%，所以显式传
+  /// [keyVolumeStep]；±10 秒直接走 [`_nudge`]。
   void _runShortcut(PlayerShortcut shortcut) {
     switch (shortcut) {
       case PlayerShortcut.volumeUp:
-        _nudgeVolume(-5);
+        _nudgeVolume(-1, step: keyVolumeStep);
       case PlayerShortcut.volumeDown:
-        _nudgeVolume(5);
+        _nudgeVolume(1, step: keyVolumeStep);
       case PlayerShortcut.seekBack:
         _nudge(const Duration(seconds: -10));
       case PlayerShortcut.seekForward:
         _nudge(const Duration(seconds: 10));
       case PlayerShortcut.miniWindow:
         _toggleMiniWindow();
+      case PlayerShortcut.togglePlay:
+        _togglePlay();
     }
   }
 
   Map<ShortcutActivator, VoidCallback> get _shortcutBindings => {
     for (final entry in playerShortcutBindings.entries)
       entry.key: () => _runShortcut(entry.value),
+    // 焦点在播放页时 shell 的老板键绑定收不到 Ctrl+Alt+H，必须在这一层
+    // 也接一份，复用 shell 传下来的同一个回调（fire 暂停 + minimize 藏窗）。
+    // 播放页存在即持有焦点，两个绑定互斥，不会重复触发。
+    if (widget.onBossKey != null)
+      bossKeyActivator: () => widget.onBossKey!.call(),
   };
 
   void _togglePlay() {
@@ -1497,6 +1523,7 @@ class _PlayerPageState extends State<PlayerPage> {
     widget.onPrefs?.call(_volume.round(), _rate);
     _awake.release();
     _player.dispose();
+    _shortcutFocus.dispose();
     super.dispose();
   }
 
@@ -1507,12 +1534,14 @@ class _PlayerPageState extends State<PlayerPage> {
     // 钉回来，等下一集真正开了（duration 到了会清掉 _openError）再恢复自动隐藏。
     final chromeVisible = _controlsVisible || _openError != null;
     // 播放页盖在 shell 之上，焦点必须落在这里，方向键才不会被 shell 的
-    // Ctrl+K / Esc 绑定吃掉。autofocus 只在首次进入时抢一次，之后焦点随着
-    // 面板里的输入框自然转移，打字时不会误触音量。
-    return Focus(
-      autofocus: true,
-      child: CallbackShortcuts(
-        bindings: _shortcutBindings,
+    // Ctrl+K / Esc 绑定吃掉。这里用显式 requestFocus（initState 里）而不是
+    // autofocus：shell 与 player 同属一个 FocusScope，而 autofocus 每个 Scope
+    // 只兑现一次，先挂载的 shell 占掉名额后，播放页的 autofocus 会被忽略。
+    // CallbackShortcuts 必须在 Focus 外层：它只把绑定注册到后代 Focus 节点。
+    return CallbackShortcuts(
+      bindings: _shortcutBindings,
+      child: Focus(
+        focusNode: _shortcutFocus,
         child: Scaffold(
           backgroundColor: Colors.black,
       body: Stack(

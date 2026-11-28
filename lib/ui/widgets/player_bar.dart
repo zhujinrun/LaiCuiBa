@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
+import '../../services/player/volume_step.dart' show maxVolume;
 
 /// 播放页底部那条悬浮控制条，完全照用户给的原版全屏截图排：
 ///
@@ -376,9 +377,9 @@ class PlayerBar extends StatelessWidget {
               thumbColor: Colors.white,
             ),
             child: Slider(
-              value: volume.clamp(0, 100).toDouble(),
+              value: volume.clamp(0, maxVolume).toDouble(),
               min: 0,
-              max: 100,
+              max: maxVolume,
               onChanged: onVolumeChanged ?? (_) {},
             ),
           ),

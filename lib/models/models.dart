@@ -877,7 +877,7 @@ class AppSettings {
   final bool tvClassicUi;
   final bool tvKeyboard;
 
-  /// Volume (0-100) and speed the player opens with. Carried across sessions
+  /// Volume (0-150, default 100) and speed the player opens with. Carried across sessions
   /// because a viewer who muted or slowed the last episode wants the same
   /// again for the next one, not a reset to 100 / 1.0×.
   final int playerVolume;

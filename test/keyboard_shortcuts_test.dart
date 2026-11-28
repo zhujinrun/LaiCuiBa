@@ -20,11 +20,14 @@ void main() {
       PlayerShortcut.seekForward,
     );
     expect(playerShortcutFor(LogicalKeyboardKey.keyP), PlayerShortcut.miniWindow);
+    expect(
+      playerShortcutFor(LogicalKeyboardKey.space),
+      PlayerShortcut.togglePlay,
+    );
   });
 
-  test('其他键不抢：空格、Esc、Ctrl+K 都不属于播放页这五个动作', () {
+  test('其他键不抢：Esc、Ctrl+K、J/K/L/M 都不属于播放页动作', () {
     for (final key in [
-      LogicalKeyboardKey.space,
       LogicalKeyboardKey.escape,
       LogicalKeyboardKey.keyK,
       LogicalKeyboardKey.keyJ,
@@ -46,9 +49,9 @@ void main() {
     );
   });
 
-  test('绑定表恰好五个单键，无修饰键', () {
+  test('绑定表恰好六个单键，无修饰键', () {
     final bindings = playerShortcutBindings;
-    expect(bindings, hasLength(5));
+    expect(bindings, hasLength(6));
     for (final activator in bindings.keys) {
       final single = activator as SingleActivator;
       expect(

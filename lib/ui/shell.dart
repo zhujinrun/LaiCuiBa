@@ -473,6 +473,7 @@ class _ShellState extends State<Shell> {
           PlayerPage(
             key: ValueKey('player-${player.url}-${player.lineIndex}'),
             bossKey: _bossKey,
+            onBossKey: _triggerBossKey,
             title: player.title,
             subtitle: player.subtitle,
             quality: player.item.tag,
