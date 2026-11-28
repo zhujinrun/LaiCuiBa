@@ -15,6 +15,9 @@ the section whose heading matches the pushed tag.
   grid no longer places the first row flush against the header, and settings
   sub-pages no longer sit 35px down (their first card used to float well below
   the header compared with every other page).
+- Editing a source and saving no longer undoes site switches made in the same
+  dialog. Emby / Alist toggles write straight to the store; saving used to
+  replace the source from the dialog's opening snapshot, re-enabling them.
 
 ## [0.1.3] - 2026-11-28
 

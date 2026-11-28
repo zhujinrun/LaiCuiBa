@@ -636,11 +636,16 @@ class _EditSourceDialogState extends State<_EditSourceDialog> {
 
   Future<void> _save() async {
     final store = StoreScope.of(context);
+    // Read the live source from the store: toggling a site below writes straight
+    // through to the store, so saving from the widget's opening snapshot would
+    // replace that source with its stale site list and undo every switch.
+    final current = store.sources.firstWhere(
+      (item) => item.id == widget.source.id,
+      orElse: () => widget.source,
+    );
     await store.updateSource(
-      widget.source.copyWith(
-        name: _name.text.trim().isEmpty
-            ? widget.source.name
-            : _name.text.trim(),
+      current.copyWith(
+        name: _name.text.trim().isEmpty ? current.name : _name.text.trim(),
         url: _url.text.trim(),
       ),
     );
