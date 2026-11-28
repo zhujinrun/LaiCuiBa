@@ -16,7 +16,6 @@ Future<void> showPlatformDialog(BuildContext context, String title) =>
     showDialog<void>(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xF21C1C1E),
         title: Text('换平台 · $title'),
         content: const SizedBox(
           width: 400,
@@ -39,7 +38,6 @@ Future<void> showDownloadDialog(BuildContext context, List<String> episodes) =>
     showDialog<void>(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xF21C1C1E),
         title: const Text('下载'),
         content: SizedBox(
           width: 420,
@@ -87,7 +85,6 @@ Future<void> showFollowDialog(BuildContext context, String title) =>
     showDialog<void>(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xF21C1C1E),
         title: const Text('追更'),
         content: SizedBox(
           width: 400,
@@ -139,7 +136,6 @@ class _FavoriteFolderDialogState extends State<_FavoriteFolderDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    backgroundColor: const Color(0xF21C1C1E),
     title: const Text('收藏到'),
     content: SizedBox(
       width: 380,

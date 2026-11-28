@@ -57,6 +57,12 @@ the section whose heading matches the pushed tag.
   non-scrollable line that hid and disabled every option past the panel's edge
   (a source like 大师兄 ships 17 years). The panel itself scrolls vertically
   now so a tall, wrapped filter list never overflows a short window.
+- Detail-page dialogs (换平台 / 下载 / 收藏 / 追更 / 评论) follow the app's light
+  theme again. They hard-coded a near-black background while their body text
+  used the light theme's dark grey, leaving the panels unreadable; the dialogs
+  now inherit the theme surface and the 评论 panel's white-on-black tokens were
+  replaced with the matching light ones. Its title uses the same theme
+  `titleLarge` style as the other dialogs instead of a smaller hard-coded size.
 
 ## [0.1.2] - 2026-11-27
 

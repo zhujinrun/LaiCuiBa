@@ -21,7 +21,6 @@ class _CommentsDialogState extends State<_CommentsDialog> {
 
   @override
   Widget build(BuildContext context) => Dialog(
-    backgroundColor: const Color(0xF21C1C1E),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     child: SizedBox(
       width: 420,
@@ -33,9 +32,12 @@ class _CommentsDialogState extends State<_CommentsDialog> {
           children: [
             Row(
               children: [
-                const Text(
+                // Match the other detail dialogs' AlertDialog title: they use
+                // the theme's titleLarge (18/600), while this plain Dialog used
+                // to hard-code 15/400 and read visibly smaller.
+                Text(
                   '评论',
-                  style: TextStyle(fontSize: 15, color: Colors.white),
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const Spacer(),
                 IconButton(
@@ -76,7 +78,7 @@ class _CommentsDialogState extends State<_CommentsDialog> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: const Color(0x22FFFFFF),
+                color: LcbColors.searchFill,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -93,7 +95,7 @@ class _CommentsDialogState extends State<_CommentsDialog> {
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     fontSize: 12.5,
-                    color: LcbColors.textTertiary,
+                    color: LcbColors.textSecondary,
                   ),
                 ),
               ),
