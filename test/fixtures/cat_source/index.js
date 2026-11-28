@@ -90,7 +90,10 @@ async function start(config) {
       return json(res, { error: 'not found' }, 404);
     }
     const [, key, type, action] = parts;
-    if (key !== 'fixture') return json(res, { error: 'unknown site' }, 404);
+    if (key !== 'fixture' && key !== 'fixture-many') {
+      return json(res, { error: 'unknown site' }, 404);
+    }
+    const many = key === 'fixture-many';
 
     const body = await readBody(req);
 
@@ -101,10 +104,20 @@ async function start(config) {
 
       case 'home':
         return json(res, {
-          class: [
-            { type_id: '1', type_name: '电影' },
-            { type_id: '2', type_name: '电视剧' },
-          ],
+          class: many
+            ? [
+                { type_id: '1', type_name: '电影' },
+                { type_id: '2', type_name: '剧集' },
+                { type_id: '3', type_name: '综艺' },
+                { type_id: '4', type_name: '动漫' },
+                { type_id: '63', type_name: '短剧' },
+                { type_id: '64', type_name: 'AI漫剧' },
+                { type_id: '62', type_name: '少儿' },
+              ]
+            : [
+                { type_id: '1', type_name: '电影' },
+                { type_id: '2', type_name: '电视剧' },
+              ],
           filters: {},
         });
 
@@ -112,8 +125,9 @@ async function start(config) {
         // 真实的猫源读 `{id, page}`。TVBox 的 `{tid, pg}` 不会被拒，而是静默
         // 返回空列表 —— 夹具照抄这个行为，字段名写错时测试才会红。
         const wanted = String(body.id ?? '');
-        const list =
-          wanted === '2'
+        const list = many
+          ? CATALOG
+          : wanted === '2'
             ? CATALOG.filter((v) => v.type_name === '电视剧')
             : wanted === '1'
               ? CATALOG.filter((v) => v.type_name === '电影')

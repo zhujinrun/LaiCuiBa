@@ -122,9 +122,12 @@ class SourceCatalogue {
 
   final SpiderSession session;
 
-  /// Rails shown. Sources declare four to ten; two is the smallest seen.
-  /// Five is enough for a first screen without paging a site to death.
-  static const maxSections = 5;
+  /// Rails shown. The original shows every category the site declares: a
+  /// paged source can list seven or more (大师兄 has 电影/剧集/综艺/动漫/短剧/
+  /// AI漫剧/少儿 after dropping 直播). Cutting this to five silently hid the
+  /// tail categories, so the cap is now generous -- it only guards against a
+  /// pathological source declaring hundreds, not normal feeds.
+  static const maxSections = 20;
 
   /// Titles per rail. The rail scrolls, but a home screen is a sample: fetching
   /// page one is one request, and the poster list only ever shows a handful.

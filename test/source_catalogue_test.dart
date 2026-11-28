@@ -207,6 +207,29 @@ void main() {
       expect(feed.hero.map((e) => e.title).toList(), ['夹具片甲', '夹具片乙']);
     });
 
+    test('大师兄式源的全部七个分类都做成板块，不再砍到五个', () async {
+      // 服务端 nav 返回 电影/剧集/综艺/动漫/短剧/AI漫剧/少儿（直播被源脚本
+      // 过滤掉）。原版全部显示；以前 maxSections=5 把最后两个吞了。
+      const site = SiteInfo(key: 'fixture-many', name: '夹具大师兄', type: 'fixture');
+      final feed = await SourceCatalogue(session!).load(
+        source: sourceWith(
+          id: 'fixture-many-rails',
+          homeSite: 'fixture-many',
+          sites: const [site],
+        ),
+        md5Url: subscription(),
+        site: site,
+      );
+
+      expect(feed.ok, isTrue, reason: feed.error);
+      expect(
+        feed.sections.map((s) => s.title).toList(),
+        ['电影', '剧集', '综艺', '动漫', '短剧', 'AI漫剧', '少儿'],
+        reason: '源声明的七个分类都应渲染，不能只留前五个',
+      );
+      expect(SourceCatalogue.maxSections, greaterThanOrEqualTo(7));
+    });
+
     test('首页只问选中的那个站点，不去别的站偷内容', () async {
       // 源配置把首页指在死站上，用户在 header 里改成了活站：片单必须来自
       // 活站，而且只能来自活站 —— 页面上顶着哪个站的名字，就得是哪个站的

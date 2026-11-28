@@ -21,7 +21,7 @@ class TvBoxCatalogue {
   final String siteName;
 
   /// Rails shown, matching [SourceCatalogue.maxSections].
-  static const maxSections = 5;
+  static const maxSections = 20;
 
   /// Titles per rail, matching [SourceCatalogue.maxItemsPerSection].
   static const maxItemsPerSection = 24;
