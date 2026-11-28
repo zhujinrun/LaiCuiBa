@@ -556,10 +556,12 @@ class _SourceCard extends StatelessWidget {
 
   /// What the card says under the name.
   ///
-  /// The original shows a title count ("当前使用 · 58 部") because it has fetched
-  /// the source's catalogue. This rebuild prints that count once 检测 has
-  /// actually measured it ([SourceInfo.movieCount]); before that it reports the
-  /// sites the config declared, and a borrowed number would just be wrong.
+  /// 猫源 / py / js cards report the number of sites the config declares. A
+  /// measured title count (first-screen sample) was tried and turned out to
+  /// be meaningless on the card -- it is a partial count that changes with
+  /// the upstream feed, so it says nothing about the source itself. Site
+  /// count is stable and is what the user actually chooses from. Types with
+  /// a real inventory (live channels, WebDAV/Emby libraries) keep theirs.
   String get _status {
     switch (source.type) {
       case 'live':
@@ -572,14 +574,14 @@ class _SourceCard extends StatelessWidget {
         return selected ? '当前使用 · 待检测' : '未使用 · 待检测';
       case 'py':
         // A Python source is one file that is its own site; 检测 runs it.
-        return _measuredLine;
+        return _siteLine;
       case 'php':
         // No PHP runtime in this build, so the file is kept but never run.
         return '本地 spider 文件 · 无 PHP 运行时';
       case 'js':
         // A js source is either a local spider file or a subscription address;
-        // only the latter can be booted, so only the latter can be measured.
-        return _remote ? _measuredLine : '本地 spider 文件 · 待宿主执行';
+        // only the latter can be booted. Either way the card shows sites.
+        return _remote ? _siteLine : '本地 spider 文件 · 待宿主执行';
       case 'webdav':
         // A share has no login step to report: it either lists or it does not.
         // Folders and loose films are both "what this share has to show".
@@ -611,29 +613,27 @@ class _SourceCard extends StatelessWidget {
         if (!selected) return '已登录 · 未使用';
         return '当前使用 · 待检测';
       default:
-        final sites = source.searchableSites.length;
-        // An address-only source says so even before it is selected: the user
-        // just added it and needs to know why no sites appeared.
-        final pending = sites == 0 && source.url.isNotEmpty;
-        if (pending) {
-          return selected ? '当前使用 · 待联网拉取' : '未使用 · 地址待拉取';
-        }
-        if (!selected) return '未使用';
-        if (source.movieCount > 0) return '当前使用 · ${source.movieCount} 部';
-        return sites > 0 ? '当前使用 · $sites 个站点' : '当前使用 · 未解析';
+        // Enabled sites only: a switched-off site is one the user chose not to
+        // use, so counting it would overstate what this source actually does.
+        return _siteLine;
     }
   }
 
   /// A subscription address can be booted; a local file cannot (yet).
   bool get _remote => source.url.trimLeft().toLowerCase().startsWith('http');
 
-  /// The line a runnable spider shows: the measured title count when 检测 has
-  /// produced one, the declared site count before that.
-  String get _measuredLine {
-    final prefix = selected ? '当前使用 · ' : '';
-    if (source.movieCount > 0) return '$prefix${source.movieCount} 部';
+  /// Site count for the runnable spider types (猫源 / py / js): only sites that
+  /// are switched on, i.e. the ones that take part in search and categories.
+  String get _siteLine {
     final sites = source.searchableSites.length;
-    if (sites > 0) return '$prefix$sites 个站点';
+    // An address-only source says so even before it is selected: the user
+    // just added it and needs to know why no sites appeared.
+    final pending = sites == 0 && source.url.isNotEmpty;
+    if (pending) {
+      return selected ? '当前使用 · 待联网拉取' : '未使用 · 地址待拉取';
+    }
+    if (!selected) return '未使用';
+    if (sites > 0) return '当前使用 · $sites 个站点';
     return selected ? '当前使用 · 待检测' : '未使用 · 待检测';
   }
 

@@ -18,6 +18,11 @@ the section whose heading matches the pushed tag.
 - Editing a source and saving no longer undoes site switches made in the same
   dialog. Emby / Alist toggles write straight to the store; saving used to
   replace the source from the dialog's opening snapshot, re-enabling them.
+- Resource cards for 猫源 / py / js sources now show the number of enabled
+  sites instead of a measured title count. That count was a first-screen
+  sample that changed with the feed and said nothing stable about the source;
+  sites the user switched off are not counted either. Live channels and
+  WebDAV/Emby library counts are unchanged.
 
 ## [0.1.3] - 2026-11-28
 

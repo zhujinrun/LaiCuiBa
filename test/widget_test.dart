@@ -762,7 +762,7 @@ void main() {
     expect(store.activeSites, isEmpty);
   });
 
-  testWidgets('the source card shows the measured title count', (tester) async {
+  testWidgets('the source card shows the declared site count, not a sampled title count', (tester) async {
     tester.view.physicalSize = const Size(1920, 1040);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -777,18 +777,25 @@ void main() {
     await tester.tap(find.text('资源').last);
     await tester.pumpAndSettle();
 
-    // The seeded source carries the original's cached figure, so the card
-    // prints 部 rather than the 59 sites the config declares.
-    expect(find.text('当前使用 · 58 部'), findsOneWidget);
+    // Title counts are a first-screen sample that means nothing on a card;
+    // the config's 59 sites are the stable, useful figure.
+    expect(find.text('当前使用 · 59 个站点'), findsOneWidget);
 
-    // A check that measured something else takes over without a relaunch.
+    // Even a 检测 that measured a title count does not replace the site count,
+    // though its latency still shows on the card.
     await store.applyProbe(
       store.sources.first.id,
       const ProbeReport(latencyMs: 700, movieCount: 12, showCount: 3, siteCount: 59),
     );
     await tester.pumpAndSettle();
-    expect(find.text('当前使用 · 12 部'), findsOneWidget);
+    expect(find.text('当前使用 · 59 个站点'), findsOneWidget);
     expect(find.text('0.7s'), findsOneWidget);
+
+    // Only enabled sites count, so switching two off drops the card to 57.
+    await store.toggleSite(store.sources.first.id, 'nodejs_jianpian');
+    await store.toggleSite(store.sources.first.id, 'nodejs_duoduo');
+    await tester.pumpAndSettle();
+    expect(find.text('当前使用 · 57 个站点'), findsOneWidget);
   });
 
   testWidgets('资源页默认按类型分组，第一组展开、点组标题能折叠', (tester) async {
@@ -807,12 +814,12 @@ void main() {
 
     // 种子源是 TVBox：组标题在，第一组默认展开，卡片可见。
     expect(find.text('TVBox'), findsWidgets);
-    expect(find.text('当前使用 · 58 部'), findsOneWidget);
+    expect(find.text('当前使用 · 59 个站点'), findsOneWidget);
 
     // 点组标题折叠：卡片收起，组标题还在。
     await tester.tap(find.byKey(const ValueKey('resource-group-TVBox')));
     await tester.pumpAndSettle();
-    expect(find.text('当前使用 · 58 部'), findsNothing);
+    expect(find.text('当前使用 · 59 个站点'), findsNothing);
     expect(find.text('TVBox'), findsWidgets);
   });
 
@@ -865,7 +872,7 @@ void main() {
     // 命中种子源名字里的字，卡片回来了。
     await tester.enterText(find.byType(TextField).last, store.sources.first.name);
     await tester.pumpAndSettle();
-    expect(find.text('当前使用 · 58 部'), findsOneWidget);
+    expect(find.text('当前使用 · 59 个站点'), findsOneWidget);
   });
 
   testWidgets('资源页多选：勾选后批量删除，删完回到空态', (tester) async {
@@ -888,7 +895,7 @@ void main() {
     expect(find.text('已选 0 个'), findsOneWidget);
 
     // 点卡片勾选一个。
-    await tester.tap(find.text('当前使用 · 58 部'));
+    await tester.tap(find.text('当前使用 · 59 个站点'));
     await tester.pumpAndSettle();
     expect(find.text('已选 1 个'), findsOneWidget);
 
