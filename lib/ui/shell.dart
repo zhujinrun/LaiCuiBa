@@ -1094,7 +1094,7 @@ class _HeaderContent extends StatelessWidget {
               ),
               const SizedBox(width: 35),
               _HeaderToolIcon(
-                icon: CupertinoIcons.line_horizontal_3,
+                icon: CupertinoIcons.slider_horizontal_3,
                 active: resources.grouped,
                 onTap: resources.toggleGrouped,
               ),

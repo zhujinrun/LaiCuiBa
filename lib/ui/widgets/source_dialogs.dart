@@ -312,7 +312,7 @@ enum _SourceAction { select, recheck, edit, group, icon, delete }
 
 const _dialogWidth = 558.0;
 
-Widget _sheet({required Widget child}) {
+Widget _sheet({required Widget child, EdgeInsetsGeometry? padding}) {
   return Dialog(
     backgroundColor: Colors.white,
     insetPadding: EdgeInsets.zero,
@@ -320,7 +320,7 @@ Widget _sheet({required Widget child}) {
     child: SizedBox(
       width: _dialogWidth,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(22, 18, 16, 18),
+        padding: padding ?? const EdgeInsets.fromLTRB(22, 18, 16, 18),
         child: child,
       ),
     ),
@@ -328,9 +328,21 @@ Widget _sheet({required Widget child}) {
 }
 
 class _TitleRow extends StatelessWidget {
-  const _TitleRow({required this.title});
+  const _TitleRow({
+    required this.title,
+    this.circularClose = false,
+    this.fontSize = 17,
+    this.fontWeight = FontWeight.w700,
+  });
 
   final String title;
+
+  /// The card `⋯` menu has a 28px grey disc for its close button; the larger
+  /// form sheets use a plain xmark. Both stay opt-in so other sheets are
+  /// untouched.
+  final bool circularClose;
+  final double fontSize;
+  final FontWeight fontWeight;
 
   @override
   Widget build(BuildContext context) {
@@ -338,9 +350,9 @@ class _TitleRow extends StatelessWidget {
       children: [
         Text(
           title,
-          style: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
+          style: TextStyle(
+            fontSize: fontSize,
+            fontWeight: fontWeight,
             height: 1.0,
             color: LcbColors.text,
           ),
@@ -349,14 +361,29 @@ class _TitleRow extends StatelessWidget {
         GestureDetector(
           onTap: () => Navigator.of(context).pop(),
           behavior: HitTestBehavior.opaque,
-          child: const Padding(
-            padding: EdgeInsets.all(6),
-            child: Icon(
-              CupertinoIcons.xmark,
-              size: 16,
-              color: LcbColors.textSecondary,
-            ),
-          ),
+          child: circularClose
+              ? Container(
+                  width: 28,
+                  height: 28,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: LcbColors.searchFill,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    CupertinoIcons.xmark,
+                    size: 14,
+                    color: LcbColors.textSecondary,
+                  ),
+                )
+              : const Padding(
+                  padding: EdgeInsets.all(6),
+                  child: Icon(
+                    CupertinoIcons.xmark,
+                    size: 16,
+                    color: LcbColors.textSecondary,
+                  ),
+                ),
         ),
       ],
     );
@@ -834,37 +861,59 @@ class _SourceMenuDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _sheet(
+      padding: const EdgeInsets.fromLTRB(22, 20, 14, 18),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _TitleRow(title: source.name),
-          const SizedBox(height: 10),
-          _MenuRow(
-            label: '设为当前资源',
-            enabled: !isCurrent,
-            onTap: () => Navigator.of(context).pop(_SourceAction.select),
+          _TitleRow(
+            title: source.name,
+            circularClose: true,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
           ),
-          _MenuRow(
-            label: '重新检测',
-            onTap: () => Navigator.of(context).pop(_SourceAction.recheck),
-          ),
-          _MenuRow(
-            label: '编辑',
-            onTap: () => Navigator.of(context).pop(_SourceAction.edit),
-          ),
-          _MenuRow(
-            label: '更换图标',
-            onTap: () => Navigator.of(context).pop(_SourceAction.icon),
-          ),
-          _MenuRow(
-            label: '放进分组',
-            onTap: () => Navigator.of(context).pop(_SourceAction.group),
-          ),
-          _MenuRow(
-            label: '删除',
-            danger: true,
-            onTap: () => Navigator.of(context).pop(_SourceAction.delete),
+          const SizedBox(height: 14),
+          // The original groups the actions in a #F6F6F8 rounded card with
+          // inset dividers between rows, not as bare rows on the white sheet.
+          Container(
+            decoration: BoxDecoration(
+              color: LcbColors.card,
+              borderRadius:
+                  BorderRadius.circular(LcbMetrics.settingsCardRadius),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _MenuRow(
+                  label: '设为当前资源',
+                  enabled: !isCurrent,
+                  onTap: () => Navigator.of(context).pop(_SourceAction.select),
+                ),
+                _MenuRow(
+                  label: '重新检测',
+                  onTap: () => Navigator.of(context).pop(_SourceAction.recheck),
+                ),
+                _MenuRow(
+                  label: '编辑',
+                  onTap: () => Navigator.of(context).pop(_SourceAction.edit),
+                ),
+                _MenuRow(
+                  label: '更换图标',
+                  onTap: () => Navigator.of(context).pop(_SourceAction.icon),
+                ),
+                _MenuRow(
+                  label: '放进分组',
+                  onTap: () => Navigator.of(context).pop(_SourceAction.group),
+                ),
+                _MenuRow(
+                  label: '删除',
+                  danger: true,
+                  showDivider: false,
+                  onTap: () => Navigator.of(context).pop(_SourceAction.delete),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -872,41 +921,78 @@ class _SourceMenuDialog extends StatelessWidget {
   }
 }
 
-class _MenuRow extends StatelessWidget {
+class _MenuRow extends StatefulWidget {
   const _MenuRow({
     required this.label,
     required this.onTap,
     this.enabled = true,
     this.danger = false,
+    this.showDivider = true,
   });
 
   final String label;
   final VoidCallback onTap;
   final bool enabled;
   final bool danger;
+  final bool showDivider;
+
+  @override
+  State<_MenuRow> createState() => _MenuRowState();
+}
+
+class _MenuRowState extends State<_MenuRow> {
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        height: 46,
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 14.5,
-              color: !enabled
-                  ? LcbColors.textTertiary
-                  : danger
-                  ? LcbColors.sysRed
-                  : LcbColors.text,
+    final interactive = widget.enabled;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        MouseRegion(
+          cursor: interactive ? SystemMouseCursors.click : SystemMouseCursors.basic,
+          onEnter: interactive ? (_) => setState(() => _hovered = true) : null,
+          onExit: interactive ? (_) => setState(() => _hovered = false) : null,
+          child: GestureDetector(
+            onTap: interactive ? widget.onTap : null,
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              // Instant, not animated: a fading row background reads as a
+              // flicker when the pointer crosses the menu (see sidebar hover).
+              color: interactive && _hovered
+                  ? LcbColors.searchFill
+                  : Colors.transparent,
+              padding: const EdgeInsets.only(left: 16),
+              child: SizedBox(
+                height: 50,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    widget.label,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: !interactive
+                          ? LcbColors.textTertiary
+                          : widget.danger
+                          ? LcbColors.sysRed
+                          : LcbColors.text,
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
-      ),
+        if (widget.showDivider)
+          const Padding(
+            padding: EdgeInsets.only(left: 26, right: 16),
+            child: SizedBox(
+              height: 1,
+              child: ColoredBox(color: LcbColors.cardDivider),
+            ),
+          ),
+      ],
     );
   }
 }

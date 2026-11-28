@@ -929,9 +929,19 @@ void main() {
     // 分组视图：卡片不套拖动层，拖不动（组内邻居是别的组，没有唯一含义）。
     expect(find.byType(ReorderableListView), findsNothing);
 
-    await tester.tap(find.byIcon(CupertinoIcons.line_horizontal_3).first);
+    await tester.tap(find.byIcon(CupertinoIcons.slider_horizontal_3).first);
     await tester.pumpAndSettle();
     expect(find.byType(ReorderableListView), findsOneWidget);
+
+    // 桌面端 Flutter 默认会在每张卡 trailing 叠一个 Icons.drag_handle —
+    // 截图里资源卡片右侧那两条横杠。原版没有手柄，必须关掉默认手柄、改由
+    // 整卡长按拖动，各平台一致。
+    final list = tester.widget<ReorderableListView>(
+      find.byType(ReorderableListView),
+    );
+    expect(list.buildDefaultDragHandles, isFalse,
+        reason: '不该显示 Flutter 桌面默认的拖动横杠');
+    expect(find.byIcon(Icons.drag_handle), findsNothing);
 
     // Android 上默认是「长按再拖」：先按住第一张卡，等长按触发后往下推过
     // 第二张卡的中点，就会换位。

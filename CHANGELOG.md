@@ -63,6 +63,19 @@ the section whose heading matches the pushed tag.
   now inherit the theme surface and the 评论 panel's white-on-black tokens were
   replaced with the matching light ones. Its title uses the same theme
   `titleLarge` style as the other dialogs instead of a smaller hard-coded size.
+- Resource cards no longer carry Flutter's desktop drag handle (two bars on
+  the trailing edge). The cards were already long-press draggable; the default
+  handle is now disabled and the whole card is wrapped in a delayed drag
+  listener on every platform, matching the original's clean card layout.
+- The resource card's `⋯` menu now matches the original's grouped layout: the
+  actions sit in a #F6F6F8 rounded card with inset 1px dividers on 50px rows,
+  the title is 16/600, and the close control is a 28px grey disc instead of a
+  bare xmark; 删除 stays red. Values were sampled from the original screenshot.
+  The two extra actions (更换图标 / 放进分组) remain — they are real features in
+  this build, not styling. Actionable rows now show the click cursor and an
+  instant grey hover background; the disabled 设为当前资源 row stays flat.
+- The 资源 page's first header tool icon now uses the original's slider glyph
+  (three lines with knobs) instead of a plain hamburger.
 
 ## [0.1.2] - 2026-11-27
 

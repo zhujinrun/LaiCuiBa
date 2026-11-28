@@ -23,7 +23,7 @@ import '../widgets/source_dialogs.dart';
 /// list and tapping a card switches the active source.
 ///
 /// The header's three tool icons drive the view from here through [state]:
-/// 三横线 toggles grouping, 放大镜 opens the filter row, 对勾圆圈 turns the
+/// 三条滑块横线 toggles grouping, 放大镜 opens the filter row, 对勾圆圈 turns the
 /// cards into checkboxes. None of them touch the stored sources — leaving the
 /// mode puts the list straight back.
 class ResourcesPage extends StatelessWidget {
@@ -82,12 +82,23 @@ class ResourcesPage extends StatelessWidget {
               padding: padding,
               header: searchBar,
               footer: footer,
+              // Flutter's desktop default stacks an Icons.drag_handle (the
+              // two bars in the screenshot) on every item's trailing edge.
+              // The original has no handle: wrap the whole card in a delayed
+              // drag listener instead, so long-press reordering still works
+              // on every platform without the extra glyph.
+              buildDefaultDragHandles: false,
               // onReorderItem already accounts for the removed row, so the
               // index pair needs no adjustment here.
               onReorderItem: (oldIndex, newIndex) =>
                   _reorder(context, all, visible, oldIndex, newIndex),
               children: [
-                for (final source in visible) _card(context, source, current),
+                for (final (index, source) in visible.indexed)
+                  ReorderableDelayedDragStartListener(
+                    key: ValueKey('resource-drag-${source.id}'),
+                    index: index,
+                    child: _card(context, source, current),
+                  ),
               ],
             ),
           );
