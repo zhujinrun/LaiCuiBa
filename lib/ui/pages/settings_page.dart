@@ -73,9 +73,11 @@ class _SettingsPageState extends State<SettingsPage> {
         child: ListView(
           padding: EdgeInsets.fromLTRB(
             LcbMetrics.settingsPaddingLeft,
-            // Sub-pages have no group label, so they need the label's height as
-            // extra top padding to keep the first card in the same place.
-            _sub != null ? 35 : 8,
+            // Sub-pages use the same 17px top inset as the home page and the
+            // 「查看全部」grid, so the first card sits the same distance below
+            // the header on every page. The root keeps its smaller inset
+            // because its first child is the 通用 group label.
+            _sub != null ? 17 : 8,
             LcbMetrics.settingsPaddingRight,
             40,
           ),

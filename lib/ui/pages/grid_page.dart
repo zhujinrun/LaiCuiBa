@@ -203,7 +203,10 @@ class _GridPageState extends State<GridPage> {
             controller: _scroll,
             slivers: [
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(pad, 0, pad, 12),
+                // The top inset matches the home page's content inset so the
+                // covers do not sit flush against the header when a rail's
+                // 「查看全部」opens this grid.
+                padding: const EdgeInsets.fromLTRB(pad, 17, pad, 12),
                 sliver: SliverGrid(
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: columns,

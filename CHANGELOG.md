@@ -11,6 +11,10 @@ the section whose heading matches the pushed tag.
   full-width) are now split into separate entries, like the usual slash-joined
   ones. The 分类 row shows one chip per genre instead of a single
   「剧情,喜剧,爱情,同性」 chip.
+- Page content now uses a consistent 17px top inset: the home rails' 「查看全部」
+  grid no longer places the first row flush against the header, and settings
+  sub-pages no longer sit 35px down (their first card used to float well below
+  the header compared with every other page).
 
 ## [0.1.3] - 2026-11-28
 
