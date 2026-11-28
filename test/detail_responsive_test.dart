@@ -181,7 +181,7 @@ void main() {
     }
     expect(chips, hasLength(2), reason: '电影应渲染 2 个版本 chip');
     for (final size in chips) {
-      expect(size.width, 92, reason: '选集 chip 固定 92px，不能被拉伸到半屏');
+      expect(size.width, 92, reason: '短集名按最小宽度 92px，不能被拉伸到半屏');
     }
   });
 }

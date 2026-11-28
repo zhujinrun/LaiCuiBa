@@ -806,11 +806,14 @@ class _RangePill extends StatelessWidget {
   }
 }
 
-/// 选集网格：固定宽度的 chip，能放几个放几个、9px 间隔，放不下就换行。
+/// 选集网格：chip 宽度随文字长短自适应，最小 92px、最大 180px，
+/// 9px 间隔，放不下就换行。
 ///
-/// 以前在这里按可用宽度拉伸 chip。20 集时算出来正好 ~92px 看不出问题，
-/// 但电影只有 2 个版本时每个会被撑到半屏宽（用户截图里的「过长」）。
-/// 固定成 92px 后，多集时视觉不变，少集/最大化时也不会被拉伸。
+/// 以前在这里按可用宽度拉伸 chip：20 集时算出来正好 ~92px 看不出问题，
+/// 但电影只有 2 个版本时每个会被撑到半屏宽。后来又固定成 92px，短集名
+/// 没问题，但源站给的「模范家庭47号：AK47」这类长名字会在 chip 里折成
+/// 两行、看起来像被压变形。现在改成按文字实测宽度取 92~180px，单行显示，
+/// 超过上限才省略，长名字整体也能读完整。
 class _EpisodeGrid extends StatelessWidget {
   const _EpisodeGrid({
     required this.labels,
@@ -830,7 +833,6 @@ class _EpisodeGrid extends StatelessWidget {
   /// Invoked with the absolute episode index (offset + i) on tap.
   final ValueChanged<int> onEpisode;
 
-  static const _chipWidth = 92.0;
   static const _gap = 9.0;
 
   @override
@@ -844,7 +846,6 @@ class _EpisodeGrid extends StatelessWidget {
           _EpisodeChip(
             key: ValueKey('episode-chip-${indices?[i] ?? i + offset}'),
             label: label,
-            width: _chipWidth,
             selected: current != null && current == (indices?[i] ?? i + offset),
             onTap: () => onEpisode(indices?[i] ?? i + offset),
           ),
@@ -857,13 +858,11 @@ class _EpisodeChip extends StatefulWidget {
   const _EpisodeChip({
     super.key,
     required this.label,
-    required this.width,
     required this.selected,
     required this.onTap,
   });
 
   final String label;
-  final double width;
   final bool selected;
   final VoidCallback onTap;
 
@@ -874,12 +873,34 @@ class _EpisodeChip extends StatefulWidget {
 class _EpisodeChipState extends State<_EpisodeChip> {
   bool _hover = false;
 
+  /// Short names keep the old 92px chip; long source names grow up to 180px
+  /// so they stay on one line instead of wrapping into a squashed two-liner.
+  static const _minWidth = 92.0;
+  static const _maxWidth = 180.0;
+  static const _horizontalPadding = 10.0;
+
   @override
   Widget build(BuildContext context) {
     final selected = widget.selected;
     final bg = selected
         ? const Color(0xFFEDEBF5)
         : (_hover ? const Color(0xFFE6E6E6) : const Color(0xFFEFEFEF));
+    final style = TextStyle(
+      fontSize: 12.5,
+      fontWeight: FontWeight.w600,
+      color: selected ? LcbColors.primaryDim : LcbColors.text,
+    );
+
+    final painter = TextPainter(
+      text: TextSpan(text: widget.label, style: style),
+      maxLines: 1,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    final width = (painter.width + 2 * _horizontalPadding)
+        .clamp(_minWidth, _maxWidth)
+        .toDouble();
+    painter.dispose();
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -888,19 +909,21 @@ class _EpisodeChipState extends State<_EpisodeChip> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: Container(
-          width: widget.width,
+          width: width,
           height: 44,
           alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: _horizontalPadding),
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Text(
-            widget.label,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: selected ? LcbColors.primaryDim : LcbColors.text,
+          child: Tooltip(
+            message: widget.label,
+            child: Text(
+              widget.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: style,
             ),
           ),
         ),

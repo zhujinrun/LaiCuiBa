@@ -13,6 +13,10 @@ the section whose heading matches the pushed tag.
   a hard cap of five.
 
 ### Fixed
+- Episode chips now size to their label (92px minimum, 180px maximum) instead
+  of a hard 92px, so long movie version names such as 模范家庭47号：AK47 stay on
+  one line instead of wrapping into a squashed two-line block. Overlong names
+  ellipsize and show the full text in a tooltip.
 - Player keyboard shortcuts now actually fire. The player and shell live in the
   same `FocusScope`, and Flutter grants `autofocus` only once per scope — the
   shell mounted first and consumed it, so the player's `autofocus: true` was
@@ -31,9 +35,9 @@ the section whose heading matches the pushed tag.
   a `Row`, so shrinking the window produced a `RenderFlex` overflow (the
   yellow/black stripe). The hero now sizes to its content — still 386px at wide
   widths — and the pills keep their natural width and wrap like the episode
-  chips. The 选集 chips themselves are fixed at 92px again: stretching them to
-  the available width made a two-version film render each chip half a screen
-  wide.
+  chips. The 选集 chips keep a 92px minimum instead of stretching to the
+  available width (which made a two-version film render each chip half a screen
+  wide), and grow up to 180px for long names so they stay on one line.
 - 演员阵容 wraps onto multiple rows like 选集 instead of a horizontal rail that
   cut off a long cast.
 - Poster-card captions no longer overflow the home rail by ~0.2px at fractional
